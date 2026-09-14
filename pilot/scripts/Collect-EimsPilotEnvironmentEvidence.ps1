@@ -228,7 +228,6 @@ $data = [ordered]@{
   evidenceClass = $EvidenceClass
   collectedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
   platform = [ordered]@{
-    computerName = [string]$env:COMPUTERNAME
     osCaption = $osCaption
     osVersion = $osVersion
     osArchitecture = $osArchitecture
