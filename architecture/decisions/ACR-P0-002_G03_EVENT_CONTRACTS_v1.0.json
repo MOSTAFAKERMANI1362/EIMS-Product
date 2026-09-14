@@ -1,0 +1,110 @@
+{
+  "schema": "EIMS-ACR-EVENT-CONTRACT-1.0",
+  "acrId": "ACR-P0-002",
+  "title": "Stabilize G03 Need Lifecycle Domain Event Contracts",
+  "status": "APPROVED_FOR_P1_IMPLEMENTATION",
+  "decisionClass": "POST_FREEZE_ARCHITECTURE_DECISION",
+  "effectiveVersion": "1.0",
+  "frozenProduct": {
+    "file": "EIMS_v6.360_WORKLIST_UX_ROLE_SELECTOR_CLEANUP.html",
+    "sha256": "057a224fa55e6ee17d128c41c86f3410206d7246723c35872f57757329c4e98a",
+    "modifiedByThisDecision": false
+  },
+  "provenance": {
+    "historicalOriginalG03DomainEventIdentities": "TBD_OR_UNAVAILABLE",
+    "mustNotBeRepresentedAsRecoveredOriginal": true,
+    "authoritativeSemanticBasis": [
+      "P1_WAVE1_STATE_REBASELINE_ACCEPTANCE_v1.0.json",
+      "P1_WAVE2_G03_RULE_REBASELINE_v1.0.json",
+      "EIMS_v6.360_WORKLIST_UX_ROLE_SELECTOR_CLEANUP.html"
+    ],
+    "auditLabelsMayNotBePromotedToDomainEvents": true
+  },
+  "namingStandard": {
+    "pattern": "<Entity><PastTenseAction>.v<Major>",
+    "eventCategory": "DOMAIN",
+    "delivery": "AT_LEAST_ONCE",
+    "consumerRequirement": "IDEMPOTENT_BY_EVENT_ID"
+  },
+  "commonEnvelope": {
+    "requiredFields": [
+      "eventId",
+      "eventType",
+      "eventVersion",
+      "eventCategory",
+      "occurredAtUtc",
+      "aggregateId",
+      "aggregateType",
+      "aggregateVersion",
+      "actorId",
+      "correlationId",
+      "causationId"
+    ],
+    "aggregateType": "Need",
+    "emitTiming": "AFTER_ATOMIC_COMMIT_VIA_OUTBOX"
+  },
+  "events": [
+    {
+      "eventType": "NeedSubmittedForG03Review.v1",
+      "producerCommand": "needs.submit-g03",
+      "trigger": {
+        "fromState": "DRAFT",
+        "toState": "PENDING_G03_REVIEW",
+        "decision": null
+      },
+      "routingRole": "NEED_REVIEWER",
+      "requiredPayloadFields": ["routingRole"],
+      "forbiddenPayloadFields": ["title", "owner", "current", "desired", "gap", "returnNote"]
+    },
+    {
+      "eventType": "NeedApprovedForIdeation.v1",
+      "producerCommand": "needs.g03-decision",
+      "trigger": {
+        "fromState": "PENDING_G03_REVIEW",
+        "toState": "READY_FOR_IDEATION",
+        "decision": "APPROVE"
+      },
+      "routingRole": "IDEA_OWNER",
+      "requiredPayloadFields": ["routingRole"],
+      "forbiddenPayloadFields": ["title", "owner", "current", "desired", "gap", "returnNote"]
+    },
+    {
+      "eventType": "NeedReturnedFromG03Review.v1",
+      "producerCommand": "needs.g03-decision",
+      "trigger": {
+        "fromState": "PENDING_G03_REVIEW",
+        "toState": "DRAFT",
+        "decision": "RETURN"
+      },
+      "routingRole": "NEED_OWNER",
+      "requiredPayloadFields": ["routingRole"],
+      "forbiddenPayloadFields": ["title", "owner", "current", "desired", "gap", "returnNote"]
+    }
+  ],
+  "privacyAndMinimization": {
+    "duplicateNeedDossierInEvent": false,
+    "includeReturnNoteText": false,
+    "authoritativeReturnNoteLocation": "DOMAIN_STATE_OR_APPEND_ONLY_AUDIT",
+    "principle": "Consumers receive event identity and minimal routing context; detailed Need content remains authoritative in EIMS."
+  },
+  "compatibility": {
+    "eventTypeImmutableWithinV1": true,
+    "breakingSemanticChangeRequiresNewMajor": true,
+    "payloadMayOnlyAddBackwardCompatibleOptionalFieldsWithinV1": true
+  },
+  "nonEffects": [
+    "Does not change G03 states",
+    "Does not change G03 RuleSets",
+    "Does not change G03 roles or SoD",
+    "Does not restore ideaOwnerCandidate",
+    "Does not bind a mutation planner",
+    "Does not enable any Product command",
+    "Does not modify v6.360"
+  ],
+  "p1ConsumptionGate": {
+    "eventContractDecisionAvailable": true,
+    "runtimeEventContractRecoveredByThisAcrAlone": false,
+    "commandPromotionAllowedByThisAcrAlone": false,
+    "nextRequiredStep": "Bind outcome-aware P1 event contract metadata and validate mutation planner outputs while keeping MutationContractRecovered=false."
+  }
+}
