@@ -300,8 +300,8 @@ static MutationCommit Commit(AuthorityCommand c, AuthorityActor a, AggregateSnap
 {
     var after = before with { Version = before.Version + 1 };
     var now = DateTimeOffset.UtcNow;
-    var audit = new AuditEnvelope("AUD-"+decisionId,a.PersonId,a.NetworkIdentity,a.IdentitySource,a.Roles,a.AssignmentId,after.AggregateId,after.Version,"R",now,c.CorrelationId,c.CommandName);
-    var outbox = new OutboxEnvelope("MSG-"+decisionId,"E",after.AggregateId,after.Version,c.CorrelationId,now);
+    var audit = new AuditEnvelope("AUD-"+before.AggregateId+"-"+decisionId,a.PersonId,a.NetworkIdentity,a.IdentitySource,a.Roles,a.AssignmentId,after.AggregateId,after.Version,"R",now,c.CorrelationId,c.CommandName);
+    var outbox = new OutboxEnvelope("MSG-"+before.AggregateId+"-"+decisionId,"E",after.AggregateId,after.Version,c.CorrelationId,now);
     var d = new DomainDecisionEnvelope(decisionId,"G03ReviewDecision","APPROVE",after.AggregateId,after.Version,a.PersonId,a.AssignmentId,now,c.CorrelationId);
     return new MutationCommit(after,audit,outbox,new[]{d});
 }
