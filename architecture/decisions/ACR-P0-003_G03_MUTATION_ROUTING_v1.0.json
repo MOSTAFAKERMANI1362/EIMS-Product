@@ -1,0 +1,175 @@
+{
+  "schema": "EIMS-ACR-G03-MUTATION-ROUTING-1.0",
+  "acrId": "ACR-P0-003",
+  "title": "Stabilize G03 Mutation, Review Status and Work Routing Contract",
+  "status": "APPROVED_FOR_P1_IMPLEMENTATION",
+  "decisionClass": "POST_FREEZE_ARCHITECTURE_DECISION",
+  "effectiveVersion": "1.0",
+  "frozenProduct": {
+    "file": "EIMS_v6.360_WORKLIST_UX_ROLE_SELECTOR_CLEANUP.html",
+    "sha256": "057a224fa55e6ee17d128c41c86f3410206d7246723c35872f57757329c4e98a",
+    "modifiedByThisDecision": false
+  },
+  "provenance": {
+    "historicalOriginalMutationCatalogStatus": "TBD_OR_UNAVAILABLE",
+    "mustNotBeRepresentedAsRecoveredOriginal": true,
+    "basis": [
+      "EIMS_v6.360_WORKLIST_UX_ROLE_SELECTOR_CLEANUP.html",
+      "recovery/p0-wave1/P0_G01_G04_RECOVERED_CONTRACT_v1.0.json",
+      "recovery/p1-wave2/P1_WAVE2_G03_RULE_REBASELINE_v1.0.json",
+      "architecture/decisions/ACR-P0-002_G03_EVENT_CONTRACTS_v1.0.json"
+    ]
+  },
+  "commands": [
+    {
+      "command": "needs.submit-g03",
+      "aggregateType": "Need",
+      "fromState": "DRAFT",
+      "toState": "PENDING_G03_REVIEW",
+      "versionIncrement": 1,
+      "reviewStatusBefore": ["DRAFT", "RETURNED", "EMPTY"],
+      "reviewStatusAfter": "PENDING",
+      "workRoutingRoleAfter": "NEED_REVIEWER",
+      "eventType": "NeedSubmittedForG03Review.v1",
+      "immutableDecisionRecordRequired": false,
+      "preserve": ["ownerPersonId", "scope"],
+      "serverComputedFields": ["state", "version", "g03ReviewStatus", "workRoutingRole", "eventType"]
+    },
+    {
+      "command": "needs.g03-decision",
+      "outcome": "APPROVE",
+      "aggregateType": "Need",
+      "fromState": "PENDING_G03_REVIEW",
+      "requiredReviewStatus": "PENDING",
+      "toState": "READY_FOR_IDEATION",
+      "versionIncrement": 1,
+      "reviewStatusAfter": "APPROVED",
+      "workRoutingRoleAfter": "IDEA_OWNER",
+      "eventType": "NeedApprovedForIdeation.v1",
+      "immutableDecisionRecordRequired": true,
+      "decisionRecord": {
+        "recordType": "G03ReviewDecision",
+        "decision": "APPROVE",
+        "requiredFields": [
+          "needId",
+          "decision",
+          "definitionComplete",
+          "measurable",
+          "solutionBiasFree",
+          "reviewerPersonId",
+          "reviewerAssignmentId",
+          "entityVersion",
+          "occurredAtUtc",
+          "correlationId"
+        ],
+        "returnNoteAllowed": false,
+        "appendOnly": true
+      },
+      "preserve": ["ownerPersonId", "scope"],
+      "serverComputedFields": ["state", "version", "g03ReviewStatus", "workRoutingRole", "eventType"]
+    },
+    {
+      "command": "needs.g03-decision",
+      "outcome": "RETURN",
+      "aggregateType": "Need",
+      "fromState": "PENDING_G03_REVIEW",
+      "requiredReviewStatus": "PENDING",
+      "toState": "DRAFT",
+      "versionIncrement": 1,
+      "reviewStatusAfter": "RETURNED",
+      "workRoutingRoleAfter": "NEED_OWNER",
+      "eventType": "NeedReturnedFromG03Review.v1",
+      "immutableDecisionRecordRequired": true,
+      "decisionRecord": {
+        "recordType": "G03ReviewDecision",
+        "decision": "RETURN",
+        "requiredFields": [
+          "needId",
+          "decision",
+          "returnNote",
+          "reviewerPersonId",
+          "reviewerAssignmentId",
+          "entityVersion",
+          "occurredAtUtc",
+          "correlationId"
+        ],
+        "returnNotePolicy": {
+          "trimmedMinLength": 10,
+          "persistInAuthoritativeDecisionRecord": true,
+          "includeInIntegrationEvent": false
+        },
+        "appendOnly": true
+      },
+      "preserve": ["ownerPersonId", "scope"],
+      "serverComputedFields": ["state", "version", "g03ReviewStatus", "workRoutingRole", "eventType"]
+    }
+  ],
+  "workRoutingContract": {
+    "field": "workRoutingRole",
+    "classification": "WORKFLOW_ROUTING_FACT",
+    "serverComputed": true,
+    "clientSuppliedValueTrusted": false,
+    "authorizationEffect": "NONE",
+    "mustNotCreateOrModify": [
+      "RoleAssignmentEntry",
+      "WindowsClaim",
+      "PersonDirectoryEntry"
+    ],
+    "statement": "Work routing indicates which workflow role queue owns the next mission. It is not an RBAC grant and cannot authorize a mutation."
+  },
+  "decisionHistoryContract": {
+    "recordType": "G03ReviewDecision",
+    "appendOnly": true,
+    "overwriteHistoricalDecision": false,
+    "sameTransactionAsAggregateMutation": true,
+    "returnNoteClassification": "AUTHORITATIVE_DOMAIN_DECISION_DATA",
+    "integrationEventMayContainReturnNote": false
+  },
+  "atomicPersistenceBoundary": {
+    "requiredComponents": [
+      "AggregateState",
+      "G03ReviewDecisionWhenApplicable",
+      "Audit",
+      "Outbox",
+      "Idempotency"
+    ],
+    "singleTransactionRequired": true,
+    "outboxPublishedOnlyAfterCommit": true,
+    "rollbackAllOnAnyFailure": true
+  },
+  "securityAndAuthority": {
+    "clientMaySetState": false,
+    "clientMaySetReviewStatus": false,
+    "clientMaySetWorkRoutingRole": false,
+    "clientMaySetEventType": false,
+    "needOwnerMaySelfReview": false,
+    "authorizationStillRequiresServerPersonRoleScopeAssignment": true
+  },
+  "compatibility": {
+    "mutationSemanticsImmutableWithinV1": true,
+    "breakingSemanticChangeRequiresNewMajor": true
+  },
+  "p1ConsumptionGate": {
+    "mutationContractDefined": true,
+    "mutationContractRecoveredFlagMayBeSetByThisAcrAlone": false,
+    "stillRequiredBeforeRuntimePromotion": [
+      "pureMutationPlannerImplementation",
+      "mutationPlannerContractTests",
+      "outcomeEventResolutionTests",
+      "immutableDecisionRecordPersistenceContract",
+      "atomicPersistenceTests",
+      "serverAuthorizationTests",
+      "P5CompositionDecision"
+    ]
+  },
+  "nonEffects": [
+    "Does not change G03 rules or roles",
+    "Does not change ACR-P0-002 event identities",
+    "Does not create RBAC assignments",
+    "Does not bind the P1 mutation planner",
+    "Does not enable any Product command",
+    "Does not bind P5 to P1",
+    "Does not claim live Oracle or Domain readiness",
+    "Does not modify v6.360"
+  ]
+}
