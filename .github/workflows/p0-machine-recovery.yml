@@ -1,0 +1,48 @@
+name: P0 Machine Contract Recovery
+
+on:
+  pull_request:
+    paths:
+      - 'recovery/p0/**'
+      - 'src/EIMS.P0.MachineRecovery/**'
+      - 'tools/EIMS.P0.MachineRecoveryVerifier/**'
+      - 'tests/EIMS.P0.MachineRecovery.ContractTests/**'
+      - '.github/workflows/p0-machine-recovery.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'recovery/p0/**'
+      - 'src/EIMS.P0.MachineRecovery/**'
+      - 'tools/EIMS.P0.MachineRecoveryVerifier/**'
+      - 'tests/EIMS.P0.MachineRecovery.ContractTests/**'
+      - '.github/workflows/p0-machine-recovery.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify-recovery:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10.0.302
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.302'
+
+      - name: Show SDK
+        run: dotnet --version
+
+      - name: Build P0 recovery contract tests
+        run: dotnet build .\tests\EIMS.P0.MachineRecovery.ContractTests\EIMS.P0.MachineRecovery.ContractTests.csproj -c Release
+
+      - name: Run P0 recovery contract tests
+        run: dotnet run --project .\tests\EIMS.P0.MachineRecovery.ContractTests\EIMS.P0.MachineRecovery.ContractTests.csproj -c Release --no-build -- .\recovery\p0\P0_MACHINE_CONTRACT_RECOVERY_v1.0.json
+
+      - name: Build P0 recovery verifier
+        run: dotnet build .\tools\EIMS.P0.MachineRecoveryVerifier\EIMS.P0.MachineRecoveryVerifier.csproj -c Release
+
+      - name: Verify recovered machine contract
+        run: dotnet run --project .\tools\EIMS.P0.MachineRecoveryVerifier\EIMS.P0.MachineRecoveryVerifier.csproj -c Release --no-build -- .\recovery\p0\P0_MACHINE_CONTRACT_RECOVERY_v1.0.json
