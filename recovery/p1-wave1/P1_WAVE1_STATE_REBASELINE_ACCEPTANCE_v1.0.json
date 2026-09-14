@@ -1,0 +1,83 @@
+{
+  "schema": "EIMS-P1-WAVE1-STATE-REBASELINE-1.0",
+  "status": "APPROVED_REBASELINE_FOR_P1_STATE_BINDING",
+  "decisionClass": "RECOVERY_REBASELINE_ACCEPTANCE",
+  "frozenProduct": {
+    "file": "EIMS_v6.360_WORKLIST_UX_ROLE_SELECTOR_CLEANUP.html",
+    "sha256": "057a224fa55e6ee17d128c41c86f3410206d7246723c35872f57757329c4e98a",
+    "modified": false
+  },
+  "sources": [
+    "recovery/p0-wave1/P0_G01_G04_RECOVERED_CONTRACT_v1.0.json",
+    "recovery/p0-wave1/P0_RECOVERY_SOURCE_REGISTRY_v1.0.md",
+    "recovery/p0/P0_MACHINE_CONTRACT_RECOVERY_v1.0.json",
+    "architecture/decisions/ACR-P0-001_EVENT_NAMING_v1.0.json"
+  ],
+  "safety": {
+    "doesNotClaimOriginalP0Artifact": true,
+    "doesNotEnableProductMutation": true,
+    "ruleContractsRemainUnrecovered": true,
+    "mutationPlannerRemainsUnbound": true,
+    "eventNamingAcrDoesNotPromoteCommands": true
+  },
+  "acceptedStateContracts": [
+    {
+      "command": "g01.decide",
+      "allowedStates": ["SUBMITTED", "SUBMITTED_FOR_G01"],
+      "transitionEvidenceIds": ["G01-APPROVE-TO-CASE", "G01-RETURN", "G01-HOLD", "G01-REJECT"],
+      "stateContractRecovered": true,
+      "ruleContractRecovered": false
+    },
+    {
+      "command": "g02.decide",
+      "allowedStates": ["UNDER_REVIEW"],
+      "transitionEvidenceIds": ["G02-NEED-CANDIDATE", "G02-ROUTE-OPERATIONAL", "G02-RETURN", "G02-HOLD", "G02-REJECT"],
+      "stateContractRecovered": true,
+      "ruleContractRecovered": false
+    },
+    {
+      "command": "needs.submit-g03",
+      "allowedStates": ["DRAFT"],
+      "transitionEvidenceIds": ["G03-SUBMIT"],
+      "stateContractRecovered": true,
+      "ruleContractRecovered": false
+    },
+    {
+      "command": "needs.g03-decision",
+      "allowedStates": ["PENDING_G03_REVIEW"],
+      "transitionEvidenceIds": ["G03-APPROVE", "G03-RETURN"],
+      "stateContractRecovered": true,
+      "ruleContractRecovered": false
+    },
+    {
+      "command": "ideas.submit-g04",
+      "allowedStates": ["DRAFT", "RETURNED"],
+      "transitionEvidenceIds": ["G04-SUBMIT"],
+      "stateContractRecovered": true,
+      "ruleContractRecovered": false
+    },
+    {
+      "command": "g04.final-decision",
+      "allowedStates": ["UNDER_REVIEW"],
+      "transitionEvidenceIds": ["G04-APPROVE", "G04-RETURN", "G04-HOLD", "G04-REJECT"],
+      "stateContractRecovered": true,
+      "ruleContractRecovered": false
+    }
+  ],
+  "explicitlyNotAccepted": [
+    {
+      "command": "evaluation-assignments.complete",
+      "reason": "Wave 1 does not provide a complete command-level state contract."
+    },
+    {
+      "command": "g04.vote",
+      "reason": "Wave 1 confirms voting authority separation but not a complete command-level state contract."
+    }
+  ],
+  "runtimeExpectedFailure": {
+    "stateBoundCommands": "P1_RULE_CONTRACT_NOT_RECOVERED",
+    "otherRecoveredCommands": "P1_STATE_CONTRACT_NOT_RECOVERED",
+    "downstreamDependenciesTouchedBeforeFailure": false
+  },
+  "nextGate": "Recover or formally rebaseline command-specific RuleSet semantics before any Product command can advance beyond the rule-contract gate."
+}

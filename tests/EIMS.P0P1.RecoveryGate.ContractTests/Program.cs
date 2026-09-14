@@ -2,18 +2,23 @@ using System.Text.Json;
 using EIMS.Authority.Recovery;
 using EIMS.P0.MachineRecovery;
 
-if (args.Length != 1 || !File.Exists(args[0]))
+if (args.Length != 2 || !File.Exists(args[0]) || !File.Exists(args[1]))
 {
-    Console.Error.WriteLine("Usage: EIMS.P0P1.RecoveryGate.ContractTests <P0-machine-recovery-json>");
+    Console.Error.WriteLine("Usage: EIMS.P0P1.RecoveryGate.ContractTests <P0-machine-recovery-json> <P1-wave1-state-acceptance-json>");
     return 2;
 }
 
 var p0Json = File.ReadAllText(args[0]);
 using var p0Document = JsonDocument.Parse(p0Json);
-var root = p0Document.RootElement;
-var p0Catalog = root.GetProperty("commandCatalog");
+var p0Root = p0Document.RootElement;
+var p0Catalog = p0Root.GetProperty("commandCatalog");
 var p0Commands = p0Catalog.GetProperty("commands").EnumerateArray()
     .ToDictionary(x => x.GetProperty("id").GetString()!, StringComparer.OrdinalIgnoreCase);
+
+using var acceptanceDocument = JsonDocument.Parse(File.ReadAllText(args[1]));
+var acceptance = acceptanceDocument.RootElement;
+var accepted = acceptance.GetProperty("acceptedStateContracts").EnumerateArray()
+    .ToDictionary(x => x.GetProperty("command").GetString()!, StringComparer.OrdinalIgnoreCase);
 
 var runtimeCatalog = new RecoveredApiCommandCatalog();
 var results = new List<(string Id, string Name, bool Pass)>();
@@ -41,14 +46,34 @@ var p0AllFailClosed = p0Commands.Values.All(x =>
     && !x.GetProperty("completeRuleContract").GetBoolean()
     && !x.GetProperty("completeEventContract").GetBoolean()
     && !x.GetProperty("executable").GetBoolean());
-Add("P0P1-CT-08", "P0 partial evidence cannot represent an executable command", p0AllFailClosed);
+Add("P0P1-CT-08", "historical P0 recovery remains partial/non-executable", p0AllFailClosed);
 
-var runtimeAllFailClosed = runtimeCatalog.All.All(x =>
-    !x.StateContractRecovered
-    && !x.RuleContractRecovered
+Add("P0P1-CT-09", "Wave 1 rebaseline acceptance is explicit and non-mutating",
+    acceptance.GetProperty("status").GetString() == "APPROVED_REBASELINE_FOR_P1_STATE_BINDING"
+    && acceptance.GetProperty("decisionClass").GetString() == "RECOVERY_REBASELINE_ACCEPTANCE"
+    && acceptance.GetProperty("safety").GetProperty("doesNotEnableProductMutation").GetBoolean()
+    && acceptance.GetProperty("safety").GetProperty("ruleContractsRemainUnrecovered").GetBoolean());
+
+Add("P0P1-CT-10", "exactly six Wave 1 command state contracts are accepted", accepted.Count == RecoveredApiCommandCatalog.Wave1StateBoundCommandCount && accepted.Count == 6);
+
+var acceptedBindingMatches = runtimeCatalog.All.All(policy =>
+{
+    if (!accepted.TryGetValue(policy.CommandName, out var item))
+        return !policy.StateContractRecovered && policy.AllowedStates.Count == 0;
+
+    var expectedStates = item.GetProperty("allowedStates").EnumerateArray().Select(x => x.GetString()!).OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToArray();
+    var actualStates = policy.AllowedStates.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToArray();
+    return policy.StateContractRecovered
+        && !policy.RuleContractRecovered
+        && actualStates.SequenceEqual(expectedStates, StringComparer.OrdinalIgnoreCase);
+});
+Add("P0P1-CT-11", "runtime state binding matches accepted command/state sets exactly", acceptedBindingMatches);
+
+var rulesRemainFailClosed = runtimeCatalog.All.All(x =>
+    !x.RuleContractRecovered
     && string.Equals(x.RuleSet, "UNRECOVERED_RULESET", StringComparison.Ordinal)
     && string.Equals(x.EventName, "UNRECOVERED_EVENT_IDENTITY", StringComparison.Ordinal));
-Add("P0P1-CT-09", "P1 runtime policies retain unrecovered state/rule/event sentinels", runtimeAllFailClosed);
+Add("P0P1-CT-12", "all runtime rule/event mutation semantics remain fail closed", rulesRemainFailClosed);
 
 var dependencies = new MustNotBeTouchedDependencies();
 var kernel = new AuthorityKernel(runtimeCatalog, dependencies, dependencies, dependencies, dependencies);
@@ -83,12 +108,16 @@ foreach (var policy in runtimeCatalog.All.OrderBy(x => x.CommandName, StringComp
         threw = true;
     }
 
-    Add($"P0P1-CT-10-{sequence:00}",
-        $"{policy.CommandName} fails closed before store/rules/SoD/planner",
+    var expectedCode = policy.StateContractRecovered
+        ? "P1_RULE_CONTRACT_NOT_RECOVERED"
+        : "P1_STATE_CONTRACT_NOT_RECOVERED";
+
+    Add($"P0P1-CT-20-{sequence:00}",
+        $"{policy.CommandName} remains fail closed at the correct recovery gate",
         !threw
         && result is not null
         && result.HttpStatus == 503
-        && result.Code == "P1_STATE_CONTRACT_NOT_RECOVERED"
+        && result.Code == expectedCode
         && !result.Allowed
         && !result.StateMutated);
     sequence++;
@@ -97,8 +126,8 @@ foreach (var policy in runtimeCatalog.All.OrderBy(x => x.CommandName, StringComp
 var unknownResult = await kernel.ExecuteAsync(
     new AuthorityCommand("unidentified.original.command.placeholder", "AGG-X", 1, "IDEMP-X", "CORR-X", "{}"),
     actor);
-Add("P0P1-CT-31", "unidentified command placeholder remains unknown to P1", unknownResult.HttpStatus == 404 && unknownResult.Code == "P1_COMMAND_UNKNOWN" && !unknownResult.Allowed && !unknownResult.StateMutated);
-Add("P0P1-CT-32", "fail-closed short-circuit touched no downstream dependency", dependencies.TouchCount == 0);
+Add("P0P1-CT-50", "unidentified command placeholder remains unknown to P1", unknownResult.HttpStatus == 404 && unknownResult.Code == "P1_COMMAND_UNKNOWN" && !unknownResult.Allowed && !unknownResult.StateMutated);
+Add("P0P1-CT-51", "all recovery-gate failures occur before downstream dependencies", dependencies.TouchCount == 0);
 
 foreach (var result in results)
     Console.WriteLine($"{(result.Pass ? "PASS" : "FAIL")} {result.Id} {result.Name}");
