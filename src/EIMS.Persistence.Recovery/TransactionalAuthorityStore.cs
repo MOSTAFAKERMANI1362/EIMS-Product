@@ -9,6 +9,7 @@ public sealed class TransactionalAuthorityStore : IAuthorityStore, IPersistenceE
     private readonly Dictionary<string, IdempotencyRecord> _idempotency = new(StringComparer.Ordinal);
     private readonly List<AuditEnvelope> _audits = new();
     private readonly List<OutboxEnvelope> _outbox = new();
+    private readonly List<DomainDecisionEnvelope> _decisions = new();
 
     public TransactionalAuthorityStore(
         PersistenceContractDescriptor? contract = null,
@@ -35,6 +36,11 @@ public sealed class TransactionalAuthorityStore : IAuthorityStore, IPersistenceE
     public IReadOnlyCollection<IdempotencyRecord> IdempotencyRecords
     {
         get { lock (_sync) return Array.AsReadOnly(_idempotency.Values.ToArray()); }
+    }
+
+    public IReadOnlyCollection<DomainDecisionEnvelope> DomainDecisions
+    {
+        get { lock (_sync) return Array.AsReadOnly(_decisions.ToArray()); }
     }
 
     public ValueTask<AggregateSnapshot?> GetAggregateAsync(
@@ -120,6 +126,11 @@ public sealed class TransactionalAuthorityStore : IAuthorityStore, IPersistenceE
             if (_outbox.Any(x => string.Equals(x.MessageId, commit.Outbox.MessageId, StringComparison.Ordinal)))
                 return ValueTask.FromResult(AuthorityResult.Deny(409, "P2_DUPLICATE_OUTBOX_ID", request.Command.CorrelationId));
 
+            var decisions = (commit.Decisions ?? Array.Empty<DomainDecisionEnvelope>()).ToArray();
+            if (decisions.GroupBy(x => x.DecisionId, StringComparer.Ordinal).Any(g => g.Count() > 1)
+                || decisions.Any(d => _decisions.Any(existing => string.Equals(existing.DecisionId, d.DecisionId, StringComparison.Ordinal))))
+                return ValueTask.FromResult(AuthorityResult.Deny(409, "P2_DUPLICATE_DECISION_ID", request.Command.CorrelationId));
+
             var result = new AuthorityResult(
                 200,
                 "P2_ATOMIC_COMMIT",
@@ -138,6 +149,7 @@ public sealed class TransactionalAuthorityStore : IAuthorityStore, IPersistenceE
                 result);
 
             var oldAggregate = current;
+            var oldDecisionCount = _decisions.Count;
             var oldAuditCount = _audits.Count;
             var oldOutboxCount = _outbox.Count;
 
@@ -145,6 +157,9 @@ public sealed class TransactionalAuthorityStore : IAuthorityStore, IPersistenceE
             {
                 _aggregates[commit.After.AggregateId] = commit.After;
                 ThrowIf(PersistenceFaultPoint.AfterStateStaged);
+
+                _decisions.AddRange(decisions);
+                ThrowIf(PersistenceFaultPoint.AfterDecisionStaged);
 
                 _audits.Add(commit.Audit);
                 ThrowIf(PersistenceFaultPoint.AfterAuditStaged);
@@ -161,6 +176,9 @@ public sealed class TransactionalAuthorityStore : IAuthorityStore, IPersistenceE
             catch
             {
                 _aggregates[oldAggregate.AggregateId] = oldAggregate;
+
+                while (_decisions.Count > oldDecisionCount)
+                    _decisions.RemoveAt(_decisions.Count - 1);
 
                 while (_audits.Count > oldAuditCount)
                     _audits.RemoveAt(_audits.Count - 1);
@@ -196,6 +214,25 @@ public sealed class TransactionalAuthorityStore : IAuthorityStore, IPersistenceE
 
         if (!string.Equals(commit.Audit.CommandName, request.Command.CommandName, StringComparison.OrdinalIgnoreCase))
             return "P2_AUDIT_COMMAND_MISMATCH";
+
+        foreach (var decision in commit.Decisions ?? Array.Empty<DomainDecisionEnvelope>())
+        {
+            if (string.IsNullOrWhiteSpace(decision.DecisionId)
+                || string.IsNullOrWhiteSpace(decision.DecisionType)
+                || string.IsNullOrWhiteSpace(decision.Outcome))
+                return "P2_DECISION_SHAPE_INVALID";
+
+            if (!string.Equals(decision.AggregateId, commit.After.AggregateId, StringComparison.Ordinal)
+                || decision.EntityVersion != commit.After.Version)
+                return "P2_DECISION_ENTITY_VERSION_MISMATCH";
+
+            if (!string.Equals(decision.CorrelationId, request.Command.CorrelationId, StringComparison.Ordinal))
+                return "P2_DECISION_CORRELATION_MISMATCH";
+
+            if (!string.Equals(decision.PersonId, request.Actor.PersonId, StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(decision.AssignmentId, request.Actor.AssignmentId, StringComparison.OrdinalIgnoreCase))
+                return "P2_DECISION_AUTHORITY_MISMATCH";
+        }
 
         return null;
     }

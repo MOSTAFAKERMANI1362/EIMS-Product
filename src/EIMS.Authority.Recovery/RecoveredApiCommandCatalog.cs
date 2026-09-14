@@ -7,6 +7,7 @@ public sealed class RecoveredApiCommandCatalog : ICommandPolicyCatalog
     public const int Wave1StateBoundCommandCount = 6;
     public const int Wave2RuleBoundCommandCount = 2;
     public const int Wave3EventBoundCommandCount = 2;
+    public const int Wave4MutationBoundCommandCount = 2;
 
     private readonly IReadOnlyDictionary<string, CommandPolicy> _policies;
 
@@ -97,7 +98,7 @@ public sealed class RecoveredApiCommandCatalog : ICommandPolicyCatalog
             StateContractRecovered: true,
             RuleContractRecovered: true,
             EventContractRecovered: true,
-            MutationContractRecovered: false,
+            MutationContractRecovered: true,
             EventBinding: new CommandEventBinding("STATIC", StaticEventName: eventName));
 
     private static CommandPolicy PG03EventOutcome(
@@ -114,6 +115,6 @@ public sealed class RecoveredApiCommandCatalog : ICommandPolicyCatalog
             StateContractRecovered: true,
             RuleContractRecovered: true,
             EventContractRecovered: true,
-            MutationContractRecovered: false,
+            MutationContractRecovered: true,
             EventBinding: new CommandEventBinding("OUTCOME", OutcomeEventNames: outcomeEvents));
 }

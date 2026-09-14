@@ -22,7 +22,7 @@ var tests = new List<(string Name, Func<Task> Run)>
     ("P1R-CT-18 audit authority context retained", AuditContextRetained),
     ("P1R-CT-19 catalog recovery layers explicit", CatalogGapExplicit),
     ("P1R-CT-20 state-unbound product command remains fail closed at state gate", StateUnboundProductFailsClosed),
-    ("P1R-CT-21 G03 event-bound product command stops at mutation gate", G03ProductStopsAtMutationGate),
+    ("P1R-CT-21 G03 mutation contracts are promoted explicitly", G03MutationContractsPromoted),
     ("P1R-CT-22 explicit event contract gate fails closed", EventGateDenied),
     ("P1R-CT-23 explicit mutation contract gate fails closed", MutationGateDenied),
     ("P1R-CT-24 G03 Need Owner self review SoD denied", SodG03SelfReviewDenied),
@@ -210,11 +210,13 @@ static Task CatalogGapExplicit()
     Eq(6, RecoveredApiCommandCatalog.Wave1StateBoundCommandCount);
     Eq(2, RecoveredApiCommandCatalog.Wave2RuleBoundCommandCount);
     Eq(2, RecoveredApiCommandCatalog.Wave3EventBoundCommandCount);
+    Eq(2, RecoveredApiCommandCatalog.Wave4MutationBoundCommandCount);
     Eq(6, catalog.All.Count(x => x.StateContractRecovered));
     Eq(2, catalog.All.Count(x => x.RuleContractRecovered));
     Eq(2, catalog.All.Count(x => x.EventContractRecovered));
+    Eq(2, catalog.All.Count(x => x.MutationContractRecovered));
     True(catalog.All.Where(x => x.EventContractRecovered).All(x => x.EventBinding is not null && x.EventBinding.IsValid));
-    True(catalog.All.All(x => !x.MutationContractRecovered));
+    True(catalog.All.Where(x => x.MutationContractRecovered).Select(x => x.CommandName).OrderBy(x => x).SequenceEqual(new[] { "needs.g03-decision", "needs.submit-g03" }));
     return Task.CompletedTask;
 }
 
@@ -225,11 +227,14 @@ static async Task StateUnboundProductFailsClosed()
     Eq(503, result.HttpStatus); Eq("P1_STATE_CONTRACT_NOT_RECOVERED", result.Code); False(result.StateMutated);
 }
 
-static async Task G03ProductStopsAtMutationGate()
+static Task G03MutationContractsPromoted()
 {
-    var kernel = new AuthorityKernel(new RecoveredApiCommandCatalog(), Store("DRAFT"), new RecoveredG03RuleEvaluator(), new BaselineSodEvaluator(), new IncrementPlanner());
-    var result = await kernel.ExecuteAsync(Command("needs.submit-g03"), Actor("NEED_OWNER"));
-    Eq(503, result.HttpStatus); Eq("P1_MUTATION_CONTRACT_NOT_RECOVERED", result.Code); False(result.StateMutated);
+    var catalog = new RecoveredApiCommandCatalog();
+    True(catalog.TryGet("needs.submit-g03", out var submit));
+    True(catalog.TryGet("needs.g03-decision", out var decision));
+    True(submit.StateContractRecovered && submit.RuleContractRecovered && submit.EventContractRecovered && submit.MutationContractRecovered);
+    True(decision.StateContractRecovered && decision.RuleContractRecovered && decision.EventContractRecovered && decision.MutationContractRecovered);
+    return Task.CompletedTask;
 }
 
 static async Task EventGateDenied()
