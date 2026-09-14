@@ -1,11 +1,10 @@
-using System.Collections.ObjectModel;
-
 namespace EIMS.Authority.Recovery;
 
 public sealed record AuthorityActor(
     string PersonId,
     string NetworkIdentity,
     string IdentitySource,
+    string AssignmentId,
     IReadOnlyCollection<string> Roles,
     IReadOnlyCollection<string> Scopes);
 
@@ -81,7 +80,7 @@ public sealed record AuditEnvelope(
     string NetworkIdentity,
     string IdentitySource,
     IReadOnlyCollection<string> Roles,
-    string? Assignment,
+    string Assignment,
     string AggregateId,
     long EntityVersion,
     string RuleSet,
@@ -144,19 +143,16 @@ public sealed class BaselineSodEvaluator : ISodEvaluator
             && string.Equals(aggregate.OwnerPersonId, actor.PersonId, StringComparison.OrdinalIgnoreCase))
             return ValueTask.FromResult(SodEvaluation.Fail("SOD_EXECUTION_SELF_COMPLETION", "Execution Owner cannot independently approve own completion."));
 
-        if (command.CommandName.Contains("benefits.verify", StringComparison.OrdinalIgnoreCase)
-            && roles.Contains("EXECUTION_OWNER")
-            && string.Equals(aggregate.OwnerPersonId, actor.PersonId, StringComparison.OrdinalIgnoreCase))
-            return ValueTask.FromResult(SodEvaluation.Fail("SOD_EXECUTION_SELF_BENEFIT_VERIFY", "Execution Owner cannot independently verify own output benefit."));
+        if (command.CommandName.Contains("g04.final-decision", StringComparison.OrdinalIgnoreCase)
+            && roles.Contains("G04_COMMITTEE_MEMBER"))
+            return ValueTask.FromResult(SodEvaluation.Fail("SOD_G04_MEMBER_NOT_FINAL_AUTHORITY", "A G04 committee member cannot act as final G04 decision authority for the same decision context."));
 
         if (command.CommandName.Contains("knowledge.publish", StringComparison.OrdinalIgnoreCase)
-            && roles.Contains("KNOWLEDGE_STEWARD")
-            && !roles.Contains("KNOWLEDGE_PUBLISHER"))
+            && roles.Contains("KNOWLEDGE_STEWARD"))
             return ValueTask.FromResult(SodEvaluation.Fail("SOD_KNOWLEDGE_STEWARD_NOT_PUBLISHER"));
 
         if (command.CommandName.Contains("rewards.decide", StringComparison.OrdinalIgnoreCase)
-            && roles.Contains("BENEFIT_OWNER")
-            && !roles.Contains("REWARD_COMMITTEE"))
+            && roles.Contains("BENEFIT_OWNER"))
             return ValueTask.FromResult(SodEvaluation.Fail("SOD_BENEFIT_OWNER_NOT_REWARD_COMMITTEE"));
 
         return ValueTask.FromResult(SodEvaluation.Pass());
