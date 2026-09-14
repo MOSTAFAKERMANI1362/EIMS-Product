@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>EIMS.Persistence.Recovery.ContractTests</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/EIMS.Persistence.Recovery/EIMS.Persistence.Recovery.csproj" />
+    <ProjectReference Include="../../src/EIMS.Authority.Recovery/EIMS.Authority.Recovery.csproj" />
+  </ItemGroup>
+</Project>

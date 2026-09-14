@@ -1,0 +1,53 @@
+name: P2 Persistence Recovery
+
+on:
+  pull_request:
+    paths:
+      - 'src/EIMS.Persistence.Recovery/**'
+      - 'tests/EIMS.Persistence.Recovery.ContractTests/**'
+      - 'tools/EIMS.P2.RecoveryVerifier/**'
+      - 'recovery/p2/**'
+      - '.github/workflows/p2-persistence-recovery.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'src/EIMS.Persistence.Recovery/**'
+      - 'tests/EIMS.Persistence.Recovery.ContractTests/**'
+      - 'tools/EIMS.P2.RecoveryVerifier/**'
+      - 'recovery/p2/**'
+      - '.github/workflows/p2-persistence-recovery.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-contract-test:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10.0.302
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.302'
+
+      - name: Show SDK
+        shell: pwsh
+        run: dotnet --version
+
+      - name: Build P2 contract tests
+        shell: pwsh
+        run: dotnet build .\tests\EIMS.Persistence.Recovery.ContractTests\EIMS.Persistence.Recovery.ContractTests.csproj -c Release
+
+      - name: Run P2 contract tests
+        shell: pwsh
+        run: dotnet run --project .\tests\EIMS.Persistence.Recovery.ContractTests\EIMS.Persistence.Recovery.ContractTests.csproj -c Release --no-build
+
+      - name: Build P2 recovery verifier
+        shell: pwsh
+        run: dotnet build .\tools\EIMS.P2.RecoveryVerifier\EIMS.P2.RecoveryVerifier.csproj -c Release
+
+      - name: Verify machine-readable P2 recovery contract
+        shell: pwsh
+        run: dotnet run --project .\tools\EIMS.P2.RecoveryVerifier\EIMS.P2.RecoveryVerifier.csproj -c Release --no-build -- .\recovery\p2\P2_PERSISTENCE_RECOVERY_CONTRACT_v1.0.json

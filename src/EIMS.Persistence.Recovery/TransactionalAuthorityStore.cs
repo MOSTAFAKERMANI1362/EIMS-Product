@@ -1,0 +1,211 @@
+using EIMS.Authority.Recovery;
+
+namespace EIMS.Persistence.Recovery;
+
+public sealed class TransactionalAuthorityStore : IAuthorityStore, IPersistenceEvidenceSource, IFaultInjectablePersistence
+{
+    private readonly object _sync = new();
+    private readonly Dictionary<string, AggregateSnapshot> _aggregates = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, IdempotencyRecord> _idempotency = new(StringComparer.Ordinal);
+    private readonly List<AuditEnvelope> _audits = new();
+    private readonly List<OutboxEnvelope> _outbox = new();
+
+    public TransactionalAuthorityStore(
+        PersistenceContractDescriptor? contract = null,
+        params AggregateSnapshot[] aggregates)
+    {
+        Contract = contract ?? PersistenceContractDescriptor.RecoveryBaseline();
+        foreach (var aggregate in aggregates)
+            _aggregates[aggregate.AggregateId] = aggregate;
+    }
+
+    public PersistenceContractDescriptor Contract { get; }
+    public PersistenceFaultPoint FaultPoint { get; set; }
+
+    public IReadOnlyCollection<AuditEnvelope> AuditLog
+    {
+        get { lock (_sync) return Array.AsReadOnly(_audits.ToArray()); }
+    }
+
+    public IReadOnlyCollection<OutboxEnvelope> Outbox
+    {
+        get { lock (_sync) return Array.AsReadOnly(_outbox.ToArray()); }
+    }
+
+    public IReadOnlyCollection<IdempotencyRecord> IdempotencyRecords
+    {
+        get { lock (_sync) return Array.AsReadOnly(_idempotency.Values.ToArray()); }
+    }
+
+    public ValueTask<AggregateSnapshot?> GetAggregateAsync(
+        string aggregateId,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_sync)
+            return ValueTask.FromResult(_aggregates.TryGetValue(aggregateId, out var aggregate) ? aggregate : null);
+    }
+
+    public ValueTask<IdempotencyRecord?> GetIdempotencyAsync(
+        string commandName,
+        string aggregateId,
+        string idempotencyKey,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_sync)
+            return ValueTask.FromResult(_idempotency.TryGetValue(Key(commandName, aggregateId, idempotencyKey), out var record) ? record : null);
+    }
+
+    public ValueTask<AuthorityResult> CommitAsync(
+        MutationRequest request,
+        MutationCommit commit,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        lock (_sync)
+        {
+            var idempotencyKey = Key(
+                request.Command.CommandName,
+                request.Command.AggregateId,
+                request.Command.IdempotencyKey);
+
+            if (_idempotency.TryGetValue(idempotencyKey, out var prior))
+            {
+                if (!string.Equals(prior.Fingerprint, request.IdempotencyFingerprint, StringComparison.Ordinal))
+                    return ValueTask.FromResult(AuthorityResult.Deny(
+                        409,
+                        "P2_IDEMPOTENCY_CONFLICT",
+                        request.Command.CorrelationId,
+                        "The same idempotency key is already committed with a different fingerprint."));
+
+                return ValueTask.FromResult(prior.Result with
+                {
+                    IdempotentReplay = true,
+                    StateMutated = false,
+                    CorrelationId = request.Command.CorrelationId
+                });
+            }
+
+            if (!_aggregates.TryGetValue(request.Before.AggregateId, out var current))
+                return ValueTask.FromResult(AuthorityResult.Deny(
+                    404,
+                    "P2_AGGREGATE_NOT_FOUND",
+                    request.Command.CorrelationId));
+
+            if (request.Command.ExpectedVersion != request.Before.Version)
+                return ValueTask.FromResult(AuthorityResult.Deny(
+                    409,
+                    "P2_REQUEST_VERSION_MISMATCH",
+                    request.Command.CorrelationId));
+
+            if (current.Version != request.Before.Version)
+                return ValueTask.FromResult(AuthorityResult.Deny(
+                    409,
+                    "P2_VERSION_CONFLICT",
+                    request.Command.CorrelationId,
+                    $"Expected {request.Before.Version}; current {current.Version}."));
+
+            var contractError = ValidateCommitShape(request, commit);
+            if (contractError is not null)
+                return ValueTask.FromResult(AuthorityResult.Deny(
+                    500,
+                    contractError,
+                    request.Command.CorrelationId));
+
+            if (_audits.Any(x => string.Equals(x.AuditId, commit.Audit.AuditId, StringComparison.Ordinal)))
+                return ValueTask.FromResult(AuthorityResult.Deny(409, "P2_DUPLICATE_AUDIT_ID", request.Command.CorrelationId));
+
+            if (_outbox.Any(x => string.Equals(x.MessageId, commit.Outbox.MessageId, StringComparison.Ordinal)))
+                return ValueTask.FromResult(AuthorityResult.Deny(409, "P2_DUPLICATE_OUTBOX_ID", request.Command.CorrelationId));
+
+            var result = new AuthorityResult(
+                200,
+                "P2_ATOMIC_COMMIT",
+                Allowed: true,
+                StateMutated: true,
+                IdempotentReplay: false,
+                NewVersion: commit.After.Version,
+                CorrelationId: request.Command.CorrelationId,
+                EmittedEvents: new[] { commit.Outbox.EventName });
+
+            var idempotency = new IdempotencyRecord(
+                request.Command.CommandName,
+                request.Command.AggregateId,
+                request.Command.IdempotencyKey,
+                request.IdempotencyFingerprint,
+                result);
+
+            var oldAggregate = current;
+            var oldAuditCount = _audits.Count;
+            var oldOutboxCount = _outbox.Count;
+
+            try
+            {
+                _aggregates[commit.After.AggregateId] = commit.After;
+                ThrowIf(PersistenceFaultPoint.AfterStateStaged);
+
+                _audits.Add(commit.Audit);
+                ThrowIf(PersistenceFaultPoint.AfterAuditStaged);
+
+                _outbox.Add(commit.Outbox);
+                ThrowIf(PersistenceFaultPoint.AfterOutboxStaged);
+
+                _idempotency.Add(idempotencyKey, idempotency);
+                ThrowIf(PersistenceFaultPoint.AfterIdempotencyStaged);
+                ThrowIf(PersistenceFaultPoint.BeforeCommitPublish);
+
+                return ValueTask.FromResult(result);
+            }
+            catch
+            {
+                _aggregates[oldAggregate.AggregateId] = oldAggregate;
+
+                while (_audits.Count > oldAuditCount)
+                    _audits.RemoveAt(_audits.Count - 1);
+
+                while (_outbox.Count > oldOutboxCount)
+                    _outbox.RemoveAt(_outbox.Count - 1);
+
+                _idempotency.Remove(idempotencyKey);
+                throw;
+            }
+        }
+    }
+
+    private static string? ValidateCommitShape(MutationRequest request, MutationCommit commit)
+    {
+        if (!string.Equals(request.Before.AggregateId, commit.After.AggregateId, StringComparison.Ordinal))
+            return "P2_AGGREGATE_ID_MISMATCH";
+
+        if (commit.After.Version != request.Before.Version + 1)
+            return "P2_INVALID_NEXT_VERSION";
+
+        if (!string.Equals(commit.Audit.AggregateId, commit.After.AggregateId, StringComparison.Ordinal)
+            || commit.Audit.EntityVersion != commit.After.Version)
+            return "P2_AUDIT_ENTITY_VERSION_MISMATCH";
+
+        if (!string.Equals(commit.Outbox.AggregateId, commit.After.AggregateId, StringComparison.Ordinal)
+            || commit.Outbox.AggregateVersion != commit.After.Version)
+            return "P2_OUTBOX_ENTITY_VERSION_MISMATCH";
+
+        if (!string.Equals(commit.Audit.CorrelationId, request.Command.CorrelationId, StringComparison.Ordinal)
+            || !string.Equals(commit.Outbox.CorrelationId, request.Command.CorrelationId, StringComparison.Ordinal))
+            return "P2_CORRELATION_MISMATCH";
+
+        if (!string.Equals(commit.Audit.CommandName, request.Command.CommandName, StringComparison.OrdinalIgnoreCase))
+            return "P2_AUDIT_COMMAND_MISMATCH";
+
+        return null;
+    }
+
+    private void ThrowIf(PersistenceFaultPoint point)
+    {
+        if (FaultPoint == point)
+            throw new PersistenceAtomicityException($"Injected persistence failure at {point}.");
+    }
+
+    private static string Key(string commandName, string aggregateId, string idempotencyKey) =>
+        $"{commandName}|{aggregateId}|{idempotencyKey}";
+}
