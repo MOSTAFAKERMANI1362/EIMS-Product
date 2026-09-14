@@ -75,26 +75,68 @@ var stateBindingMatches = runtimeCatalog.All.All(policy =>
 });
 Add("P0P1-CT-11", "runtime state binding matches Wave 1 exactly", stateBindingMatches);
 
-Add("P0P1-CT-12", "Wave 2 G03 rule acceptance remains provenance-safe", S(wave2,"status") == "APPROVED_REBASELINE_FOR_P1_RULE_BINDING" && S(wave2,"decisionClass") == "RECOVERY_REBASELINE_ACCEPTANCE");
+var wave2Safety = wave2.GetProperty("runtimeSafety");
+Add("P0P1-CT-12", "Wave 2 G03 rule acceptance remains provenance-safe and historically non-mutating",
+    S(wave2,"status") == "APPROVED_REBASELINE_FOR_P1_RULE_BINDING"
+    && S(wave2,"decisionClass") == "RECOVERY_REBASELINE_ACCEPTANCE"
+    && !B(wave2Safety,"eventContractsRecovered")
+    && !B(wave2Safety,"mutationContractsRecovered")
+    && !B(wave2Safety,"productMutationEnabled")
+    && B(wave2Safety,"ruleEvaluationMustUseAuthoritativeAggregateFacts")
+    && B(wave2Safety,"requestBodyMayNotOverridePersistedNeedDefinition"));
 Add("P0P1-CT-13", "exactly two G03 RuleSets are accepted", acceptedRules.Count == 2 && acceptedRules.Count == RecoveredApiCommandCatalog.Wave2RuleBoundCommandCount);
 var ruleBindingMatches = runtimeCatalog.All.All(policy =>
 {
     if (!acceptedRules.TryGetValue(policy.CommandName, out var item)) return !policy.RuleContractRecovered;
-    return policy.RuleContractRecovered && string.Equals(policy.RuleSet, item.GetProperty("ruleSet").GetString(), StringComparison.Ordinal) && policy.StateContractRecovered;
+    return policy.RuleContractRecovered
+        && string.Equals(policy.RuleSet, item.GetProperty("ruleSet").GetString(), StringComparison.Ordinal)
+        && policy.StateContractRecovered;
 });
 Add("P0P1-CT-14", "runtime rule binding matches Wave 2 exactly", ruleBindingMatches);
 
-Add("P0P1-CT-15", "Wave 3 event acceptance remains provenance-safe", S(wave3,"status") == "APPROVED_REBASELINE_FOR_P1_EVENT_BINDING" && S(wave3,"decisionClass") == "RECOVERY_REBASELINE_ACCEPTANCE" && S(wave3.GetProperty("sourceDecision"),"acrId") == "ACR-P0-002");
+var wave3Safety = wave3.GetProperty("safety");
+Add("P0P1-CT-15", "Wave 3 event acceptance remains provenance-safe and historically non-mutating",
+    S(wave3,"status") == "APPROVED_REBASELINE_FOR_P1_EVENT_BINDING"
+    && S(wave3,"decisionClass") == "RECOVERY_REBASELINE_ACCEPTANCE"
+    && S(wave3.GetProperty("sourceDecision"),"acrId") == "ACR-P0-002"
+    && S(wave3.GetProperty("sourceDecision"),"decisionClass") == "POST_FREEZE_ARCHITECTURE_DECISION"
+    && B(wave3Safety,"eventContractRecoveredForAcceptedCommands")
+    && B(wave3Safety,"mutationContractsRemainUnrecovered")
+    && B(wave3Safety,"doesNotEnableProductMutation")
+    && B(wave3Safety,"doesNotEmitEventsByRebaselineAlone")
+    && B(wave3Safety,"outcomeAwareDecisionRequiresExplicitOutcome")
+    && B(wave3Safety,"noFallbackEventForUnknownOutcome")
+    && B(wave3Safety,"noHistoricalOriginalClaim")
+    && B(wave3Safety,"v6360Unchanged"));
 Add("P0P1-CT-16", "exactly two G03 event contracts are accepted", acceptedEvents.Count == 2 && acceptedEvents.Count == RecoveredApiCommandCatalog.Wave3EventBoundCommandCount);
 var eventBindingMatches = runtimeCatalog.All.All(policy =>
 {
-    if (!acceptedEvents.TryGetValue(policy.CommandName, out var item)) return !policy.EventContractRecovered && policy.EventBinding is null;
-    if (!policy.EventContractRecovered || policy.EventBinding is null || !policy.EventBinding.IsValid) return false;
+    if (!acceptedEvents.TryGetValue(policy.CommandName, out var item))
+        return !policy.EventContractRecovered && policy.EventBinding is null;
+
+    if (!policy.EventContractRecovered || policy.EventBinding is null || !policy.EventBinding.IsValid)
+        return false;
+
     var kind = item.GetProperty("bindingKind").GetString();
-    if (string.Equals(kind,"STATIC",StringComparison.Ordinal))
-        return string.Equals(policy.ResolveEventName(), item.GetProperty("eventType").GetString(), StringComparison.Ordinal);
-    var outcomes = item.GetProperty("outcomeEvents").EnumerateObject().ToDictionary(x => x.Name, x => x.Value.GetString()!, StringComparer.OrdinalIgnoreCase);
-    return outcomes.All(x => string.Equals(policy.ResolveEventName(x.Key), x.Value, StringComparison.Ordinal)) && policy.ResolveEventName("UNKNOWN") is null;
+    if (string.Equals(kind, "STATIC", StringComparison.Ordinal))
+    {
+        var expectedEvent = item.GetProperty("eventType").GetString();
+        return string.Equals(policy.EventBinding.Kind, "STATIC", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(policy.ResolveEventName(), expectedEvent, StringComparison.Ordinal);
+    }
+
+    if (!string.Equals(kind, "OUTCOME", StringComparison.Ordinal)
+        || !string.Equals(policy.EventBinding.Kind, "OUTCOME", StringComparison.OrdinalIgnoreCase)
+        || policy.EventBinding.OutcomeEventNames is null)
+        return false;
+
+    var expectedOutcomes = item.GetProperty("outcomeEvents").EnumerateObject()
+        .ToDictionary(x => x.Name, x => x.Value.GetString()!, StringComparer.OrdinalIgnoreCase);
+
+    return expectedOutcomes.Count == policy.EventBinding.OutcomeEventNames.Count
+        && expectedOutcomes.All(x => string.Equals(policy.ResolveEventName(x.Key), x.Value, StringComparison.Ordinal))
+        && policy.ResolveEventName() is null
+        && policy.ResolveEventName("UNKNOWN") is null;
 });
 Add("P0P1-CT-17", "runtime event binding matches Wave 3 exactly", eventBindingMatches);
 
