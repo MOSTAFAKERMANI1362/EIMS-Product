@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>EIMS.G03.Mutation.Recovery.ContractTests</AssemblyName>
+    <RootNamespace>EIMS.G03.Mutation.Recovery.ContractTests</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/EIMS.Authority.Recovery/EIMS.Authority.Recovery.csproj" />
+    <ProjectReference Include="../../src/EIMS.Persistence.Recovery/EIMS.Persistence.Recovery.csproj" />
+    <ProjectReference Include="../../src/EIMS.PilotAssembly.Core/EIMS.PilotAssembly.Core.csproj" />
+  </ItemGroup>
+</Project>
