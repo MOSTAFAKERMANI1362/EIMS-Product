@@ -6,6 +6,7 @@ public sealed class RecoveredApiCommandCatalog : ICommandPolicyCatalog
     public const int RecoveredApiCommandCount = 21;
     public const int Wave1StateBoundCommandCount = 6;
     public const int Wave2RuleBoundCommandCount = 2;
+    public const int Wave3EventBoundCommandCount = 2;
 
     private readonly IReadOnlyDictionary<string, CommandPolicy> _policies;
 
@@ -15,8 +16,22 @@ public sealed class RecoveredApiCommandCatalog : ICommandPolicyCatalog
         {
             PState("g01.decide", "INTAKE_STEWARD", "SUBMITTED", "SUBMITTED_FOR_G01"),
             PState("g02.decide", "CASE_REVIEWER", "UNDER_REVIEW"),
-            PG03Rule("needs.submit-g03", "NEED_OWNER", "P1-G03-SUBMIT-REBASELINE-1.0", "DRAFT"),
-            PG03Rule("needs.g03-decision", "NEED_REVIEWER", "P1-G03-DECISION-REBASELINE-1.0", "PENDING_G03_REVIEW"),
+            PG03EventStatic(
+                "needs.submit-g03",
+                "NEED_OWNER",
+                "P1-G03-SUBMIT-REBASELINE-1.0",
+                "NeedSubmittedForG03Review.v1",
+                "DRAFT"),
+            PG03EventOutcome(
+                "needs.g03-decision",
+                "NEED_REVIEWER",
+                "P1-G03-DECISION-REBASELINE-1.0",
+                new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["APPROVE"] = "NeedApprovedForIdeation.v1",
+                    ["RETURN"] = "NeedReturnedFromG03Review.v1"
+                },
+                "PENDING_G03_REVIEW"),
             PState("ideas.submit-g04", "IDEA_OWNER", "DRAFT", "RETURNED"),
             P("evaluation-assignments.complete", "MATCH_ASSIGNMENT_ROLE"),
             P("g04.vote", "G04_COMMITTEE_MEMBER"),
@@ -68,14 +83,37 @@ public sealed class RecoveredApiCommandCatalog : ICommandPolicyCatalog
             EventContractRecovered: false,
             MutationContractRecovered: false);
 
-    private static CommandPolicy PG03Rule(string name, string role, string ruleSet, params string[] allowedStates) =>
+    private static CommandPolicy PG03EventStatic(
+        string name,
+        string role,
+        string ruleSet,
+        string eventName,
+        params string[] allowedStates) =>
         new(name,
             new[] { role },
             Array.AsReadOnly(allowedStates),
             ruleSet,
-            "UNRECOVERED_EVENT_IDENTITY",
+            eventName,
             StateContractRecovered: true,
             RuleContractRecovered: true,
-            EventContractRecovered: false,
-            MutationContractRecovered: false);
+            EventContractRecovered: true,
+            MutationContractRecovered: false,
+            EventBinding: new CommandEventBinding("STATIC", StaticEventName: eventName));
+
+    private static CommandPolicy PG03EventOutcome(
+        string name,
+        string role,
+        string ruleSet,
+        IReadOnlyDictionary<string, string> outcomeEvents,
+        params string[] allowedStates) =>
+        new(name,
+            new[] { role },
+            Array.AsReadOnly(allowedStates),
+            ruleSet,
+            "OUTCOME_AWARE_EVENT_CONTRACT",
+            StateContractRecovered: true,
+            RuleContractRecovered: true,
+            EventContractRecovered: true,
+            MutationContractRecovered: false,
+            EventBinding: new CommandEventBinding("OUTCOME", OutcomeEventNames: outcomeEvents));
 }
