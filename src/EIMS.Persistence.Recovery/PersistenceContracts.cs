@@ -9,7 +9,8 @@ public enum PersistenceFaultPoint
     AfterAuditStaged = 2,
     AfterOutboxStaged = 3,
     AfterIdempotencyStaged = 4,
-    BeforeCommitPublish = 5
+    BeforeCommitPublish = 5,
+    AfterDecisionStaged = 6
 }
 
 public sealed class PersistenceAtomicityException(string message) : Exception(message);
@@ -84,6 +85,7 @@ public interface IPersistenceEvidenceSource
     IReadOnlyCollection<AuditEnvelope> AuditLog { get; }
     IReadOnlyCollection<OutboxEnvelope> Outbox { get; }
     IReadOnlyCollection<IdempotencyRecord> IdempotencyRecords { get; }
+    IReadOnlyCollection<DomainDecisionEnvelope> DomainDecisions { get; }
 }
 
 public interface IFaultInjectablePersistence
