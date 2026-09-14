@@ -3,11 +3,21 @@ name: Pilot Logical Composition
 on:
   pull_request:
     paths:
+      - 'src/EIMS.HrImport/**'
+      - 'src/EIMS.Identity.Rbac/**'
+      - 'src/EIMS.Authority.Recovery/**'
+      - 'src/EIMS.Persistence.Recovery/**'
+      - 'recovery/p1-wave4/**'
       - 'tests/EIMS.PilotLogicalComposition.ContractTests/**'
       - '.github/workflows/pilot-logical-composition.yml'
   push:
     branches: [ main ]
     paths:
+      - 'src/EIMS.HrImport/**'
+      - 'src/EIMS.Identity.Rbac/**'
+      - 'src/EIMS.Authority.Recovery/**'
+      - 'src/EIMS.Persistence.Recovery/**'
+      - 'recovery/p1-wave4/**'
       - 'tests/EIMS.PilotLogicalComposition.ContractTests/**'
       - '.github/workflows/pilot-logical-composition.yml'
 
