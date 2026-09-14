@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - 'pilot/scripts/Collect-EimsPilotEnvironmentEvidence.ps1'
+      - 'pilot/scripts/Run-EIMS-Lab-Evidence.cmd'
+      - 'pilot/scripts/Run-EIMS-Pilot-Evidence.cmd'
       - 'pilot/PILOT_ENVIRONMENT_EVIDENCE_README.md'
       - 'tools/EIMS.PilotEnvironmentEvidenceVerifier/**'
       - '.github/workflows/pilot-environment-evidence.yml'
@@ -11,6 +13,8 @@ on:
     branches: [ main ]
     paths:
       - 'pilot/scripts/Collect-EimsPilotEnvironmentEvidence.ps1'
+      - 'pilot/scripts/Run-EIMS-Lab-Evidence.cmd'
+      - 'pilot/scripts/Run-EIMS-Pilot-Evidence.cmd'
       - 'pilot/PILOT_ENVIRONMENT_EVIDENCE_README.md'
       - 'tools/EIMS.PilotEnvironmentEvidenceVerifier/**'
       - '.github/workflows/pilot-environment-evidence.yml'
@@ -30,12 +34,12 @@ jobs:
         with:
           dotnet-version: '10.0.302'
 
-      - name: Run collector in LAB mode
-        shell: powershell
+      - name: Run one-click LAB evidence runner
+        shell: cmd
         run: |
-          Set-ExecutionPolicy -Scope Process Bypass -Force
-          .\pilot\scripts\Collect-EimsPilotEnvironmentEvidence.ps1 -EvidenceClass LAB_EVIDENCE -OutputPath .\eims-pilot-environment-evidence.json
-          if (-not (Test-Path .\eims-pilot-environment-evidence.json)) { throw 'Evidence file was not created.' }
+          set EIMS_NO_PAUSE=1
+          call pilot\scripts\Run-EIMS-Lab-Evidence.cmd
+          if not exist pilot\scripts\eims-pilot-environment-evidence.json exit /b 1
 
       - name: Build evidence verifier
         shell: pwsh
@@ -43,4 +47,4 @@ jobs:
 
       - name: Verify secret-free evidence output
         shell: pwsh
-        run: dotnet run --project .\tools\EIMS.PilotEnvironmentEvidenceVerifier\EIMS.PilotEnvironmentEvidenceVerifier.csproj -c Release --no-build -- .\eims-pilot-environment-evidence.json
+        run: dotnet run --project .\tools\EIMS.PilotEnvironmentEvidenceVerifier\EIMS.PilotEnvironmentEvidenceVerifier.csproj -c Release --no-build -- .\pilot\scripts\eims-pilot-environment-evidence.json
