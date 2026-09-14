@@ -20,8 +20,12 @@ var tests = new List<(string Name, Func<Task> Run)>
     ("P1R-CT-16 idempotency key payload conflict", IdempotencyConflict),
     ("P1R-CT-17 invalid mutation version denied", InvalidMutationVersion),
     ("P1R-CT-18 audit authority context retained", AuditContextRetained),
-    ("P1R-CT-19 catalog recovery gap explicit 21 of 28", CatalogGapExplicit),
-    ("P1R-CT-20 state-unbound product command remains fail closed at state gate", StateUnboundProductFailsClosed)
+    ("P1R-CT-19 catalog recovery layers explicit", CatalogGapExplicit),
+    ("P1R-CT-20 state-unbound product command remains fail closed at state gate", StateUnboundProductFailsClosed),
+    ("P1R-CT-21 G03 rule-bound product command stops at event gate", G03ProductStopsAtEventGate),
+    ("P1R-CT-22 explicit event contract gate fails closed", EventGateDenied),
+    ("P1R-CT-23 explicit mutation contract gate fails closed", MutationGateDenied),
+    ("P1R-CT-24 G03 Need Owner self review SoD denied", SodG03SelfReviewDenied)
 };
 
 var passed = 0;
@@ -201,8 +205,11 @@ static Task CatalogGapExplicit()
     var catalog = new RecoveredApiCommandCatalog();
     Eq(21, catalog.All.Count); Eq(28, RecoveredApiCommandCatalog.CompletionReviewDeclaredCommandCount); False(catalog.IsCatalogComplete);
     Eq(6, RecoveredApiCommandCatalog.Wave1StateBoundCommandCount);
+    Eq(2, RecoveredApiCommandCatalog.Wave2RuleBoundCommandCount);
     Eq(6, catalog.All.Count(x => x.StateContractRecovered));
-    True(catalog.All.All(x => !x.RuleContractRecovered));
+    Eq(2, catalog.All.Count(x => x.RuleContractRecovered));
+    True(catalog.All.All(x => !x.EventContractRecovered));
+    True(catalog.All.All(x => !x.MutationContractRecovered));
     return Task.CompletedTask;
 }
 
@@ -211,6 +218,35 @@ static async Task StateUnboundProductFailsClosed()
     var kernel = new AuthorityKernel(new RecoveredApiCommandCatalog(), Store(), new PassRuleEvaluator(), new BaselineSodEvaluator(), new IncrementPlanner());
     var result = await kernel.ExecuteAsync(Command("g04.vote"), Actor("G04_COMMITTEE_MEMBER"));
     Eq(503, result.HttpStatus); Eq("P1_STATE_CONTRACT_NOT_RECOVERED", result.Code); False(result.StateMutated);
+}
+
+static async Task G03ProductStopsAtEventGate()
+{
+    var kernel = new AuthorityKernel(new RecoveredApiCommandCatalog(), Store("DRAFT"), new RecoveredG03RuleEvaluator(), new BaselineSodEvaluator(), new IncrementPlanner());
+    var result = await kernel.ExecuteAsync(Command("needs.submit-g03"), Actor("NEED_OWNER"));
+    Eq(503, result.HttpStatus); Eq("P1_EVENT_CONTRACT_NOT_RECOVERED", result.Code); False(result.StateMutated);
+}
+
+static async Task EventGateDenied()
+{
+    var policy = TestPolicy() with { EventContractRecovered = false, MutationContractRecovered = false };
+    var result = await Kernel(Store(), policy).ExecuteAsync(Command(), Actor("TEST_ROLE"));
+    Eq(503, result.HttpStatus); Eq("P1_EVENT_CONTRACT_NOT_RECOVERED", result.Code); False(result.StateMutated);
+}
+
+static async Task MutationGateDenied()
+{
+    var policy = TestPolicy() with { EventContractRecovered = true, MutationContractRecovered = false };
+    var result = await Kernel(Store(), policy).ExecuteAsync(Command(), Actor("TEST_ROLE"));
+    Eq(503, result.HttpStatus); Eq("P1_MUTATION_CONTRACT_NOT_RECOVERED", result.Code); False(result.StateMutated);
+}
+
+static async Task SodG03SelfReviewDenied()
+{
+    var policy = TestPolicy("needs.g03-decision", "NEED_REVIEWER", new[] { "PENDING_G03_REVIEW" });
+    var store = Store("PENDING_G03_REVIEW", ownerPerson: "P-001");
+    var result = await Kernel(store, policy).ExecuteAsync(Command("needs.g03-decision"), Actor("NEED_REVIEWER"));
+    Eq(403, result.HttpStatus); Eq("SOD_G03_NEED_OWNER_SELF_REVIEW", result.Code); False(result.StateMutated);
 }
 
 static void True(bool value) { if (!value) throw new InvalidOperationException("Expected true."); }
