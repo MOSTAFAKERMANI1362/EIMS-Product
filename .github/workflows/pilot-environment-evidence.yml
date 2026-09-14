@@ -1,0 +1,46 @@
+name: Pilot Environment Evidence Pack
+
+on:
+  pull_request:
+    paths:
+      - 'pilot/scripts/Collect-EimsPilotEnvironmentEvidence.ps1'
+      - 'pilot/PILOT_ENVIRONMENT_EVIDENCE_README.md'
+      - 'tools/EIMS.PilotEnvironmentEvidenceVerifier/**'
+      - '.github/workflows/pilot-environment-evidence.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'pilot/scripts/Collect-EimsPilotEnvironmentEvidence.ps1'
+      - 'pilot/PILOT_ENVIRONMENT_EVIDENCE_README.md'
+      - 'tools/EIMS.PilotEnvironmentEvidenceVerifier/**'
+      - '.github/workflows/pilot-environment-evidence.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  smoke-test-collector:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10.0.302
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.302'
+
+      - name: Run collector in LAB mode
+        shell: powershell
+        run: |
+          Set-ExecutionPolicy -Scope Process Bypass -Force
+          .\pilot\scripts\Collect-EimsPilotEnvironmentEvidence.ps1 -EvidenceClass LAB_EVIDENCE -OutputPath .\eims-pilot-environment-evidence.json
+          if (-not (Test-Path .\eims-pilot-environment-evidence.json)) { throw 'Evidence file was not created.' }
+
+      - name: Build evidence verifier
+        shell: pwsh
+        run: dotnet build .\tools\EIMS.PilotEnvironmentEvidenceVerifier\EIMS.PilotEnvironmentEvidenceVerifier.csproj -c Release
+
+      - name: Verify secret-free evidence output
+        shell: pwsh
+        run: dotnet run --project .\tools\EIMS.PilotEnvironmentEvidenceVerifier\EIMS.PilotEnvironmentEvidenceVerifier.csproj -c Release --no-build -- .\eims-pilot-environment-evidence.json
