@@ -1,0 +1,205 @@
+{
+  "schema": "EIMS-ACR-IDEA-EVALUATION-SUBMISSION-1.0",
+  "acrId": "ACR-P0-004",
+  "title": "Stabilize Idea Submission, Dynamic Evaluation Plan and Evaluator Routing Contract",
+  "status": "APPROVED_FOR_P1_IMPLEMENTATION",
+  "decisionClass": "POST_FREEZE_ARCHITECTURE_DECISION",
+  "effectiveVersion": "1.0",
+  "frozenProduct": {
+    "file": "EIMS_v6.360_WORKLIST_UX_ROLE_SELECTOR_CLEANUP.html",
+    "sha256": "057a224fa55e6ee17d128c41c86f3410206d7246723c35872f57757329c4e98a",
+    "modifiedByThisDecision": false
+  },
+  "provenance": {
+    "historicalOriginalFullTransitionGraphRecovered": false,
+    "historicalOriginalDomainEventIdentityRecovered": false,
+    "mustNotBeRepresentedAsRecoveredOriginal": true,
+    "authoritativeBasis": [
+      "EIMS_v6.360_WORKLIST_UX_ROLE_SELECTOR_CLEANUP.html",
+      "EIMS_P0_Product_Contract_v1.0.md",
+      "EIMS_P0_API_Contract_Draft_v1.0.yaml",
+      "EIMS_P0_Machine_Recovery"
+    ],
+    "frozenAuditActionsAreNotIntegrationEvents": [
+      "DynamicIdeaEvaluationPlanCreated",
+      "IdeaOwnerSubmissionFrozenAndRoutedToEvaluators",
+      "EvaluationRoutingRecovered"
+    ]
+  },
+  "commandContract": {
+    "command": "ideas.submit-g04",
+    "aggregateType": "Idea",
+    "requiredRole": "IDEA_OWNER",
+    "assignmentContextRequired": true,
+    "scopeRequired": true,
+    "allowedSourceStates": [
+      "DRAFT",
+      "RETURNED"
+    ],
+    "targetState": "UNDER_REVIEW",
+    "versionDelta": 1,
+    "expectedVersionRequired": true,
+    "idempotencyKeyRequired": true,
+    "preconditions": {
+      "passportCompletionMinimumPercent": 70,
+      "activeStrategyLinkRequired": true,
+      "primaryObjectiveCodeRequired": true,
+      "currentIdeaVersionRequired": true
+    },
+    "serverMutation": {
+      "specialistReviewRequested": true,
+      "specialistReviewRequestedAt": "SERVER_TIMESTAMP",
+      "state": "UNDER_REVIEW",
+      "ideaVersion": "BEFORE_PLUS_ONE",
+      "evaluationPlanCreated": true,
+      "evaluationPlanBoundToResultingIdeaVersion": true,
+      "evaluationPlanInitialStatus": "ACTIVE",
+      "g04DecisionAssessmentCreatedByInitialSubmission": false
+    }
+  },
+  "evaluationPlanContract": {
+    "sourceOfTruthForRequiredG04Evaluations": true,
+    "planIdGeneratedByServer": true,
+    "planVersionGeneratedByServer": true,
+    "ideaIdRequired": true,
+    "ideaVersionMustEqualResultingIdeaVersion": true,
+    "singleActivePlanPerIdeaVersion": true,
+    "mandatoryAssignments": [
+      {
+        "role": "IDEA_EVALUATOR",
+        "required": true,
+        "initialStatus": "PENDING"
+      },
+      {
+        "role": "UNIT_OWNER_REVIEWER",
+        "required": true,
+        "initialStatus": "PENDING"
+      }
+    ],
+    "conditionalAssignmentRoles": [
+      "TECHNICAL_ASSESSOR",
+      "HSE_ASSESSOR",
+      "FINANCIAL_ASSESSOR",
+      "IT_ASSESSOR"
+    ],
+    "conditionalAssignmentsAreProfileOrConfigurationDriven": true,
+    "estimatedCostZeroAloneMayNotSuppressFinancialAssessment": true,
+    "assignmentIdsGeneratedByServer": true,
+    "assignmentIdsDistinctWithinPlan": true,
+    "assignmentContext": {
+      "requiredFields": [
+        "assignmentId",
+        "ideaId",
+        "ideaVersion",
+        "role",
+        "scope"
+      ],
+      "directGeneralFormEntryAllowed": false,
+      "staleAssignmentAllowed": false,
+      "roleVisibilityIsAuthorization": false,
+      "serverMustValidateAssignmentPersonRoleScopeAndVersion": true
+    },
+    "stalePlanPolicy": {
+      "ideaVersionMismatchInvalidatesActivePlan": true,
+      "stalePlanMayNotAcceptCompletion": true,
+      "supersedeOrControlledRepairRequired": true,
+      "historicalPlanAndAssignmentEvidencePreserved": true
+    }
+  },
+  "g04HandoffContract": {
+    "initialSubmissionCreatesG04DecisionAssessment": false,
+    "allRequiredAssignmentsMustBeCompleted": true,
+    "currentIdeaVersionMustMatchPlanVersion": true,
+    "decisionAssessmentStatus": "PENDING",
+    "decisionAssessmentAssignedRole": "IDEA_DECISION",
+    "evaluationPlanSnapshotRequired": true,
+    "currentIdeaVersionSnapshotRequired": true,
+    "committeeVoteAuthoritySeparate": true,
+    "finalDecisionAuthoritySeparate": true
+  },
+  "domainEvent": {
+    "eventType": "IdeaSubmittedForEvaluation.v1",
+    "eventCategory": "DOMAIN",
+    "identityClass": "POST_FREEZE_ARCHITECTURE_DECISION",
+    "historicalOriginalIdentityRecovered": false,
+    "producerCommand": "ideas.submit-g04",
+    "emitTiming": "AFTER_ATOMIC_COMMIT_VIA_OUTBOX",
+    "delivery": "AT_LEAST_ONCE",
+    "consumerRequirement": "IDEMPOTENT_BY_EVENT_ID",
+    "requiredEnvelopeFields": [
+      "eventId",
+      "eventType",
+      "eventVersion",
+      "eventCategory",
+      "occurredAtUtc",
+      "aggregateId",
+      "aggregateType",
+      "aggregateVersion",
+      "actorId",
+      "correlationId",
+      "causationId"
+    ],
+    "requiredPayloadFields": [
+      "ideaId",
+      "ideaVersion",
+      "evaluationPlanId",
+      "evaluationPlanVersion",
+      "requiredAssignments"
+    ],
+    "forbiddenPayloadFields": [
+      "fullIdeaPassport",
+      "fullNeedDossier",
+      "attachmentContent",
+      "financialNarrative",
+      "personalNotes"
+    ]
+  },
+  "atomicityContract": {
+    "sameTransaction": [
+      "IdeaStateAndVersion",
+      "DynamicEvaluationPlan",
+      "EvaluationAssignments",
+      "Audit",
+      "Outbox",
+      "Idempotency"
+    ],
+    "partialCommitAllowed": false,
+    "eventBeforeCommitAllowed": false,
+    "planWithoutMatchingIdeaVersionAllowed": false
+  },
+  "clientTrustBoundary": {
+    "clientMaySetIdeaTargetState": false,
+    "clientMaySetResultingIdeaVersion": false,
+    "clientMaySetPlanId": false,
+    "clientMaySetAssignmentIds": false,
+    "clientMaySetAssignmentRequiredFlag": false,
+    "clientMaySetAssignmentRoleWithoutServerPlanRules": false,
+    "clientMaySetIntegrationEventType": false,
+    "clientMayBypassAssignmentContext": false
+  },
+  "nonEffects": [
+    "Does not implement evaluation-assignment completion",
+    "Does not implement G04 committee voting",
+    "Does not implement G04 final decision",
+    "Does not activate P5 command gateway",
+    "Does not claim physical Oracle readiness",
+    "Does not claim live Windows Domain readiness",
+    "Does not claim Network Pilot readiness",
+    "Does not modify v6.360"
+  ],
+  "p1ConsumptionGate": {
+    "eventIdentityResolvedByThisAcr": true,
+    "commandPromotionAllowedByThisAcrAlone": false,
+    "relatedEntityTransactionModelRequired": true,
+    "stillRequiredBeforeCommandExecution": [
+      "P1Wave5StateRuleEventMutationBinding",
+      "DynamicEvaluationPlanPersistenceModel",
+      "EvaluationAssignmentPersistenceModel",
+      "assignmentBoundAuthorization",
+      "idempotency",
+      "optimisticConcurrency",
+      "atomicPersistence",
+      "contractAndRegressionTests"
+    ]
+  }
+}
