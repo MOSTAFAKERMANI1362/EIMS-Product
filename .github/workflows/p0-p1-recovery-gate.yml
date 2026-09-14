@@ -5,6 +5,7 @@ on:
     paths:
       - 'recovery/p0/**'
       - 'recovery/p1-wave1/**'
+      - 'recovery/p1-wave2/**'
       - 'src/EIMS.P0.MachineRecovery/**'
       - 'src/EIMS.Authority.Recovery/**'
       - 'tests/EIMS.P0P1.RecoveryGate.ContractTests/**'
@@ -14,6 +15,7 @@ on:
     paths:
       - 'recovery/p0/**'
       - 'recovery/p1-wave1/**'
+      - 'recovery/p1-wave2/**'
       - 'src/EIMS.P0.MachineRecovery/**'
       - 'src/EIMS.Authority.Recovery/**'
       - 'tests/EIMS.P0P1.RecoveryGate.ContractTests/**'
@@ -38,4 +40,4 @@ jobs:
         run: dotnet build .\tests\EIMS.P0P1.RecoveryGate.ContractTests\EIMS.P0P1.RecoveryGate.ContractTests.csproj -c Release
 
       - name: Run P0-P1 recovery consistency tests
-        run: dotnet run --project .\tests\EIMS.P0P1.RecoveryGate.ContractTests\EIMS.P0P1.RecoveryGate.ContractTests.csproj -c Release --no-build -- .\recovery\p0\P0_MACHINE_CONTRACT_RECOVERY_v1.0.json .\recovery\p1-wave1\P1_WAVE1_STATE_REBASELINE_ACCEPTANCE_v1.0.json
+        run: dotnet run --project .\tests\EIMS.P0P1.RecoveryGate.ContractTests\EIMS.P0P1.RecoveryGate.ContractTests.csproj -c Release --no-build -- .\recovery\p0\P0_MACHINE_CONTRACT_RECOVERY_v1.0.json .\recovery\p1-wave1\P1_WAVE1_STATE_REBASELINE_ACCEPTANCE_v1.0.json .\recovery\p1-wave2\P1_WAVE2_G03_RULE_REBASELINE_v1.0.json

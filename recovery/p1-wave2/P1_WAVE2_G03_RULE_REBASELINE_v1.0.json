@@ -1,0 +1,77 @@
+{
+  "schema": "EIMS-P1-WAVE2-G03-RULE-REBASELINE-1.0",
+  "status": "APPROVED_REBASELINE_FOR_P1_RULE_BINDING",
+  "decisionClass": "RECOVERY_REBASELINE_ACCEPTANCE",
+  "frozenProduct": {
+    "file": "EIMS_v6.360_WORKLIST_UX_ROLE_SELECTOR_CLEANUP.html",
+    "sha256": "057a224fa55e6ee17d128c41c86f3410206d7246723c35872f57757329c4e98a",
+    "modified": false
+  },
+  "provenance": {
+    "doesNotClaimMissingOriginalRuleCatalogRecovered": true,
+    "evidence": [
+      "v6.240 needDefinitionComplete6240",
+      "v6.242 sendNeedForG03Review6242",
+      "v6.243 reviewNeedG036243",
+      "v6.286 unified G03 Need validation / needIssues6286",
+      "v6.339 G03 review UX/routing freeze metadata",
+      "v6.360 frozen UAT product specification"
+    ],
+    "principle": "Only rules explicitly executable in frozen v6.360 are re-baselined. Missing historical P0 Rule Catalog identities are not synthesized."
+  },
+  "runtimeSafety": {
+    "eventContractsRecovered": false,
+    "mutationContractsRecovered": false,
+    "productMutationEnabled": false,
+    "expectedAuthorityGateAfterRuleBinding": "P1_EVENT_CONTRACT_NOT_RECOVERED",
+    "ruleEvaluationMustUseAuthoritativeAggregateFacts": true,
+    "requestBodyMayNotOverridePersistedNeedDefinition": true
+  },
+  "ruleContracts": [
+    {
+      "command": "needs.submit-g03",
+      "ruleSet": "P1-G03-SUBMIT-REBASELINE-1.0",
+      "requiredRole": "NEED_OWNER",
+      "allowedState": "DRAFT",
+      "authoritativeAggregateFacts": ["title", "owner", "current", "desired", "gap"],
+      "rules": [
+        {"id":"G03-S01","fact":"title","operator":"TRIMMED_LENGTH_GTE","value":10},
+        {"id":"G03-S02","fact":"title","operator":"NOT_STARTS_WITH","value":"نیاز مرتبط با"},
+        {"id":"G03-S03","fact":"owner","operator":"TRIMMED_LENGTH_GTE","value":3},
+        {"id":"G03-S04","fact":"owner","operator":"NOT_IN","value":["مالک فرآیند مرتبط","مالک واحد موضوع"]},
+        {"id":"G03-S05","fact":"current","operator":"TRIMMED_LENGTH_GTE","value":15},
+        {"id":"G03-S06","fact":"current","operator":"NOT_CONTAINS","value":"وضعیت موجود نیازمند تکمیل"},
+        {"id":"G03-S07","fact":"desired","operator":"TRIMMED_LENGTH_GTE","value":15},
+        {"id":"G03-S08","fact":"desired","operator":"NOT_CONTAINS","value":"وضعیت مطلوب را تکمیل کنید"},
+        {"id":"G03-S09","fact":"gap","operator":"TRIMMED_LENGTH_GTE","value":10},
+        {"id":"G03-S10","fact":"gap","operator":"NOT_CONTAINS","value":"نیازمند تکمیل"},
+        {"id":"G03-S11","facts":["current","desired"],"operator":"NOT_EQUAL_TRIMMED"}
+      ],
+      "successMeaning": "Need definition is complete enough to submit for independent G03 review; this is not G03 approval."
+    },
+    {
+      "command": "needs.g03-decision",
+      "ruleSet": "P1-G03-DECISION-REBASELINE-1.0",
+      "requiredRole": "NEED_REVIEWER",
+      "allowedState": "PENDING_G03_REVIEW",
+      "authoritativeAggregateFacts": ["g03ReviewStatus"],
+      "requestFields": ["decision", "definitionComplete", "measurable", "solutionBiasFree", "note"],
+      "rules": [
+        {"id":"G03-D01","fact":"g03ReviewStatus","operator":"EQUALS","value":"PENDING"},
+        {"id":"G03-D02","request":"decision","operator":"IN","value":["APPROVE","RETURN"]},
+        {"id":"G03-D03","when":{"decision":"APPROVE"},"requests":["definitionComplete","measurable","solutionBiasFree"],"operator":"ALL_EQUAL","value":"YES"},
+        {"id":"G03-D04","when":{"decision":"RETURN"},"request":"note","operator":"TRIMMED_LENGTH_GTE","value":10}
+      ],
+      "scopeConstraint": "G03 review is only Need completeness, measurability/verifiability and solution-bias freedom; it is not technical/economic evaluation or solution selection.",
+      "sod": "Need Owner cannot approve the same Need at G03; reviewer must be independent.",
+      "approveRouting": "IDEA_OWNER",
+      "returnRouting": "NEED_OWNER"
+    }
+  ],
+  "eventIdentity": {
+    "submitG03": "UNRECOVERED_DOMAIN_EVENT_IDENTITY",
+    "g03Decision": "UNRECOVERED_DOMAIN_EVENT_IDENTITY",
+    "auditLabelsAreNotPromotedToDomainEvents": true
+  },
+  "nextGate": "Stabilize Domain Event contracts by controlled ACR/recovery and then recover outcome-aware mutation planners; do not infer them from audit labels."
+}

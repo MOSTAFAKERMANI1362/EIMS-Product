@@ -24,7 +24,8 @@ public sealed record AggregateSnapshot(
     long Version,
     string? OwnerPersonId = null,
     string? OwnerRole = null,
-    string? Scope = null);
+    string? Scope = null,
+    IReadOnlyDictionary<string, string>? RuleFacts = null);
 
 public sealed record CommandPolicy(
     string CommandName,
@@ -33,7 +34,9 @@ public sealed record CommandPolicy(
     string RuleSet,
     string EventName,
     bool StateContractRecovered = true,
-    bool RuleContractRecovered = true);
+    bool RuleContractRecovered = true,
+    bool EventContractRecovered = true,
+    bool MutationContractRecovered = true);
 
 public sealed record RuleEvaluation(bool Passed, string Code, string? Detail = null)
 {
@@ -154,6 +157,11 @@ public sealed class BaselineSodEvaluator : ISodEvaluator
         if (command.CommandName.Contains("rewards.decide", StringComparison.OrdinalIgnoreCase)
             && roles.Contains("BENEFIT_OWNER"))
             return ValueTask.FromResult(SodEvaluation.Fail("SOD_BENEFIT_OWNER_NOT_REWARD_COMMITTEE"));
+
+        if (command.CommandName.Contains("needs.g03-decision", StringComparison.OrdinalIgnoreCase)
+            && !string.IsNullOrWhiteSpace(aggregate.OwnerPersonId)
+            && string.Equals(aggregate.OwnerPersonId, actor.PersonId, StringComparison.OrdinalIgnoreCase))
+            return ValueTask.FromResult(SodEvaluation.Fail("SOD_G03_NEED_OWNER_SELF_REVIEW", "Need Owner cannot independently approve or return the same Need at G03."));
 
         return ValueTask.FromResult(SodEvaluation.Pass());
     }

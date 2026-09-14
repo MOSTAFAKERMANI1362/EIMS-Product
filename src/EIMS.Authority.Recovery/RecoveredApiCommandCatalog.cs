@@ -5,6 +5,7 @@ public sealed class RecoveredApiCommandCatalog : ICommandPolicyCatalog
     public const int CompletionReviewDeclaredCommandCount = 28;
     public const int RecoveredApiCommandCount = 21;
     public const int Wave1StateBoundCommandCount = 6;
+    public const int Wave2RuleBoundCommandCount = 2;
 
     private readonly IReadOnlyDictionary<string, CommandPolicy> _policies;
 
@@ -14,8 +15,8 @@ public sealed class RecoveredApiCommandCatalog : ICommandPolicyCatalog
         {
             PState("g01.decide", "INTAKE_STEWARD", "SUBMITTED", "SUBMITTED_FOR_G01"),
             PState("g02.decide", "CASE_REVIEWER", "UNDER_REVIEW"),
-            PState("needs.submit-g03", "NEED_OWNER", "DRAFT"),
-            PState("needs.g03-decision", "NEED_REVIEWER", "PENDING_G03_REVIEW"),
+            PG03Rule("needs.submit-g03", "NEED_OWNER", "P1-G03-SUBMIT-REBASELINE-1.0", "DRAFT"),
+            PG03Rule("needs.g03-decision", "NEED_REVIEWER", "P1-G03-DECISION-REBASELINE-1.0", "PENDING_G03_REVIEW"),
             PState("ideas.submit-g04", "IDEA_OWNER", "DRAFT", "RETURNED"),
             P("evaluation-assignments.complete", "MATCH_ASSIGNMENT_ROLE"),
             P("g04.vote", "G04_COMMITTEE_MEMBER"),
@@ -52,7 +53,9 @@ public sealed class RecoveredApiCommandCatalog : ICommandPolicyCatalog
             "UNRECOVERED_RULESET",
             "UNRECOVERED_EVENT_IDENTITY",
             StateContractRecovered: false,
-            RuleContractRecovered: false);
+            RuleContractRecovered: false,
+            EventContractRecovered: false,
+            MutationContractRecovered: false);
 
     private static CommandPolicy PState(string name, string role, params string[] allowedStates) =>
         new(name,
@@ -61,5 +64,18 @@ public sealed class RecoveredApiCommandCatalog : ICommandPolicyCatalog
             "UNRECOVERED_RULESET",
             "UNRECOVERED_EVENT_IDENTITY",
             StateContractRecovered: true,
-            RuleContractRecovered: false);
+            RuleContractRecovered: false,
+            EventContractRecovered: false,
+            MutationContractRecovered: false);
+
+    private static CommandPolicy PG03Rule(string name, string role, string ruleSet, params string[] allowedStates) =>
+        new(name,
+            new[] { role },
+            Array.AsReadOnly(allowedStates),
+            ruleSet,
+            "UNRECOVERED_EVENT_IDENTITY",
+            StateContractRecovered: true,
+            RuleContractRecovered: true,
+            EventContractRecovered: false,
+            MutationContractRecovered: false);
 }

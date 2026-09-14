@@ -33,6 +33,7 @@ Client-side visibility is never an authorization boundary.
 - `AuthorityActor` with PersonID, network identity, identity source, AssignmentID, roles and scopes.
 - `AuthorityCommand` with aggregate, expected version, idempotency key and correlation.
 - `AuthorityKernel` fail-closed pipeline.
+- explicit recovery gates in this order: State Contract → Rule Contract → Event Contract → Mutation Contract.
 - role/scope check.
 - optimistic version check.
 - state allow-list check.
@@ -43,7 +44,10 @@ Client-side visibility is never an authorization boundary.
 - exact idempotent replay and key/payload conflict handling.
 - atomic commit contract for Aggregate + Audit + Outbox + idempotency record.
 - Audit authority context: PersonID + Role + Assignment + IdentitySource + EntityVersion + RuleSet + Timestamp + Correlation.
+- `AggregateSnapshot.RuleFacts` for authoritative server-loaded rule facts; request bodies cannot substitute persisted aggregate facts.
 - contract tests using an in-memory transactional test adapter only.
+
+A Product command with incomplete recovery metadata is rejected **before Store, Rule Evaluator, SoD evaluator or Mutation Planner is touched**. This prevents a later partial recovery step from accidentally turning a command into a mutating path.
 
 ## 4. Product-command recovery status
 
@@ -64,9 +68,7 @@ The original machine-readable P0 State Machine, Role/Permission, Rule and Event 
 
 This is a **new recovery rebaseline acceptance**, not a claim that the missing original P0 state-machine file has been recovered.
 
-For these six commands, `StateContractRecovered=true`, but `RuleContractRecovered=false`. The runtime therefore still fails closed at `P1_RULE_CONTRACT_NOT_RECOVERED` before Store, Rule Evaluator, SoD evaluator or Mutation Planner is touched.
-
-`evaluation-assignments.complete`, `g04.vote`, and the remaining recovered commands do not yet have an accepted complete command-level state contract and therefore continue to fail with `P1_STATE_CONTRACT_NOT_RECOVERED`.
+`evaluation-assignments.complete`, `g04.vote`, and the remaining recovered commands do not yet have an accepted complete command-level state contract and therefore continue to fail at `P1_STATE_CONTRACT_NOT_RECOVERED`.
 
 ### 4.2 Event naming decision
 
@@ -77,22 +79,58 @@ For these six commands, `StateContractRecovered=true`, but `RuleContractRecovere
 
 The ACR explicitly records that the historical original event mapping in v6.360 was TBD. The names are therefore a controlled new architecture decision, not recovered historical identities.
 
-The P1 runtime command policy still retains `UNRECOVERED_EVENT_IDENTITY` until an outcome-aware mutation/event planner is bound. Event naming alone cannot promote a command.
+These two names do not by themselves bind any P1 mutation/event planner. Event naming alone cannot promote a command.
 
-### 4.3 Rule contracts remain the immediate blocker
+### 4.3 Wave 2 — G03 rule rebaseline
 
-No Product RuleSet is reconstructed by inference. The six state-bound commands remain non-executable until their command-specific hard-rule semantics are recovered or formally re-baselined and verified.
+`P1_WAVE2_G03_RULE_REBASELINE_v1.0.json` formally re-baselines only the two G03 RuleSets whose rules are directly executable and explicit in frozen v6.360:
 
-`p1.authority.runtime` MUST NOT be marked Ready merely because the generic kernel or state-binding layer compiles.
+#### `needs.submit-g03`
+
+RuleSet: `P1-G03-SUBMIT-REBASELINE-1.0`
+
+The evaluator reads the Need definition from authoritative `AggregateSnapshot.RuleFacts`, not from the request body. Required frozen rules are:
+
+- title trimmed length ≥ 10 and does not start with `نیاز مرتبط با`;
+- owner trimmed length ≥ 3 and is not `مالک فرآیند مرتبط` / `مالک واحد موضوع`;
+- current trimmed length ≥ 15 and does not contain `وضعیت موجود نیازمند تکمیل`;
+- desired trimmed length ≥ 15 and does not contain `وضعیت مطلوب را تکمیل کنید`;
+- gap trimmed length ≥ 10 and does not contain `نیازمند تکمیل`;
+- current and desired are not equal after trimming.
+
+A PASS means only that the Need is complete enough to be submitted for independent G03 review. It is not G03 approval.
+
+#### `needs.g03-decision`
+
+RuleSet: `P1-G03-DECISION-REBASELINE-1.0`
+
+The persisted `g03ReviewStatus` must be `PENDING`. Request decision is restricted to `APPROVE` or `RETURN`.
+
+- APPROVE requires `definitionComplete=YES`, `measurable=YES`, and `solutionBiasFree=YES`.
+- RETURN requires an actionable trimmed note of at least 10 characters.
+- the G03 reviewer scope remains Need completeness/readiness only; it is not technical/economic evaluation or solution selection.
+- Need Owner cannot independently review the same Need at G03.
+- final frozen routing is role-based: APPROVE → `IDEA_OWNER`, RETURN → `NEED_OWNER`. No old `ideaOwnerCandidate` requirement is restored.
+
+The frozen prototype audit labels are **not** promoted into Domain Event identities. Both G03 commands remain `EventContractRecovered=false` and `MutationContractRecovered=false`.
+
+Therefore the two G03 commands now stop at:
+
+`P1_EVENT_CONTRACT_NOT_RECOVERED`
+
+before any Store/Rule/SoD/Planner execution. Four other Wave 1 state-bound commands remain at `P1_RULE_CONTRACT_NOT_RECOVERED`. All other recovered Product commands remain at `P1_STATE_CONTRACT_NOT_RECOVERED`.
+
+No Product command is executable after Wave 2.
 
 ## 5. SoD explicitly recovered
 
-The recovery kernel enforces the directly stated invariants that can be evaluated with the currently available authority context:
+The recovery kernel enforces directly stated invariants that can be evaluated with currently available authority context:
 
 - Execution Owner cannot approve own completion.
 - G04 Committee Member cannot act as final G04 decision authority in the same decision context.
 - Knowledge Steward cannot publish as Knowledge Publisher in the same authority context.
 - Benefit Owner cannot decide reward as Reward Committee in the same authority context.
+- Need Owner cannot independently perform G03 review on the same Need.
 
 Cross-aggregate conflict checks that require richer domain links remain for physical persistence/domain composition and must not be guessed.
 
@@ -115,14 +153,21 @@ dotnet build .\tests\EIMS.Authority.Recovery.ContractTests\EIMS.Authority.Recove
 dotnet run --project .\tests\EIMS.Authority.Recovery.ContractTests\EIMS.Authority.Recovery.ContractTests.csproj -c Release --no-build
 ```
 
+G03 recovered RuleSet gate:
+
+```powershell
+dotnet build .\tests\EIMS.G03.RecoveryRules.ContractTests\EIMS.G03.RecoveryRules.ContractTests.csproj -c Release
+dotnet run --project .\tests\EIMS.G03.RecoveryRules.ContractTests\EIMS.G03.RecoveryRules.ContractTests.csproj -c Release --no-build
+```
+
 P0→P1 recovery consistency gate:
 
 ```powershell
 dotnet build .\tests\EIMS.P0P1.RecoveryGate.ContractTests\EIMS.P0P1.RecoveryGate.ContractTests.csproj -c Release
-dotnet run --project .\tests\EIMS.P0P1.RecoveryGate.ContractTests\EIMS.P0P1.RecoveryGate.ContractTests.csproj -c Release --no-build -- .\recovery\p0\P0_MACHINE_CONTRACT_RECOVERY_v1.0.json .\recovery\p1-wave1\P1_WAVE1_STATE_REBASELINE_ACCEPTANCE_v1.0.json
+dotnet run --project .\tests\EIMS.P0P1.RecoveryGate.ContractTests\EIMS.P0P1.RecoveryGate.ContractTests.csproj -c Release --no-build -- .\recovery\p0\P0_MACHINE_CONTRACT_RECOVERY_v1.0.json .\recovery\p1-wave1\P1_WAVE1_STATE_REBASELINE_ACCEPTANCE_v1.0.json .\recovery\p1-wave2\P1_WAVE2_G03_RULE_REBASELINE_v1.0.json
 ```
 
-Both gates and the repository Security Pipeline must pass before merge.
+All three gates and the repository Security Pipeline must pass before merge.
 
 ## 8. Exit condition for full P1 recovery
 
