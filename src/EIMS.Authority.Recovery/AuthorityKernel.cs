@@ -42,6 +42,14 @@ public sealed class AuthorityKernel(
         if (!policy.RuleContractRecovered)
             return AuthorityResult.Deny(503, "P1_RULE_CONTRACT_NOT_RECOVERED", command.CorrelationId);
 
+        if (!policy.EventContractRecovered)
+            return AuthorityResult.Deny(503, "P1_EVENT_CONTRACT_NOT_RECOVERED", command.CorrelationId,
+                "State and rule contracts are bound, but the authoritative Domain Event contract is not yet bound.");
+
+        if (!policy.MutationContractRecovered)
+            return AuthorityResult.Deny(503, "P1_MUTATION_CONTRACT_NOT_RECOVERED", command.CorrelationId,
+                "State, rule and event contracts are bound, but the authoritative mutation contract is not yet bound.");
+
         var roleAllowed = policy.RequiredRoles.Any(required =>
             actor.Roles.Contains(required, StringComparer.OrdinalIgnoreCase));
         if (!roleAllowed)
