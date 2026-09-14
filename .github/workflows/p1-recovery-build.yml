@@ -8,6 +8,7 @@ on:
       - 'recovery/P1_RECOVERY_IMPLEMENTATION_v1.0.md'
       - 'recovery/p1-wave1/**'
       - 'recovery/p1-wave2/**'
+      - 'recovery/p1-wave3/**'
       - '.github/workflows/p1-recovery-build.yml'
   push:
     branches: [ main ]
@@ -17,6 +18,7 @@ on:
       - 'recovery/P1_RECOVERY_IMPLEMENTATION_v1.0.md'
       - 'recovery/p1-wave1/**'
       - 'recovery/p1-wave2/**'
+      - 'recovery/p1-wave3/**'
       - '.github/workflows/p1-recovery-build.yml'
 
 permissions:
