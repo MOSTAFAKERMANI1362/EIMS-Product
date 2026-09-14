@@ -1,0 +1,41 @@
+name: P1 G03 Event Recovery
+
+on:
+  pull_request:
+    paths:
+      - 'architecture/decisions/ACR-P0-002_G03_EVENT_CONTRACTS_v1.0.json'
+      - 'recovery/p1-wave3/**'
+      - 'src/EIMS.Authority.Recovery/AuthorityContracts.cs'
+      - 'src/EIMS.Authority.Recovery/RecoveredApiCommandCatalog.cs'
+      - 'tests/EIMS.G03.EventBinding.Recovery.ContractTests/**'
+      - '.github/workflows/p1-g03-event-recovery.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'architecture/decisions/ACR-P0-002_G03_EVENT_CONTRACTS_v1.0.json'
+      - 'recovery/p1-wave3/**'
+      - 'src/EIMS.Authority.Recovery/AuthorityContracts.cs'
+      - 'src/EIMS.Authority.Recovery/RecoveredApiCommandCatalog.cs'
+      - 'tests/EIMS.G03.EventBinding.Recovery.ContractTests/**'
+      - '.github/workflows/p1-g03-event-recovery.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify-g03-event-binding:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10.0.302
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.302'
+
+      - name: Build G03 event binding tests
+        run: dotnet build .\tests\EIMS.G03.EventBinding.Recovery.ContractTests\EIMS.G03.EventBinding.Recovery.ContractTests.csproj -c Release
+
+      - name: Run G03 event binding tests
+        run: dotnet run --project .\tests\EIMS.G03.EventBinding.Recovery.ContractTests\EIMS.G03.EventBinding.Recovery.ContractTests.csproj -c Release --no-build -- .\architecture\decisions\ACR-P0-002_G03_EVENT_CONTRACTS_v1.0.json .\recovery\p1-wave3\P1_WAVE3_G03_EVENT_REBASELINE_v1.0.json
