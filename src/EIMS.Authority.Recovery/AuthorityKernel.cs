@@ -25,8 +25,9 @@ public sealed class AuthorityKernel(
         if (actor is null
             || string.IsNullOrWhiteSpace(actor.PersonId)
             || string.IsNullOrWhiteSpace(actor.NetworkIdentity)
-            || string.IsNullOrWhiteSpace(actor.IdentitySource))
-            return AuthorityResult.Deny(401, "P1_IDENTITY_REQUIRED", command.CorrelationId);
+            || string.IsNullOrWhiteSpace(actor.IdentitySource)
+            || string.IsNullOrWhiteSpace(actor.AssignmentId))
+            return AuthorityResult.Deny(401, "P1_IDENTITY_ASSIGNMENT_REQUIRED", command.CorrelationId);
 
         if (string.IsNullOrWhiteSpace(command.IdempotencyKey))
             return AuthorityResult.Deny(400, "P1_IDEMPOTENCY_KEY_REQUIRED", command.CorrelationId);
@@ -104,7 +105,7 @@ public sealed class AuthorityKernel(
             actor.NetworkIdentity,
             actor.IdentitySource,
             actor.Roles,
-            null,
+            actor.AssignmentId,
             aggregate.AggregateId,
             plan.After.Version,
             policy.RuleSet,
