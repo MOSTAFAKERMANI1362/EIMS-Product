@@ -4,6 +4,7 @@ public sealed class RecoveredApiCommandCatalog : ICommandPolicyCatalog
 {
     public const int CompletionReviewDeclaredCommandCount = 28;
     public const int RecoveredApiCommandCount = 21;
+    public const int Wave1StateBoundCommandCount = 6;
 
     private readonly IReadOnlyDictionary<string, CommandPolicy> _policies;
 
@@ -11,14 +12,14 @@ public sealed class RecoveredApiCommandCatalog : ICommandPolicyCatalog
     {
         var entries = new[]
         {
-            P("g01.decide", "INTAKE_STEWARD"),
-            P("g02.decide", "CASE_REVIEWER"),
-            P("needs.submit-g03", "NEED_OWNER"),
-            P("needs.g03-decision", "NEED_REVIEWER"),
-            P("ideas.submit-g04", "IDEA_OWNER"),
+            PState("g01.decide", "INTAKE_STEWARD", "SUBMITTED", "SUBMITTED_FOR_G01"),
+            PState("g02.decide", "CASE_REVIEWER", "UNDER_REVIEW"),
+            PState("needs.submit-g03", "NEED_OWNER", "DRAFT"),
+            PState("needs.g03-decision", "NEED_REVIEWER", "PENDING_G03_REVIEW"),
+            PState("ideas.submit-g04", "IDEA_OWNER", "DRAFT", "RETURNED"),
             P("evaluation-assignments.complete", "MATCH_ASSIGNMENT_ROLE"),
             P("g04.vote", "G04_COMMITTEE_MEMBER"),
-            P("g04.final-decision", "IDEA_DECISION"),
+            PState("g04.final-decision", "IDEA_DECISION", "UNDER_REVIEW"),
             P("portfolio.assign-accept", "PORTFOLIO_MANAGER"),
             P("executions.prepare", "EXECUTION_OWNER"),
             P("executions.progress", "EXECUTION_OWNER"),
@@ -51,5 +52,14 @@ public sealed class RecoveredApiCommandCatalog : ICommandPolicyCatalog
             "UNRECOVERED_RULESET",
             "UNRECOVERED_EVENT_IDENTITY",
             StateContractRecovered: false,
+            RuleContractRecovered: false);
+
+    private static CommandPolicy PState(string name, string role, params string[] allowedStates) =>
+        new(name,
+            new[] { role },
+            Array.AsReadOnly(allowedStates),
+            "UNRECOVERED_RULESET",
+            "UNRECOVERED_EVENT_IDENTITY",
+            StateContractRecovered: true,
             RuleContractRecovered: false);
 }
