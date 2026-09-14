@@ -1,0 +1,37 @@
+name: ACR P0 002 G03 Event Contracts
+
+on:
+  pull_request:
+    paths:
+      - 'architecture/decisions/ACR-P0-002_G03_EVENT_CONTRACTS_v1.0.json'
+      - 'architecture/decisions/ACR-P0-002_G03_EVENT_CONTRACTS_v1.0.md'
+      - 'tests/EIMS.ACR.P0.G03Events.ContractTests/**'
+      - '.github/workflows/acr-p0-002-g03-events.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'architecture/decisions/ACR-P0-002_G03_EVENT_CONTRACTS_v1.0.json'
+      - 'architecture/decisions/ACR-P0-002_G03_EVENT_CONTRACTS_v1.0.md'
+      - 'tests/EIMS.ACR.P0.G03Events.ContractTests/**'
+      - '.github/workflows/acr-p0-002-g03-events.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify-acr:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10.0.302
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.302'
+
+      - name: Build G03 event contract tests
+        run: dotnet build .\tests\EIMS.ACR.P0.G03Events.ContractTests\EIMS.ACR.P0.G03Events.ContractTests.csproj -c Release
+
+      - name: Run G03 event contract tests
+        run: dotnet run --project .\tests\EIMS.ACR.P0.G03Events.ContractTests\EIMS.ACR.P0.G03Events.ContractTests.csproj -c Release --no-build -- .\architecture\decisions\ACR-P0-002_G03_EVENT_CONTRACTS_v1.0.json
