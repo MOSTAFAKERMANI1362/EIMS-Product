@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>EIMS.Authority.Recovery</AssemblyName>
+    <RootNamespace>EIMS.Authority.Recovery</RootNamespace>
+  </PropertyGroup>
+</Project>
