@@ -1,0 +1,69 @@
+name: P4 HR Org Offline Import
+
+on:
+  pull_request:
+    paths:
+      - 'src/EIMS.HrImport/**'
+      - 'tools/EIMS.P4.HrImportCli/**'
+      - 'tools/EIMS.P4.ContractVerifier/**'
+      - 'tests/EIMS.HrImport.ContractTests/**'
+      - 'tests/fixtures/p4/**'
+      - 'recovery/p4/**'
+      - '.github/workflows/p4-hr-org-offline-import.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'src/EIMS.HrImport/**'
+      - 'tools/EIMS.P4.HrImportCli/**'
+      - 'tools/EIMS.P4.ContractVerifier/**'
+      - 'tests/EIMS.HrImport.ContractTests/**'
+      - 'tests/fixtures/p4/**'
+      - 'recovery/p4/**'
+      - '.github/workflows/p4-hr-org-offline-import.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-test-and-exercise-cli:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10.0.302
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.302'
+
+      - name: Show SDK
+        shell: pwsh
+        run: dotnet --version
+
+      - name: Build P4 contract tests
+        shell: pwsh
+        run: dotnet build .\tests\EIMS.HrImport.ContractTests\EIMS.HrImport.ContractTests.csproj -c Release
+
+      - name: Run P4 contract tests
+        shell: pwsh
+        run: dotnet run --project .\tests\EIMS.HrImport.ContractTests\EIMS.HrImport.ContractTests.csproj -c Release --no-build
+
+      - name: Build executable CLI
+        shell: pwsh
+        run: dotnet build .\tools\EIMS.P4.HrImportCli\EIMS.P4.HrImportCli.csproj -c Release
+
+      - name: Exercise validate CLI on synthetic export
+        shell: pwsh
+        run: dotnet run --project .\tools\EIMS.P4.HrImportCli\EIMS.P4.HrImportCli.csproj -c Release --no-build -- validate .\tests\fixtures\p4\hr-org-incoming.synthetic.csv
+
+      - name: Exercise reconciliation plan CLI on synthetic snapshots
+        shell: pwsh
+        run: dotnet run --project .\tools\EIMS.P4.HrImportCli\EIMS.P4.HrImportCli.csproj -c Release --no-build -- plan .\tests\fixtures\p4\hr-org-incoming.synthetic.csv .\tests\fixtures\p4\hr-org-current.synthetic.csv
+
+      - name: Build P4 contract verifier
+        shell: pwsh
+        run: dotnet build .\tools\EIMS.P4.ContractVerifier\EIMS.P4.ContractVerifier.csproj -c Release
+
+      - name: Verify machine-readable P4 contract
+        shell: pwsh
+        run: dotnet run --project .\tools\EIMS.P4.ContractVerifier\EIMS.P4.ContractVerifier.csproj -c Release --no-build -- .\recovery\p4\P4_HR_ORG_OFFLINE_IMPORT_CONTRACT_v1.0.json

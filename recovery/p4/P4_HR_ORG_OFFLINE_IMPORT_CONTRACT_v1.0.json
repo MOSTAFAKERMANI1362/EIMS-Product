@@ -1,0 +1,100 @@
+{
+  "schema": "EIMS-P4-HR-ORG-OFFLINE-IMPORT-1.0",
+  "artifactIdentity": "P4_HR_ORG_OFFLINE_IMPORT_CONTRACT_v1.0",
+  "status": "PILOT_CANONICAL_IMPORT_CONTRACT",
+  "sourceSystem": "ORACLE_HR_OFFLINE_EXPORT",
+  "liveOracleDependency": false,
+  "canonicalExchange": {
+    "format": "UTF-8 CSV",
+    "excelDirectIngestion": false,
+    "excelPolicy": "Excel or Oracle exports must be transformed to the canonical CSV contract before ingestion.",
+    "importMode": "FULL_SNAPSHOT",
+    "schemaVersion": "EIMS-HR-ORG-OFFLINE-1.0"
+  },
+  "columns": [
+    "PersonId",
+    "EmployeeNumber",
+    "NetworkAccount",
+    "DisplayName",
+    "OrgUnitCode",
+    "OrgUnitName",
+    "ManagerPersonId",
+    "EmploymentStatus",
+    "EffectiveFrom"
+  ],
+  "canonicalEmploymentStatus": ["ACTIVE", "INACTIVE"],
+  "privacy": {
+    "dataMinimizationRequired": true,
+    "prohibitedFields": [
+      "NationalId",
+      "Salary",
+      "PersonalPhone",
+      "PersonalEmail",
+      "DateOfBirth",
+      "BankAccount",
+      "MedicalData"
+    ],
+    "realPersonnelDataAllowedInRepository": false,
+    "validationOutputMayEchoRawRowValues": false
+  },
+  "identityIntegrity": {
+    "uniquePersonId": true,
+    "uniqueEmployeeNumber": true,
+    "uniqueNetworkAccountCaseInsensitive": true,
+    "networkAccountFormat": "DOMAIN\\user",
+    "networkAccountRebindDifferentPerson": "BLOCK",
+    "employeeNumberRebindDifferentPerson": "BLOCK"
+  },
+  "organizationIntegrity": {
+    "managerSelfReferenceAllowed": false,
+    "managerMustResolveInPilotFullSnapshot": true,
+    "managerGraphCyclesAllowed": false,
+    "orgUnitCodeConflictingNamesAllowed": false
+  },
+  "lifecycle": {
+    "uploadDirectlyMutatesDirectory": false,
+    "phases": [
+      "RECEIVED",
+      "VALIDATED",
+      "RECONCILED",
+      "APPROVED",
+      "ACTIVATED"
+    ],
+    "approvalRequiredBeforeActivation": true,
+    "absenceFromSnapshotMeansDeactivation": false,
+    "deactivationRequiresExplicitInactiveStatus": true,
+    "reactivationRequiresExplicitActiveStatus": true,
+    "hardDeletePersonAllowed": false
+  },
+  "rbacBoundary": {
+    "hrImportMayGrantRole": false,
+    "hrImportMayGrantScope": false,
+    "jobTitleMayAutomaticallyGrantRole": false,
+    "orgUnitMayAutomaticallyGrantRole": false,
+    "output": [
+      "PersonDirectoryCandidate",
+      "OrganizationCandidate",
+      "NetworkAccountBindingCandidate"
+    ],
+    "roleAssignmentAuthority": "P3_WINDOWS_IDENTITY_RBAC"
+  },
+  "evidence": {
+    "fileSha256Required": true,
+    "batchIdRequired": true,
+    "schemaVersionRequired": true,
+    "sourceSystemRequired": true,
+    "nonSensitiveIssueCodesRequired": true
+  },
+  "activationPersistence": {
+    "target": "P2_PERSISTENCE_BOUND_DIRECTORY_ADAPTER",
+    "status": "TBD_AFTER_P2_ORACLE_PHYSICAL_BINDING",
+    "atomicBatchActivationRequired": true
+  },
+  "implementation": {
+    "coreProject": "src/EIMS.HrImport",
+    "cliProject": "tools/EIMS.P4.HrImportCli",
+    "testProject": "tests/EIMS.HrImport.ContractTests",
+    "sdk": "10.0.302",
+    "minimumContractTests": 26
+  }
+}

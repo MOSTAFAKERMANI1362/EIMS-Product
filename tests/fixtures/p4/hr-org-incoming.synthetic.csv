@@ -1,0 +1,4 @@
+PersonId,EmployeeNumber,NetworkAccount,DisplayName,OrgUnitCode,OrgUnitName,ManagerPersonId,EmploymentStatus,EffectiveFrom
+P-SYN-001,E-SYN-001,LAB\manager,مدیر آزمایشی,RND,تحقیق و توسعه,,ACTIVE,2026-09-01
+P-SYN-002,E-SYN-002,LAB\user2,کاربر آزمایشی شماره دو,RND,تحقیق و توسعه,P-SYN-001,ACTIVE,2026-09-01
+P-SYN-003,E-SYN-003,LAB\user3,کاربر آزمایشی سه,RND,تحقیق و توسعه,P-SYN-001,ACTIVE,2026-09-14
