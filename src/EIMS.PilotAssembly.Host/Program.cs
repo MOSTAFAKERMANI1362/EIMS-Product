@@ -1,0 +1,103 @@
+using EIMS.PilotAssembly.Core;
+
+var builder = WebApplication.CreateBuilder(args);
+builder.WebHost.UseIISIntegration();
+builder.Services.AddSingleton<ICommandGateway, FailClosedCommandGateway>();
+
+var app = builder.Build();
+
+PilotBindingSnapshot Snapshot()
+{
+    string? Get(string key) => app.Configuration[key];
+    bool Flag(string key) => bool.TryParse(Get(key), out var v) && v;
+    var p4Path = Get("Pilot:P4:PackagePath");
+    if (!string.IsNullOrWhiteSpace(p4Path) && !Path.IsPathRooted(p4Path))
+        p4Path = Path.GetFullPath(Path.Combine(app.Environment.ContentRootPath, p4Path));
+
+    return new PilotBindingSnapshot(
+        Flag("Pilot:P1Authority:RuntimeBound"),
+        Flag("Pilot:P1Authority:ContractTestsPassed"),
+        Get("Pilot:P1Authority:PackagePath"),
+        Get("Pilot:Oracle:Version"),
+        Get("Pilot:Oracle:Provider"),
+        Get("Pilot:Oracle:ConnectionMode"),
+        Get("Pilot:Oracle:ServiceAccount"),
+        Get("Pilot:Oracle:SchemaOwner"),
+        Flag("Pilot:Oracle:LiveConnectionValidated"),
+        Get("Pilot:WindowsIdentity:HostingMode") ?? "",
+        Flag("Pilot:WindowsIdentity:RequireAuthenticatedUser"),
+        Flag("Pilot:WindowsIdentity:TrustClientIdentityHeaders"),
+        Flag("Pilot:WindowsIdentity:LiveValidated"),
+        Flag("Pilot:Infrastructure:WindowsServerVmProvisioned"),
+        Flag("Pilot:Transport:TlsCertificateConfigured"),
+        Flag("Pilot:Transport:TlsHandshakeValidated"),
+        p4Path,
+        Get("Pilot:P4:ExpectedSha256") ?? PilotBaseline.P4ExpectedSha256,
+        Flag("Pilot:P4:RealExportReconciled"),
+        Flag("Pilot:Evidence:ConcurrencyIdempotencyValidated"),
+        Flag("Pilot:Evidence:AuditOutboxAtomicityValidated"),
+        Flag("Pilot:Evidence:BackupRestoreValidated"),
+        Flag("Pilot:Evidence:MonitoringValidated"));
+}
+
+app.MapGet("/health", () => Results.Ok(new
+{
+    status = "Healthy",
+    assembly = PilotBaseline.Version,
+    productBaseline = PilotBaseline.ProductBaseline,
+    productSha256 = PilotBaseline.ProductSha256,
+    serverAuthorityBoundary = true,
+    domainCommandAuthorityBound = false
+}));
+
+app.MapGet("/api/pilot/readiness", () =>
+{
+    var gates = PilotReadinessEvaluator.Evaluate(Snapshot());
+    return Results.Ok(new
+    {
+        ready = PilotReadinessEvaluator.IsNetworkPilotReady(gates),
+        gates
+    });
+});
+
+app.MapGet("/api/session/me", (HttpContext ctx) =>
+{
+    var networkName = IdentitySourcePolicy.GetAuthenticatedNetworkName(ctx.User);
+    return networkName is null
+        ? Results.Json(new { code = "P5_WINDOWS_IDENTITY_REQUIRED", message = "Authenticated Windows identity is required." }, statusCode: 401)
+        : Results.Ok(new { networkIdentity = networkName, identitySource = "WINDOWS_PRINCIPAL", clientIdentityHeadersTrusted = false });
+});
+
+app.MapPost("/api/authority/check", (HttpContext ctx) =>
+{
+    var networkName = IdentitySourcePolicy.GetAuthenticatedNetworkName(ctx.User);
+    if (networkName is null)
+        return Results.Json(new { code = "P5_WINDOWS_IDENTITY_REQUIRED" }, statusCode: 401);
+    return Results.Json(new
+    {
+        code = "P5_AUTHORITY_RUNTIME_NOT_BOUND",
+        allowed = false,
+        message = "P1 authority source/runtime must be physically composed before authority checks can return ALLOW."
+    }, statusCode: 503);
+});
+
+app.MapPost("/api/commands/{**command}", async (string command, HttpContext ctx, ICommandGateway gateway, CancellationToken ct) =>
+{
+    var networkName = IdentitySourcePolicy.GetAuthenticatedNetworkName(ctx.User);
+    if (networkName is null)
+        return Results.Json(new { code = "P5_WINDOWS_IDENTITY_REQUIRED", stateMutated = false }, statusCode: 401);
+
+    string rawBody;
+    using (var reader = new StreamReader(ctx.Request.Body)) rawBody = await reader.ReadToEndAsync(ct);
+    var correlationId = ctx.Request.Headers["X-EIMS-Correlation-Id"].FirstOrDefault();
+    if (string.IsNullOrWhiteSpace(correlationId)) correlationId = Guid.NewGuid().ToString("D");
+    long? expectedVersion = null;
+    var ifMatch = ctx.Request.Headers.IfMatch.FirstOrDefault()?.Trim('"');
+    if (long.TryParse(ifMatch, out var parsed)) expectedVersion = parsed;
+    var idempotencyKey = ctx.Request.Headers["Idempotency-Key"].FirstOrDefault();
+
+    var result = await gateway.ExecuteAsync(new CommandAttempt(command, networkName, correlationId, expectedVersion, idempotencyKey, rawBody), ct);
+    return Results.Json(new { result.Code, result.Message, result.StateMutated, correlationId }, statusCode: result.HttpStatus);
+});
+
+app.Run();
