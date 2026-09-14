@@ -1,0 +1,64 @@
+{
+  "schema": "EIMS-P1-RECOVERY-WAVE4-G03-MUTATION-REBASELINE-1.0",
+  "status": "APPROVED_REBASELINE_FOR_P1_MUTATION_BINDING",
+  "decisionClass": "RECOVERY_REBASELINE_ACCEPTANCE",
+  "sourceDecision": {
+    "acrId": "ACR-P0-003",
+    "decisionClass": "POST_FREEZE_ARCHITECTURE_DECISION",
+    "historicalOriginalMutationCatalogRecovered": false
+  },
+  "frozenProduct": {
+    "file": "EIMS_v6.360_WORKLIST_UX_ROLE_SELECTOR_CLEANUP.html",
+    "sha256": "057a224fa55e6ee17d128c41c86f3410206d7246723c35872f57757329c4e98a",
+    "modifiedByThisRebaseline": false
+  },
+  "acceptedMutationContracts": [
+    {
+      "command": "needs.submit-g03",
+      "fromState": "DRAFT",
+      "toState": "PENDING_G03_REVIEW",
+      "reviewStatus": "PENDING",
+      "workRoutingRole": "NEED_REVIEWER",
+      "versionDelta": 1,
+      "eventType": "NeedSubmittedForG03Review.v1",
+      "decisionRecordRequired": false
+    },
+    {
+      "command": "needs.g03-decision",
+      "outcome": "APPROVE",
+      "fromState": "PENDING_G03_REVIEW",
+      "toState": "READY_FOR_IDEATION",
+      "reviewStatus": "APPROVED",
+      "workRoutingRole": "IDEA_OWNER",
+      "versionDelta": 1,
+      "eventType": "NeedApprovedForIdeation.v1",
+      "decisionRecordRequired": true
+    },
+    {
+      "command": "needs.g03-decision",
+      "outcome": "RETURN",
+      "fromState": "PENDING_G03_REVIEW",
+      "toState": "DRAFT",
+      "reviewStatus": "RETURNED",
+      "workRoutingRole": "NEED_OWNER",
+      "versionDelta": 1,
+      "eventType": "NeedReturnedFromG03Review.v1",
+      "decisionRecordRequired": true,
+      "returnNoteRequired": true
+    }
+  ],
+  "runtimeSafety": {
+    "mutationContractRecoveredForAcceptedG03Commands": true,
+    "onlyAcceptedG03CommandsPromoted": true,
+    "workRoutingRoleHasAuthorizationEffect": false,
+    "clientMayOverrideStateReviewRoutingOrEvent": false,
+    "ownerPersonIdAndScopePreserved": true,
+    "decisionAuthorityStampedServerSide": true,
+    "decisionHistoryAppendOnly": true,
+    "atomicStateDecisionAuditOutboxIdempotency": true,
+    "p5CommandGatewayBound": false,
+    "physicalOracleReadyClaimed": false,
+    "liveWindowsDomainReadyClaimed": false,
+    "networkPilotReadyClaimed": false
+  }
+}
