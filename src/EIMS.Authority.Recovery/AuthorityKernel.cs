@@ -3,7 +3,10 @@ using System.Text;
 
 namespace EIMS.Authority.Recovery;
 
-public sealed record MutationPlan(AggregateSnapshot After, string EventName);
+public sealed record MutationPlan(
+    AggregateSnapshot After,
+    string EventName,
+    IReadOnlyCollection<DecisionIntent>? DecisionIntents = null);
 
 public interface ICommandMutationPlanner
 {
@@ -106,6 +109,9 @@ public sealed class AuthorityKernel(
         if (!string.Equals(plan.After.AggregateId, aggregate.AggregateId, StringComparison.Ordinal))
             return AuthorityResult.Deny(500, "P1_MUTATION_AGGREGATE_MISMATCH", command.CorrelationId);
 
+        if (string.IsNullOrWhiteSpace(plan.EventName))
+            return AuthorityResult.Deny(500, "P1_MUTATION_EVENT_INVALID", command.CorrelationId);
+
         var now = DateTimeOffset.UtcNow;
         var audit = new AuditEnvelope(
             $"AUD-{Guid.NewGuid():N}",
@@ -127,10 +133,24 @@ public sealed class AuthorityKernel(
             plan.After.Version,
             command.CorrelationId,
             now);
+        var decisions = (plan.DecisionIntents ?? Array.Empty<DecisionIntent>())
+            .Select(intent => new DomainDecisionEnvelope(
+                $"DEC-{Guid.NewGuid():N}",
+                intent.DecisionType,
+                intent.Outcome,
+                aggregate.AggregateId,
+                plan.After.Version,
+                actor.PersonId,
+                actor.AssignmentId,
+                now,
+                command.CorrelationId,
+                intent.Note,
+                intent.Facts))
+            .ToArray();
 
         return await store.CommitAsync(
             new MutationRequest(command, actor, aggregate, policy, fingerprint),
-            new MutationCommit(plan.After, audit, outbox),
+            new MutationCommit(plan.After, audit, outbox, decisions),
             cancellationToken);
     }
 
