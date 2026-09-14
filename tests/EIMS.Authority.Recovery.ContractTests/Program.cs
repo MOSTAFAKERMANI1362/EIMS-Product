@@ -2,7 +2,7 @@ using EIMS.Authority.Recovery;
 
 var tests = new List<(string Name, Func<Task> Run)>
 {
-    ("P1R-CT-01 identity required", IdentityRequired),
+    ("P1R-CT-01 identity and assignment required", IdentityRequired),
     ("P1R-CT-02 unknown command denied", UnknownCommandDenied),
     ("P1R-CT-03 recovered product catalog remains fail closed", ProductCatalogFailsClosed),
     ("P1R-CT-04 role denied", RoleDenied),
@@ -10,14 +10,17 @@ var tests = new List<(string Name, Func<Task> Run)>
     ("P1R-CT-06 aggregate not found", AggregateNotFound),
     ("P1R-CT-07 optimistic version conflict", VersionConflict),
     ("P1R-CT-08 invalid state denied", InvalidStateDenied),
-    ("P1R-CT-09 SoD self completion denied", SodSelfCompletionDenied),
-    ("P1R-CT-10 rule failure denied", RuleFailureDenied),
-    ("P1R-CT-11 atomic commit writes state audit outbox idempotency", AtomicCommit),
-    ("P1R-CT-12 exact idempotent replay does not mutate", IdempotentReplay),
-    ("P1R-CT-13 idempotency key payload conflict", IdempotencyConflict),
-    ("P1R-CT-14 invalid mutation version denied", InvalidMutationVersion),
-    ("P1R-CT-15 audit authority context retained", AuditContextRetained),
-    ("P1R-CT-16 catalog recovery gap explicit 21 of 28", CatalogGapExplicit)
+    ("P1R-CT-09 execution self completion SoD denied", SodSelfCompletionDenied),
+    ("P1R-CT-10 G04 member final authority SoD denied", SodG04MemberFinalDenied),
+    ("P1R-CT-11 knowledge steward publish SoD denied", SodKnowledgePublishDenied),
+    ("P1R-CT-12 benefit owner reward decision SoD denied", SodRewardDenied),
+    ("P1R-CT-13 rule failure denied", RuleFailureDenied),
+    ("P1R-CT-14 atomic commit writes state audit outbox idempotency", AtomicCommit),
+    ("P1R-CT-15 exact idempotent replay does not mutate", IdempotentReplay),
+    ("P1R-CT-16 idempotency key payload conflict", IdempotencyConflict),
+    ("P1R-CT-17 invalid mutation version denied", InvalidMutationVersion),
+    ("P1R-CT-18 audit authority context retained", AuditContextRetained),
+    ("P1R-CT-19 catalog recovery gap explicit 21 of 28", CatalogGapExplicit)
 };
 
 var passed = 0;
@@ -39,7 +42,7 @@ Console.WriteLine($"RESULT {passed}/{tests.Count} PASS");
 return passed == tests.Count ? 0 : 1;
 
 static AuthorityActor Actor(params string[] roles) =>
-    new("P-001", "LAB\\user", "TEST_PRINCIPAL", roles, new[] { "UNIT:RND" });
+    new("P-001", "LAB\\user", "TEST_PRINCIPAL", "ASG-001", roles, new[] { "UNIT:RND" });
 
 static AuthorityCommand Command(string name = "test.command", long expected = 1, string key = "KEY-1", string body = "{}", string? scope = null) =>
     new(name, "AGG-1", expected, key, "CORR-1", body, scope);
@@ -64,7 +67,7 @@ static InMemoryAuthorityStore Store(string state = "READY", long version = 1, st
 static async Task IdentityRequired()
 {
     var result = await Kernel(Store()).ExecuteAsync(Command(), null);
-    Eq(401, result.HttpStatus); Eq("P1_IDENTITY_REQUIRED", result.Code); False(result.StateMutated);
+    Eq(401, result.HttpStatus); Eq("P1_IDENTITY_ASSIGNMENT_REQUIRED", result.Code); False(result.StateMutated);
 }
 
 static async Task UnknownCommandDenied()
@@ -75,8 +78,7 @@ static async Task UnknownCommandDenied()
 
 static async Task ProductCatalogFailsClosed()
 {
-    var store = Store();
-    var kernel = new AuthorityKernel(new RecoveredApiCommandCatalog(), store, new PassRuleEvaluator(), new BaselineSodEvaluator(), new IncrementPlanner());
+    var kernel = new AuthorityKernel(new RecoveredApiCommandCatalog(), Store(), new PassRuleEvaluator(), new BaselineSodEvaluator(), new IncrementPlanner());
     var result = await kernel.ExecuteAsync(Command("g04.final-decision"), Actor("IDEA_DECISION"));
     Eq(503, result.HttpStatus); Eq("P1_STATE_CONTRACT_NOT_RECOVERED", result.Code); False(result.StateMutated);
 }
@@ -95,8 +97,7 @@ static async Task ScopeDenied()
 
 static async Task AggregateNotFound()
 {
-    var store = new InMemoryAuthorityStore();
-    var result = await Kernel(store).ExecuteAsync(Command(), Actor("TEST_ROLE"));
+    var result = await Kernel(new InMemoryAuthorityStore()).ExecuteAsync(Command(), Actor("TEST_ROLE"));
     Eq(404, result.HttpStatus); Eq("P1_AGGREGATE_NOT_FOUND", result.Code);
 }
 
@@ -115,9 +116,33 @@ static async Task InvalidStateDenied()
 static async Task SodSelfCompletionDenied()
 {
     var policy = TestPolicy("executions.completion-review", "EXECUTION_COMPLETION_REVIEWER");
-    var actor = new AuthorityActor("P-001", "LAB\\user", "TEST_PRINCIPAL", new[] { "EXECUTION_COMPLETION_REVIEWER", "EXECUTION_OWNER" }, new[] { "UNIT:RND" });
+    var actor = new AuthorityActor("P-001", "LAB\\user", "TEST_PRINCIPAL", "ASG-001", new[] { "EXECUTION_COMPLETION_REVIEWER", "EXECUTION_OWNER" }, new[] { "UNIT:RND" });
     var result = await Kernel(Store(ownerPerson: "P-001"), policy).ExecuteAsync(Command("executions.completion-review"), actor);
     Eq(403, result.HttpStatus); Eq("SOD_EXECUTION_SELF_COMPLETION", result.Code); False(result.StateMutated);
+}
+
+static async Task SodG04MemberFinalDenied()
+{
+    var policy = TestPolicy("g04.final-decision", "IDEA_DECISION");
+    var actor = new AuthorityActor("P-001", "LAB\\user", "TEST_PRINCIPAL", "ASG-001", new[] { "IDEA_DECISION", "G04_COMMITTEE_MEMBER" }, new[] { "UNIT:RND" });
+    var result = await Kernel(Store(), policy).ExecuteAsync(Command("g04.final-decision"), actor);
+    Eq(403, result.HttpStatus); Eq("SOD_G04_MEMBER_NOT_FINAL_AUTHORITY", result.Code);
+}
+
+static async Task SodKnowledgePublishDenied()
+{
+    var policy = TestPolicy("knowledge.publish", "KNOWLEDGE_PUBLISHER");
+    var actor = new AuthorityActor("P-001", "LAB\\user", "TEST_PRINCIPAL", "ASG-001", new[] { "KNOWLEDGE_PUBLISHER", "KNOWLEDGE_STEWARD" }, new[] { "UNIT:RND" });
+    var result = await Kernel(Store(), policy).ExecuteAsync(Command("knowledge.publish"), actor);
+    Eq(403, result.HttpStatus); Eq("SOD_KNOWLEDGE_STEWARD_NOT_PUBLISHER", result.Code);
+}
+
+static async Task SodRewardDenied()
+{
+    var policy = TestPolicy("rewards.decide", "REWARD_COMMITTEE");
+    var actor = new AuthorityActor("P-001", "LAB\\user", "TEST_PRINCIPAL", "ASG-001", new[] { "REWARD_COMMITTEE", "BENEFIT_OWNER" }, new[] { "UNIT:RND" });
+    var result = await Kernel(Store(), policy).ExecuteAsync(Command("rewards.decide"), actor);
+    Eq(403, result.HttpStatus); Eq("SOD_BENEFIT_OWNER_NOT_REWARD_COMMITTEE", result.Code);
 }
 
 static async Task RuleFailureDenied()
@@ -130,7 +155,7 @@ static async Task AtomicCommit()
 {
     var store = Store();
     var result = await Kernel(store).ExecuteAsync(Command(), Actor("TEST_ROLE"));
-    Eq(200, result.HttpStatus); True(result.Allowed); True(result.StateMutated); Eq(2L, result.NewVersion);
+    Eq(200, result.HttpStatus); True(result.Allowed); True(result.StateMutated); Eq(2L, result.NewVersion ?? -1L);
     Eq(2L, (await store.GetAggregateAsync("AGG-1"))!.Version);
     Eq(1, store.Audits.Count); Eq(1, store.Outbox.Count); Eq(1, store.Idempotency.Count);
 }
@@ -141,9 +166,9 @@ static async Task IdempotentReplay()
     var kernel = Kernel(store);
     var first = await kernel.ExecuteAsync(Command(), Actor("TEST_ROLE"));
     var second = await kernel.ExecuteAsync(Command(), Actor("TEST_ROLE"));
-    True(first.StateMutated); True(second.IdempotentReplay); False(second.StateMutated);
+    True(first.StateMutated); True(second.IdempotentReplay); False(second.StateMutated); Eq(2L, second.NewVersion ?? -1L);
     Eq(2L, (await store.GetAggregateAsync("AGG-1"))!.Version);
-    Eq(1, store.Audits.Count); Eq(1, store.Outbox.Count);
+    Eq(1, store.Audits.Count); Eq(1, store.Outbox.Count); Eq(1, store.Idempotency.Count);
 }
 
 static async Task IdempotencyConflict()
@@ -152,12 +177,7 @@ static async Task IdempotencyConflict()
     var kernel = Kernel(store);
     await kernel.ExecuteAsync(Command(body: "{\"x\":1}"), Actor("TEST_ROLE"));
     var result = await kernel.ExecuteAsync(Command(expected: 2, body: "{\"x\":2}"), Actor("TEST_ROLE"));
-    Eq(409, result.HttpStatus);
-    // Version check precedes replay lookup by design, so use a fresh store record to prove key/payload conflict.
-    var conflictStore = Store();
-    conflictStore.SeedIdempotency(new IdempotencyRecord("test.command", "AGG-1", "KEY-1", "DIFFERENT", AuthorityResult.Deny(409, "OLD", "OLD")));
-    var conflict = await Kernel(conflictStore).ExecuteAsync(Command(), Actor("TEST_ROLE"));
-    Eq(409, conflict.HttpStatus); Eq("P1_IDEMPOTENCY_CONFLICT", conflict.Code);
+    Eq(409, result.HttpStatus); Eq("P1_IDEMPOTENCY_CONFLICT", result.Code); False(result.StateMutated);
 }
 
 static async Task InvalidMutationVersion()
@@ -171,8 +191,8 @@ static async Task AuditContextRetained()
     var store = Store();
     await Kernel(store).ExecuteAsync(Command(), Actor("TEST_ROLE"));
     var audit = store.Audits.Single();
-    Eq("P-001", audit.PersonId); Eq("LAB\\user", audit.NetworkIdentity); Eq("TEST_PRINCIPAL", audit.IdentitySource);
-    True(audit.Roles.Contains("TEST_ROLE")); Eq("TEST-RULESET-1.0", audit.RuleSet); Eq("CORR-1", audit.CorrelationId);
+    Eq("P-001", audit.PersonId); Eq("LAB\\user", audit.NetworkIdentity); Eq("TEST_PRINCIPAL", audit.IdentitySource); Eq("ASG-001", audit.Assignment);
+    True(audit.Roles.Contains("TEST_ROLE")); Eq("TEST-RULESET-1.0", audit.RuleSet); Eq("CORR-1", audit.CorrelationId); Eq(2L, audit.EntityVersion);
 }
 
 static Task CatalogGapExplicit()
@@ -232,16 +252,22 @@ sealed class InMemoryAuthorityStore : IAuthorityStore
         foreach (var a in aggregates) _aggregates[a.AggregateId] = a;
     }
 
-    public void SeedIdempotency(IdempotencyRecord record) => _idempotency[Key(record.CommandName, record.AggregateId, record.IdempotencyKey)] = record;
-
     public ValueTask<AggregateSnapshot?> GetAggregateAsync(string aggregateId, CancellationToken cancellationToken = default)
     {
-        lock (_sync) return ValueTask.FromResult(_aggregates.TryGetValue(aggregateId, out var a) ? a : null);
+        lock (_sync)
+        {
+            AggregateSnapshot? value = _aggregates.TryGetValue(aggregateId, out var a) ? a : null;
+            return ValueTask.FromResult(value);
+        }
     }
 
     public ValueTask<IdempotencyRecord?> GetIdempotencyAsync(string commandName, string aggregateId, string idempotencyKey, CancellationToken cancellationToken = default)
     {
-        lock (_sync) return ValueTask.FromResult(_idempotency.TryGetValue(Key(commandName, aggregateId, idempotencyKey), out var r) ? r : null);
+        lock (_sync)
+        {
+            IdempotencyRecord? value = _idempotency.TryGetValue(Key(commandName, aggregateId, idempotencyKey), out var r) ? r : null;
+            return ValueTask.FromResult(value);
+        }
     }
 
     public ValueTask<AuthorityResult> CommitAsync(MutationRequest request, MutationCommit commit, CancellationToken cancellationToken = default)
