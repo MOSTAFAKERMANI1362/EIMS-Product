@@ -1,0 +1,42 @@
+{
+  "configVersion": "1.0",
+  "productCompatibility": "EIMS-Commercial-1.x",
+  "effectiveFrom": null,
+  "changeReference": "EXAMPLE-ONLY",
+  "organization": {
+    "organizationId": "DEMO_ORG",
+    "displayName": "Demo Organization",
+    "branding": {
+      "productLabel": "EIMS",
+      "logoAssetRef": null
+    }
+  },
+  "locale": {
+    "language": "fa-IR",
+    "calendar": "PERSIAN",
+    "currencyLabel": "میلیون ریال"
+  },
+  "features": {
+    "localAiAssistant": false,
+    "knowledgeModule": true,
+    "rewardModule": false
+  },
+  "portfolios": [
+    {
+      "portfolioId": "INNOVATION",
+      "name": "سبد نوآوری",
+      "active": true
+    }
+  ],
+  "roleMappings": [
+    {
+      "sourceRoleKey": "DEMO_RND_MANAGER",
+      "eimsRole": "PORTFOLIO_MANAGER",
+      "scopeMode": "ORGANIZATION"
+    }
+  ],
+  "notificationPolicy": {
+    "emailEnabled": false,
+    "inAppEnabled": true
+  }
+}
