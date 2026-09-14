@@ -38,7 +38,13 @@ var tests = new List<(string Name, Func<Task> Run)>
     ("P1W4-CT-23 duplicate decision id is rejected", DuplicateDecisionIdDenied),
     ("P1W4-CT-24 forged decision authority is rejected", DecisionAuthorityMismatchDenied),
     ("P1W4-CT-25 non-G03 Product commands remain fail closed", NonG03RemainsClosed),
-    ("P1W4-CT-26 P5 command gateway remains fail closed", P5StillFailClosed)
+    ("P1W4-CT-26 P5 command gateway remains fail closed", P5StillFailClosed),
+    ("P1W4-CT-27 authoritative aggregate scope is mandatory", AggregateScopeRequired),
+    ("P1W4-CT-28 actor cannot mutate outside authoritative aggregate scope", AggregateScopeDenied),
+    ("P1W4-CT-29 requested scope must match authoritative aggregate scope", RequestedScopeMismatchDenied),
+    ("P1W4-CT-30 forged decision timestamp is rejected by persistence", DecisionTimestampMismatchDenied),
+    ("P1W4-CT-31 persisted decision facts are immutable snapshots", DecisionFactsImmutableSnapshot),
+    ("P1W4-CT-32 P2 contract explicitly requires decision atomicity", PersistenceContractDecisionAtomicityExplicit)
 };
 
 var passed = 0;
@@ -122,6 +128,7 @@ async Task ApproveDecisionStamp()
     Eq("G03ReviewDecision", d.DecisionType); Eq("APPROVE", d.Outcome); Eq("NEED-1", d.AggregateId); Eq(3L, d.EntityVersion);
     Eq("P-REVIEW", d.PersonId); Eq("ASG-REVIEW", d.AssignmentId); Eq("CORR-APPROVE", d.CorrelationId);
     True(d.DecisionId.StartsWith("DEC-", StringComparison.Ordinal)); True(d.Timestamp <= DateTimeOffset.UtcNow);
+    Eq(store.AuditLog.Single().Timestamp, d.Timestamp); Eq(store.Outbox.Single().OccurredAt, d.Timestamp);
 }
 
 async Task ApproveDecisionFacts()
@@ -266,6 +273,71 @@ async Task P5StillFailClosed()
     Eq(503, r.HttpStatus); Eq("P5_COMMAND_GATEWAY_NOT_BOUND", r.Code); False(r.StateMutated);
 }
 
+async Task AggregateScopeRequired()
+{
+    var store = Store(DraftNeed() with { Scope = null });
+    var r = await Kernel(store).ExecuteAsync(Submit(), Owner());
+    Eq(503, r.HttpStatus); Eq("P1_AGGREGATE_SCOPE_REQUIRED", r.Code); False(r.StateMutated);
+}
+
+async Task AggregateScopeDenied()
+{
+    var store = Store(DraftNeed());
+    var actor = new AuthorityActor("P-OWNER","DOMAIN\\owner","WINDOWS_PRINCIPAL","ASG-OWNER",new[]{"NEED_OWNER"},new[]{"UNIT:FIN"});
+    var command = Submit() with { RequestedScope = null };
+    var r = await Kernel(store).ExecuteAsync(command, actor);
+    Eq(403, r.HttpStatus); Eq("P1_ROLE_SCOPE_DENIED", r.Code); False(r.StateMutated);
+}
+
+async Task RequestedScopeMismatchDenied()
+{
+    var store = Store(DraftNeed());
+    var actor = new AuthorityActor("P-OWNER","DOMAIN\\owner","WINDOWS_PRINCIPAL","ASG-OWNER",new[]{"NEED_OWNER"},new[]{"UNIT:RND","UNIT:FIN"});
+    var command = Submit() with { RequestedScope = "UNIT:FIN" };
+    var r = await Kernel(store).ExecuteAsync(command, actor);
+    Eq(403, r.HttpStatus); Eq("P1_ROLE_SCOPE_DENIED", r.Code); False(r.StateMutated);
+}
+
+async Task DecisionTimestampMismatchDenied()
+{
+    var before = PendingNeed(); var store = Store(before); var actor = Reviewer();
+    var cmd = new AuthorityCommand("test","NEED-1",2,"KT","CT","{}");
+    var p = new CommandPolicy("test",new[]{"NEED_REVIEWER"},new[]{"PENDING_G03_REVIEW"},"R","E");
+    var commit = Commit(cmd,actor,before,"DEC-T");
+    commit = commit with { Decisions = new[]{commit.Decisions!.Single() with { Timestamp = commit.Audit.Timestamp.AddSeconds(1) }} };
+    var r = await store.CommitAsync(Request(cmd,actor,before,p),commit);
+    Eq(500, r.HttpStatus); Eq("P2_DECISION_TIMESTAMP_MISMATCH", r.Code); Eq(0, store.DomainDecisions.Count);
+}
+
+async Task DecisionFactsImmutableSnapshot()
+{
+    var store = Store(PendingNeed());
+    await Kernel(store).ExecuteAsync(Approve(), Reviewer());
+    var facts = store.DomainDecisions.Single().Facts!;
+    var collection = (ICollection<KeyValuePair<string,string>>)facts;
+    True(collection.IsReadOnly);
+    var blocked = false;
+    try
+    {
+        ((IDictionary<string,string>)facts)["definitionComplete"] = "NO";
+    }
+    catch (NotSupportedException)
+    {
+        blocked = true;
+    }
+    True(blocked);
+    Eq("YES", store.DomainDecisions.Single().Facts!["definitionComplete"]);
+}
+
+Task PersistenceContractDecisionAtomicityExplicit()
+{
+    var contract = PersistenceContractDescriptor.RecoveryBaseline();
+    True(contract.AppendOnlyDecisionHistoryRequired);
+    True(contract.AtomicStateDecisionAuditOutboxIdempotencyRequired);
+    True(contract.IsLogicalContractReady);
+    return Task.CompletedTask;
+}
+
 static AuthorityKernel Kernel(TransactionalAuthorityStore store) =>
     new(new RecoveredApiCommandCatalog(), store, new RecoveredG03RuleEvaluator(), new BaselineSodEvaluator(), new RecoveredG03MutationPlanner());
 
@@ -300,8 +372,8 @@ static MutationCommit Commit(AuthorityCommand c, AuthorityActor a, AggregateSnap
 {
     var after = before with { Version = before.Version + 1 };
     var now = DateTimeOffset.UtcNow;
-    var audit = new AuditEnvelope("AUD-"+before.AggregateId+"-"+decisionId,a.PersonId,a.NetworkIdentity,a.IdentitySource,a.Roles,a.AssignmentId,after.AggregateId,after.Version,"R",now,c.CorrelationId,c.CommandName);
-    var outbox = new OutboxEnvelope("MSG-"+before.AggregateId+"-"+decisionId,"E",after.AggregateId,after.Version,c.CorrelationId,now);
+    var audit = new AuditEnvelope("AUD-"+decisionId,a.PersonId,a.NetworkIdentity,a.IdentitySource,a.Roles,a.AssignmentId,after.AggregateId,after.Version,"R",now,c.CorrelationId,c.CommandName);
+    var outbox = new OutboxEnvelope("MSG-"+decisionId,"E",after.AggregateId,after.Version,c.CorrelationId,now);
     var d = new DomainDecisionEnvelope(decisionId,"G03ReviewDecision","APPROVE",after.AggregateId,after.Version,a.PersonId,a.AssignmentId,now,c.CorrelationId);
     return new MutationCommit(after,audit,outbox,new[]{d});
 }

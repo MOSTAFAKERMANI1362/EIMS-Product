@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using EIMS.Authority.Recovery;
 
 namespace EIMS.Persistence.Recovery;
@@ -17,7 +18,10 @@ public sealed class TransactionalAuthorityStore : IAuthorityStore, IPersistenceE
     {
         Contract = contract ?? PersistenceContractDescriptor.RecoveryBaseline();
         foreach (var aggregate in aggregates)
-            _aggregates[aggregate.AggregateId] = aggregate;
+        {
+            var snapshot = SnapshotAggregate(aggregate);
+            _aggregates[snapshot.AggregateId] = snapshot;
+        }
     }
 
     public PersistenceContractDescriptor Contract { get; }
@@ -49,7 +53,9 @@ public sealed class TransactionalAuthorityStore : IAuthorityStore, IPersistenceE
     {
         cancellationToken.ThrowIfCancellationRequested();
         lock (_sync)
-            return ValueTask.FromResult(_aggregates.TryGetValue(aggregateId, out var aggregate) ? aggregate : null);
+            return ValueTask.FromResult(_aggregates.TryGetValue(aggregateId, out var aggregate)
+                ? SnapshotAggregate(aggregate)
+                : null);
     }
 
     public ValueTask<IdempotencyRecord?> GetIdempotencyAsync(
@@ -120,13 +126,16 @@ public sealed class TransactionalAuthorityStore : IAuthorityStore, IPersistenceE
                     contractError,
                     request.Command.CorrelationId));
 
-            if (_audits.Any(x => string.Equals(x.AuditId, commit.Audit.AuditId, StringComparison.Ordinal)))
+            var audit = SnapshotAudit(commit.Audit);
+            if (_audits.Any(x => string.Equals(x.AuditId, audit.AuditId, StringComparison.Ordinal)))
                 return ValueTask.FromResult(AuthorityResult.Deny(409, "P2_DUPLICATE_AUDIT_ID", request.Command.CorrelationId));
 
             if (_outbox.Any(x => string.Equals(x.MessageId, commit.Outbox.MessageId, StringComparison.Ordinal)))
                 return ValueTask.FromResult(AuthorityResult.Deny(409, "P2_DUPLICATE_OUTBOX_ID", request.Command.CorrelationId));
 
-            var decisions = (commit.Decisions ?? Array.Empty<DomainDecisionEnvelope>()).ToArray();
+            var decisions = (commit.Decisions ?? Array.Empty<DomainDecisionEnvelope>())
+                .Select(SnapshotDecision)
+                .ToArray();
             if (decisions.GroupBy(x => x.DecisionId, StringComparer.Ordinal).Any(g => g.Count() > 1)
                 || decisions.Any(d => _decisions.Any(existing => string.Equals(existing.DecisionId, d.DecisionId, StringComparison.Ordinal))))
                 return ValueTask.FromResult(AuthorityResult.Deny(409, "P2_DUPLICATE_DECISION_ID", request.Command.CorrelationId));
@@ -139,7 +148,7 @@ public sealed class TransactionalAuthorityStore : IAuthorityStore, IPersistenceE
                 IdempotentReplay: false,
                 NewVersion: commit.After.Version,
                 CorrelationId: request.Command.CorrelationId,
-                EmittedEvents: new[] { commit.Outbox.EventName });
+                EmittedEvents: Array.AsReadOnly(new[] { commit.Outbox.EventName }));
 
             var idempotency = new IdempotencyRecord(
                 request.Command.CommandName,
@@ -155,13 +164,13 @@ public sealed class TransactionalAuthorityStore : IAuthorityStore, IPersistenceE
 
             try
             {
-                _aggregates[commit.After.AggregateId] = commit.After;
+                _aggregates[commit.After.AggregateId] = SnapshotAggregate(commit.After);
                 ThrowIf(PersistenceFaultPoint.AfterStateStaged);
 
                 _decisions.AddRange(decisions);
                 ThrowIf(PersistenceFaultPoint.AfterDecisionStaged);
 
-                _audits.Add(commit.Audit);
+                _audits.Add(audit);
                 ThrowIf(PersistenceFaultPoint.AfterAuditStaged);
 
                 _outbox.Add(commit.Outbox);
@@ -215,6 +224,9 @@ public sealed class TransactionalAuthorityStore : IAuthorityStore, IPersistenceE
         if (!string.Equals(commit.Audit.CommandName, request.Command.CommandName, StringComparison.OrdinalIgnoreCase))
             return "P2_AUDIT_COMMAND_MISMATCH";
 
+        if (commit.Outbox.OccurredAt != commit.Audit.Timestamp)
+            return "P2_EVIDENCE_TIMESTAMP_MISMATCH";
+
         foreach (var decision in commit.Decisions ?? Array.Empty<DomainDecisionEnvelope>())
         {
             if (string.IsNullOrWhiteSpace(decision.DecisionId)
@@ -232,9 +244,32 @@ public sealed class TransactionalAuthorityStore : IAuthorityStore, IPersistenceE
             if (!string.Equals(decision.PersonId, request.Actor.PersonId, StringComparison.OrdinalIgnoreCase)
                 || !string.Equals(decision.AssignmentId, request.Actor.AssignmentId, StringComparison.OrdinalIgnoreCase))
                 return "P2_DECISION_AUTHORITY_MISMATCH";
+
+            if (decision.Timestamp != commit.Audit.Timestamp)
+                return "P2_DECISION_TIMESTAMP_MISMATCH";
         }
 
         return null;
+    }
+
+    private static AggregateSnapshot SnapshotAggregate(AggregateSnapshot aggregate) =>
+        aggregate with { RuleFacts = SnapshotFacts(aggregate.RuleFacts) };
+
+    private static AuditEnvelope SnapshotAudit(AuditEnvelope audit) =>
+        audit with { Roles = Array.AsReadOnly(audit.Roles.ToArray()) };
+
+    private static DomainDecisionEnvelope SnapshotDecision(DomainDecisionEnvelope decision) =>
+        decision with { Facts = SnapshotFacts(decision.Facts) };
+
+    private static IReadOnlyDictionary<string, string>? SnapshotFacts(IReadOnlyDictionary<string, string>? facts)
+    {
+        if (facts is null)
+            return null;
+
+        var copy = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var pair in facts)
+            copy[pair.Key] = pair.Value;
+        return new ReadOnlyDictionary<string, string>(copy);
     }
 
     private void ThrowIf(PersistenceFaultPoint point)

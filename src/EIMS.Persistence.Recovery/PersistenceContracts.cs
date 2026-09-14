@@ -59,11 +59,18 @@ public sealed record PersistenceContractDescriptor(
     bool ConnectionSecretsAllowedInContract,
     OracleBindingEvidence OracleBinding)
 {
+    // Wave 4 extends the logical transaction with immutable domain decision history
+    // without changing the historical constructor shape used by prior recovery evidence.
+    public bool AppendOnlyDecisionHistoryRequired => true;
+    public bool AtomicStateDecisionAuditOutboxIdempotencyRequired => AtomicStateAuditOutboxIdempotencyRequired;
+
     public bool IsLogicalContractReady =>
         OptimisticConcurrencyRequired
         && ServerIdempotencyRequired
         && AppendOnlyAuditRequired
+        && AppendOnlyDecisionHistoryRequired
         && AtomicStateAuditOutboxIdempotencyRequired
+        && AtomicStateDecisionAuditOutboxIdempotencyRequired
         && !ConnectionSecretsAllowedInContract;
 
     public bool IsPhysicalOracleReady => IsLogicalContractReady && OracleBinding.IsPhysicalBindingReady;
