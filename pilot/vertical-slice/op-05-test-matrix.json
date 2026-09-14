@@ -1,0 +1,89 @@
+{
+  "version": "1.0",
+  "operation": "OP-05",
+  "path": [
+    "ImprovementSource",
+    "Case",
+    "Need",
+    "Idea",
+    "G04",
+    "Portfolio",
+    "Execution",
+    "Benefit",
+    "Knowledge"
+  ],
+  "mandatoryTests": [
+    {
+      "id": "VS-IDENTITY-01",
+      "name": "Windows identity reaches server and maps to PersonID",
+      "required": true
+    },
+    {
+      "id": "VS-AUTH-01",
+      "name": "Role and Scope are enforced server-side",
+      "required": true
+    },
+    {
+      "id": "VS-AUTH-02",
+      "name": "Unauthorized direct command is rejected without state mutation",
+      "required": true
+    },
+    {
+      "id": "VS-CONC-01",
+      "name": "Stale expectedVersion is rejected",
+      "required": true
+    },
+    {
+      "id": "VS-IDEMP-01",
+      "name": "Idempotency replay does not duplicate side effects",
+      "required": true
+    },
+    {
+      "id": "VS-TX-01",
+      "name": "State Audit and Outbox commit atomically",
+      "required": true
+    },
+    {
+      "id": "VS-G04-01",
+      "name": "Committee vote is separated from final decision authority",
+      "required": true
+    },
+    {
+      "id": "VS-G04-02",
+      "name": "G04 uses frozen idea/evaluation snapshot",
+      "required": true
+    },
+    {
+      "id": "VS-PORT-01",
+      "name": "PortfolioEligibilityService runs automatically after G04 Approved",
+      "required": true
+    },
+    {
+      "id": "VS-ASSIGN-01",
+      "name": "Structured and specialist assessments require valid assignment context",
+      "required": true
+    },
+    {
+      "id": "VS-EXEC-01",
+      "name": "Execution references approved baseline and completion evidence",
+      "required": true
+    },
+    {
+      "id": "VS-BEN-01",
+      "name": "Benefit has baseline target measurement evidence and verification",
+      "required": true
+    },
+    {
+      "id": "VS-KNOW-01",
+      "name": "Knowledge validation/publication separation is preserved",
+      "required": true
+    },
+    {
+      "id": "VS-AI-01",
+      "name": "AI outage/disablement does not block core workflow",
+      "required": true
+    }
+  ],
+  "exitRule": "ALL_REQUIRED_PASS",
+  "allowTestOnlyShortcutForFinalPass": false
+}
