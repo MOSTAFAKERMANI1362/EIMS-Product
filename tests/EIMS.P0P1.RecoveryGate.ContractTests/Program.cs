@@ -2,9 +2,9 @@ using System.Text.Json;
 using EIMS.Authority.Recovery;
 using EIMS.P0.MachineRecovery;
 
-if (args.Length != 3 || !File.Exists(args[0]) || !File.Exists(args[1]) || !File.Exists(args[2]))
+if (args.Length != 4 || !File.Exists(args[0]) || !File.Exists(args[1]) || !File.Exists(args[2]) || !File.Exists(args[3]))
 {
-    Console.Error.WriteLine("Usage: EIMS.P0P1.RecoveryGate.ContractTests <P0-machine-recovery-json> <P1-wave1-state-acceptance-json> <P1-wave2-g03-rule-json>");
+    Console.Error.WriteLine("Usage: EIMS.P0P1.RecoveryGate.ContractTests <P0-machine-recovery-json> <P1-wave1-state-acceptance-json> <P1-wave2-g03-rule-json> <P1-wave3-g03-event-json>");
     return 2;
 }
 
@@ -23,6 +23,11 @@ var accepted = acceptance.GetProperty("acceptedStateContracts").EnumerateArray()
 using var wave2Document = JsonDocument.Parse(File.ReadAllText(args[2]));
 var wave2 = wave2Document.RootElement;
 var wave2Rules = wave2.GetProperty("ruleContracts").EnumerateArray()
+    .ToDictionary(x => x.GetProperty("command").GetString()!, StringComparer.OrdinalIgnoreCase);
+
+using var wave3Document = JsonDocument.Parse(File.ReadAllText(args[3]));
+var wave3 = wave3Document.RootElement;
+var wave3Events = wave3.GetProperty("acceptedEventContracts").EnumerateArray()
     .ToDictionary(x => x.GetProperty("command").GetString()!, StringComparer.OrdinalIgnoreCase);
 
 var runtimeCatalog = new RecoveredApiCommandCatalog();
@@ -89,8 +94,49 @@ var ruleBindingMatches = runtimeCatalog.All.All(policy =>
         && policy.StateContractRecovered;
 });
 Add("P0P1-CT-14", "runtime rule binding matches Wave 2 accepted G03 RuleSets exactly", ruleBindingMatches);
-Add("P0P1-CT-15", "all Product event contracts remain unrecovered", runtimeCatalog.All.All(x => !x.EventContractRecovered && x.EventName == "UNRECOVERED_EVENT_IDENTITY"));
-Add("P0P1-CT-16", "all Product mutation contracts remain unrecovered", runtimeCatalog.All.All(x => !x.MutationContractRecovered));
+
+Add("P0P1-CT-15", "Wave 3 G03 event acceptance is explicit and non-mutating",
+    wave3.GetProperty("status").GetString() == "APPROVED_REBASELINE_FOR_P1_EVENT_BINDING"
+    && wave3.GetProperty("decisionClass").GetString() == "RECOVERY_REBASELINE_ACCEPTANCE"
+    && wave3.GetProperty("sourceDecision").GetProperty("acrId").GetString() == "ACR-P0-002"
+    && wave3.GetProperty("sourceDecision").GetProperty("decisionClass").GetString() == "POST_FREEZE_ARCHITECTURE_DECISION"
+    && wave3.GetProperty("safety").GetProperty("eventContractRecoveredForAcceptedCommands").GetBoolean()
+    && wave3.GetProperty("safety").GetProperty("mutationContractsRemainUnrecovered").GetBoolean()
+    && wave3.GetProperty("safety").GetProperty("doesNotEnableProductMutation").GetBoolean());
+
+Add("P0P1-CT-16", "exactly two G03 event contracts are accepted", wave3Events.Count == RecoveredApiCommandCatalog.Wave3EventBoundCommandCount && wave3Events.Count == 2);
+
+var eventBindingMatches = runtimeCatalog.All.All(policy =>
+{
+    if (!wave3Events.TryGetValue(policy.CommandName, out var item))
+        return !policy.EventContractRecovered && policy.EventBinding is null;
+
+    if (!policy.EventContractRecovered || policy.EventBinding is null || !policy.EventBinding.IsValid || policy.MutationContractRecovered)
+        return false;
+
+    var kind = item.GetProperty("bindingKind").GetString();
+    if (string.Equals(kind, "STATIC", StringComparison.Ordinal))
+    {
+        var expectedEvent = item.GetProperty("eventType").GetString();
+        return string.Equals(policy.EventBinding.Kind, "STATIC", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(policy.ResolveEventName(), expectedEvent, StringComparison.Ordinal);
+    }
+
+    if (!string.Equals(kind, "OUTCOME", StringComparison.Ordinal)
+        || !string.Equals(policy.EventBinding.Kind, "OUTCOME", StringComparison.OrdinalIgnoreCase)
+        || policy.EventBinding.OutcomeEventNames is null)
+        return false;
+
+    var expectedOutcomes = item.GetProperty("outcomeEvents").EnumerateObject()
+        .ToDictionary(x => x.Name, x => x.Value.GetString()!, StringComparer.OrdinalIgnoreCase);
+
+    return expectedOutcomes.Count == policy.EventBinding.OutcomeEventNames.Count
+        && expectedOutcomes.All(x => string.Equals(policy.ResolveEventName(x.Key), x.Value, StringComparison.Ordinal))
+        && policy.ResolveEventName() is null
+        && policy.ResolveEventName("UNKNOWN") is null;
+});
+Add("P0P1-CT-17", "runtime event binding matches Wave 3 accepted G03 contracts exactly", eventBindingMatches);
+Add("P0P1-CT-18", "all Product mutation contracts remain unrecovered", runtimeCatalog.All.All(x => !x.MutationContractRecovered));
 
 var dependencies = new MustNotBeTouchedDependencies();
 var kernel = new AuthorityKernel(runtimeCatalog, dependencies, dependencies, dependencies, dependencies);

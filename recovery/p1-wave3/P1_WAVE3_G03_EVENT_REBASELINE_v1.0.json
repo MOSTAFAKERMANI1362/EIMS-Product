@@ -1,0 +1,61 @@
+{
+  "schema": "EIMS-P1-RECOVERY-WAVE3-G03-EVENT-REBASELINE-1.0",
+  "artifactIdentity": "P1_WAVE3_G03_EVENT_REBASELINE_v1.0",
+  "status": "APPROVED_REBASELINE_FOR_P1_EVENT_BINDING",
+  "decisionClass": "RECOVERY_REBASELINE_ACCEPTANCE",
+  "sourceDecision": {
+    "acrId": "ACR-P0-002",
+    "artifact": "architecture/decisions/ACR-P0-002_G03_EVENT_CONTRACTS_v1.0.json",
+    "decisionClass": "POST_FREEZE_ARCHITECTURE_DECISION",
+    "historicalOriginalEventIdentitiesRecovered": false
+  },
+  "frozenProduct": {
+    "file": "EIMS_v6.360_WORKLIST_UX_ROLE_SELECTOR_CLEANUP.html",
+    "sha256": "057a224fa55e6ee17d128c41c86f3410206d7246723c35872f57757329c4e98a",
+    "modifiedByThisRebaseline": false
+  },
+  "acceptedEventContracts": [
+    {
+      "command": "needs.submit-g03",
+      "bindingKind": "STATIC",
+      "eventType": "NeedSubmittedForG03Review.v1",
+      "allowedStates": ["DRAFT"],
+      "ruleSet": "P1-G03-SUBMIT-REBASELINE-1.0"
+    },
+    {
+      "command": "needs.g03-decision",
+      "bindingKind": "OUTCOME",
+      "outcomeEvents": {
+        "APPROVE": "NeedApprovedForIdeation.v1",
+        "RETURN": "NeedReturnedFromG03Review.v1"
+      },
+      "allowedStates": ["PENDING_G03_REVIEW"],
+      "ruleSet": "P1-G03-DECISION-REBASELINE-1.0"
+    }
+  ],
+  "deliveryContract": {
+    "delivery": "AT_LEAST_ONCE",
+    "consumerIdempotency": "EVENT_ID",
+    "emitTiming": "AFTER_ATOMIC_COMMIT_VIA_OUTBOX"
+  },
+  "safety": {
+    "eventContractRecoveredForAcceptedCommands": true,
+    "mutationContractsRemainUnrecovered": true,
+    "doesNotEnableProductMutation": true,
+    "doesNotEmitEventsByRebaselineAlone": true,
+    "outcomeAwareDecisionRequiresExplicitOutcome": true,
+    "noFallbackEventForUnknownOutcome": true,
+    "noHistoricalOriginalClaim": true,
+    "v6360Unchanged": true
+  },
+  "runtimeExpectedGate": {
+    "needs.submit-g03": "P1_MUTATION_CONTRACT_NOT_RECOVERED",
+    "needs.g03-decision": "P1_MUTATION_CONTRACT_NOT_RECOVERED"
+  },
+  "nonGoals": [
+    "No mutation planner binding",
+    "No Product command execution",
+    "No G01/G02/G04 event binding in this wave",
+    "No reconstruction of the missing historical P0 Event Catalog"
+  ]
+}
