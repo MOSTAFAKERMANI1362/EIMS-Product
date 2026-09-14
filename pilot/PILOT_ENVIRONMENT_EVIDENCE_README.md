@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Use this collector to gather only the non-secret environment facts required to decide whether a Windows machine can act as an EIMS Lab/Pilot host. Run it first on the current lab PC; run the same collector later on the organization Pilot Windows Server/VM.
+Use this pack to gather only the non-secret environment facts required to decide whether a Windows machine can act as an EIMS Lab/Pilot host. Run it first on the current lab PC; run the same collector later on the organization Pilot Windows Server/VM.
 
 ## Safety boundary
 
@@ -17,22 +17,48 @@ The collector does **not** read or export:
 - arbitrary environment variables;
 - registry dumps.
 
-By default it also omits the computer name, user name and Domain name. Domain name is included only when `-IncludeDomainName` is explicitly supplied.
+By default it also omits the computer name, user name and Domain name. Domain name is included only when `-IncludeDomainName` is explicitly supplied through the advanced PowerShell path.
 
-## Current PC / Lab command
+## Recommended path — one click
 
-From PowerShell in the repository root:
+Keep these files in the same folder:
+
+- `Collect-EimsPilotEnvironmentEvidence.ps1`
+- `Run-EIMS-Lab-Evidence.cmd`
+- `Run-EIMS-Pilot-Evidence.cmd`
+
+### Current PC / Lab
+
+Double-click:
+
+`Run-EIMS-Lab-Evidence.cmd`
+
+The runner creates:
+
+`eims-pilot-environment-evidence.json`
+
+in the same folder. Review that JSON, then upload only the JSON file back to ChatGPT.
+
+### Real Pilot Windows Server/VM
+
+Double-click:
+
+`Run-EIMS-Pilot-Evidence.cmd`
+
+It creates the same JSON filename but classifies the evidence as `PILOT_ENVIRONMENT_EVIDENCE`.
+
+The one-click runners do not request credentials and do not perform any Oracle network probe.
+
+## Advanced PowerShell path
+
+Current PC / Lab:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
 .\pilot\scripts\Collect-EimsPilotEnvironmentEvidence.ps1 -EvidenceClass LAB_EVIDENCE -OutputPath .\eims-pilot-environment-evidence.json
 ```
 
-Then review the JSON before sharing it.
-
-## Real Pilot VM command
-
-On the real Windows Server/VM:
+Real Pilot VM:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
