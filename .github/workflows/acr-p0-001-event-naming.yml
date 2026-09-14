@@ -1,0 +1,37 @@
+name: ACR P0 001 Event Naming
+
+on:
+  pull_request:
+    paths:
+      - 'architecture/decisions/ACR-P0-001_EVENT_NAMING_v1.0.json'
+      - 'architecture/decisions/ACR-P0-001_EVENT_NAMING_v1.0.md'
+      - 'tests/EIMS.ACR.P0.EventNaming.ContractTests/**'
+      - '.github/workflows/acr-p0-001-event-naming.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'architecture/decisions/ACR-P0-001_EVENT_NAMING_v1.0.json'
+      - 'architecture/decisions/ACR-P0-001_EVENT_NAMING_v1.0.md'
+      - 'tests/EIMS.ACR.P0.EventNaming.ContractTests/**'
+      - '.github/workflows/acr-p0-001-event-naming.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify-acr:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10.0.302
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.302'
+
+      - name: Build ACR contract tests
+        run: dotnet build .\tests\EIMS.ACR.P0.EventNaming.ContractTests\EIMS.ACR.P0.EventNaming.ContractTests.csproj -c Release
+
+      - name: Run ACR contract tests
+        run: dotnet run --project .\tests\EIMS.ACR.P0.EventNaming.ContractTests\EIMS.ACR.P0.EventNaming.ContractTests.csproj -c Release --no-build -- .\architecture\decisions\ACR-P0-001_EVENT_NAMING_v1.0.json
