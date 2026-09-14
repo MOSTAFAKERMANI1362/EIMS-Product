@@ -1,0 +1,53 @@
+name: P3 Windows Identity RBAC
+
+on:
+  pull_request:
+    paths:
+      - 'src/EIMS.Identity.Rbac/**'
+      - 'tests/EIMS.Identity.Rbac.ContractTests/**'
+      - 'tools/EIMS.P3.ContractVerifier/**'
+      - 'recovery/p3/**'
+      - '.github/workflows/p3-windows-identity-rbac.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'src/EIMS.Identity.Rbac/**'
+      - 'tests/EIMS.Identity.Rbac.ContractTests/**'
+      - 'tools/EIMS.P3.ContractVerifier/**'
+      - 'recovery/p3/**'
+      - '.github/workflows/p3-windows-identity-rbac.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-contract-test:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10.0.302
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.302'
+
+      - name: Show SDK
+        shell: pwsh
+        run: dotnet --version
+
+      - name: Build P3 contract tests
+        shell: pwsh
+        run: dotnet build .\tests\EIMS.Identity.Rbac.ContractTests\EIMS.Identity.Rbac.ContractTests.csproj -c Release
+
+      - name: Run P3 contract tests
+        shell: pwsh
+        run: dotnet run --project .\tests\EIMS.Identity.Rbac.ContractTests\EIMS.Identity.Rbac.ContractTests.csproj -c Release --no-build
+
+      - name: Build P3 contract verifier
+        shell: pwsh
+        run: dotnet build .\tools\EIMS.P3.ContractVerifier\EIMS.P3.ContractVerifier.csproj -c Release
+
+      - name: Verify machine-readable P3 contract
+        shell: pwsh
+        run: dotnet run --project .\tools\EIMS.P3.ContractVerifier\EIMS.P3.ContractVerifier.csproj -c Release --no-build -- .\recovery\p3\P3_WINDOWS_IDENTITY_RBAC_RECOVERY_CONTRACT_v1.0.json

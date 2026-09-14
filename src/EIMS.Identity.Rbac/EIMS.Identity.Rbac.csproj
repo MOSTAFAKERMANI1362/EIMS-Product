@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>EIMS.Identity.Rbac</AssemblyName>
+    <RootNamespace>EIMS.Identity.Rbac</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../EIMS.Authority.Recovery/EIMS.Authority.Recovery.csproj" />
+  </ItemGroup>
+</Project>

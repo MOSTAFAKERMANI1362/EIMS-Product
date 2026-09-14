@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>EIMS.Identity.Rbac.ContractTests</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/EIMS.Identity.Rbac/EIMS.Identity.Rbac.csproj" />
+    <ProjectReference Include="../../src/EIMS.Authority.Recovery/EIMS.Authority.Recovery.csproj" />
+  </ItemGroup>
+</Project>
