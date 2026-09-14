@@ -1,0 +1,118 @@
+{
+  "schema": "EIMS-ACR-EVENT-NAMING-1.0",
+  "acrId": "ACR-P0-001",
+  "title": "Stabilize G01→Case and G02→Need Domain Event Names",
+  "status": "APPROVED_FOR_P1_IMPLEMENTATION",
+  "decisionClass": "POST_FREEZE_ARCHITECTURE_DECISION",
+  "effectiveVersion": "1.0",
+  "frozenProduct": {
+    "file": "EIMS_v6.360_WORKLIST_UX_ROLE_SELECTOR_CLEANUP.html",
+    "sha256": "057a224fa55e6ee17d128c41c86f3410206d7246723c35872f57757329c4e98a",
+    "modifiedByThisDecision": false
+  },
+  "provenance": {
+    "historicalOriginalEventMappingStatus": "TBD",
+    "mustNotBeRepresentedAsRecoveredOriginal": true,
+    "authoritativeBasis": [
+      "EIMS_P0_Gaps_TBD_v1.0.md",
+      "EIMS_EP-01A_CORE_Foundation_v1.0.md",
+      "EIMS_v6.360_WORKLIST_UX_ROLE_SELECTOR_CLEANUP.html"
+    ],
+    "p0GapExamplesUsedAsDecisionCandidates": [
+      "CaseCreatedFromApprovedSource.v1",
+      "NeedCreatedFromQualifiedCase.v1"
+    ]
+  },
+  "namingStandard": {
+    "pattern": "<Entity><PastTenseAction>.v<Major>",
+    "eventCategory": "DOMAIN",
+    "delivery": "AT_LEAST_ONCE",
+    "consumerRequirement": "IDEMPOTENT_BY_EVENT_ID"
+  },
+  "events": [
+    {
+      "eventType": "CaseCreatedFromApprovedSource.v1",
+      "producerContext": "ImprovementSource/G01",
+      "trigger": {
+        "command": "g01.decide",
+        "decision": "APPROVE",
+        "sourceAggregateType": "ImprovementSource",
+        "createdAggregateType": "Case",
+        "createdAggregateInitialState": "UNDER_REVIEW"
+      },
+      "emitTiming": "AFTER_ATOMIC_COMMIT_VIA_OUTBOX",
+      "requiredEnvelopeFields": [
+        "eventId",
+        "eventType",
+        "eventVersion",
+        "eventCategory",
+        "occurredAtUtc",
+        "aggregateId",
+        "aggregateType",
+        "aggregateVersion",
+        "actorId",
+        "correlationId",
+        "causationId"
+      ],
+      "requiredPayloadFields": [
+        "sourceImprovementSourceId",
+        "createdCaseId"
+      ]
+    },
+    {
+      "eventType": "NeedCreatedFromQualifiedCase.v1",
+      "producerContext": "Case/G02",
+      "trigger": {
+        "command": "g02.decide",
+        "decision": "NEED_CANDIDATE",
+        "sourceAggregateType": "Case",
+        "createdAggregateType": "Need",
+        "createdAggregateInitialState": "DRAFT"
+      },
+      "emitTiming": "AFTER_ATOMIC_COMMIT_VIA_OUTBOX",
+      "requiredEnvelopeFields": [
+        "eventId",
+        "eventType",
+        "eventVersion",
+        "eventCategory",
+        "occurredAtUtc",
+        "aggregateId",
+        "aggregateType",
+        "aggregateVersion",
+        "actorId",
+        "correlationId",
+        "causationId"
+      ],
+      "requiredPayloadFields": [
+        "sourceCaseId",
+        "createdNeedId"
+      ]
+    }
+  ],
+  "compatibility": {
+    "eventTypeImmutableWithinV1": true,
+    "breakingSemanticChangeRequiresNewMajor": true,
+    "payloadMayOnlyAddBackwardCompatibleOptionalFieldsWithinV1": true
+  },
+  "nonEffects": [
+    "Does not change G01 decision logic",
+    "Does not change G02 UIC-R027 decision logic",
+    "Does not change G01/G02 roles",
+    "Does not change aggregate states beyond already frozen semantics",
+    "Does not enable any P1 Product command",
+    "Does not modify v6.360"
+  ],
+  "p1ConsumptionGate": {
+    "eventIdentityResolved": true,
+    "commandPromotionAllowedByThisAcrAlone": false,
+    "stillRequiredBeforeCommandExecution": [
+      "completeStateContract",
+      "completeRuleContract",
+      "completeMutationPlanner",
+      "idempotency",
+      "optimisticConcurrency",
+      "serverAuthorization",
+      "atomicPersistence"
+    ]
+  }
+}
