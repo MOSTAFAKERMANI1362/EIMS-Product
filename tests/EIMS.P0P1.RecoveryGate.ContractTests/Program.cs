@@ -2,9 +2,9 @@ using System.Text.Json;
 using EIMS.Authority.Recovery;
 using EIMS.P0.MachineRecovery;
 
-if (args.Length != 2 || !File.Exists(args[0]) || !File.Exists(args[1]))
+if (args.Length != 3 || !File.Exists(args[0]) || !File.Exists(args[1]) || !File.Exists(args[2]))
 {
-    Console.Error.WriteLine("Usage: EIMS.P0P1.RecoveryGate.ContractTests <P0-machine-recovery-json> <P1-wave1-state-acceptance-json>");
+    Console.Error.WriteLine("Usage: EIMS.P0P1.RecoveryGate.ContractTests <P0-machine-recovery-json> <P1-wave1-state-acceptance-json> <P1-wave2-g03-rule-json>");
     return 2;
 }
 
@@ -18,6 +18,11 @@ var p0Commands = p0Catalog.GetProperty("commands").EnumerateArray()
 using var acceptanceDocument = JsonDocument.Parse(File.ReadAllText(args[1]));
 var acceptance = acceptanceDocument.RootElement;
 var accepted = acceptance.GetProperty("acceptedStateContracts").EnumerateArray()
+    .ToDictionary(x => x.GetProperty("command").GetString()!, StringComparer.OrdinalIgnoreCase);
+
+using var wave2Document = JsonDocument.Parse(File.ReadAllText(args[2]));
+var wave2 = wave2Document.RootElement;
+var wave2Rules = wave2.GetProperty("ruleContracts").EnumerateArray()
     .ToDictionary(x => x.GetProperty("command").GetString()!, StringComparer.OrdinalIgnoreCase);
 
 var runtimeCatalog = new RecoveredApiCommandCatalog();
@@ -51,8 +56,7 @@ Add("P0P1-CT-08", "historical P0 recovery remains partial/non-executable", p0All
 Add("P0P1-CT-09", "Wave 1 rebaseline acceptance is explicit and non-mutating",
     acceptance.GetProperty("status").GetString() == "APPROVED_REBASELINE_FOR_P1_STATE_BINDING"
     && acceptance.GetProperty("decisionClass").GetString() == "RECOVERY_REBASELINE_ACCEPTANCE"
-    && acceptance.GetProperty("safety").GetProperty("doesNotEnableProductMutation").GetBoolean()
-    && acceptance.GetProperty("safety").GetProperty("ruleContractsRemainUnrecovered").GetBoolean());
+    && acceptance.GetProperty("safety").GetProperty("doesNotEnableProductMutation").GetBoolean());
 
 Add("P0P1-CT-10", "exactly six Wave 1 command state contracts are accepted", accepted.Count == RecoveredApiCommandCatalog.Wave1StateBoundCommandCount && accepted.Count == 6);
 
@@ -63,17 +67,30 @@ var acceptedBindingMatches = runtimeCatalog.All.All(policy =>
 
     var expectedStates = item.GetProperty("allowedStates").EnumerateArray().Select(x => x.GetString()!).OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToArray();
     var actualStates = policy.AllowedStates.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToArray();
-    return policy.StateContractRecovered
-        && !policy.RuleContractRecovered
-        && actualStates.SequenceEqual(expectedStates, StringComparer.OrdinalIgnoreCase);
+    return policy.StateContractRecovered && actualStates.SequenceEqual(expectedStates, StringComparer.OrdinalIgnoreCase);
 });
-Add("P0P1-CT-11", "runtime state binding matches accepted command/state sets exactly", acceptedBindingMatches);
+Add("P0P1-CT-11", "runtime state binding matches Wave 1 accepted command/state sets exactly", acceptedBindingMatches);
 
-var rulesRemainFailClosed = runtimeCatalog.All.All(x =>
-    !x.RuleContractRecovered
-    && string.Equals(x.RuleSet, "UNRECOVERED_RULESET", StringComparison.Ordinal)
-    && string.Equals(x.EventName, "UNRECOVERED_EVENT_IDENTITY", StringComparison.Ordinal));
-Add("P0P1-CT-12", "all runtime rule/event mutation semantics remain fail closed", rulesRemainFailClosed);
+Add("P0P1-CT-12", "Wave 2 G03 rule acceptance is explicit and non-mutating",
+    wave2.GetProperty("status").GetString() == "APPROVED_REBASELINE_FOR_P1_RULE_BINDING"
+    && wave2.GetProperty("decisionClass").GetString() == "RECOVERY_REBASELINE_ACCEPTANCE"
+    && !wave2.GetProperty("runtimeSafety").GetProperty("productMutationEnabled").GetBoolean()
+    && !wave2.GetProperty("runtimeSafety").GetProperty("eventContractsRecovered").GetBoolean()
+    && !wave2.GetProperty("runtimeSafety").GetProperty("mutationContractsRecovered").GetBoolean());
+
+Add("P0P1-CT-13", "exactly two G03 RuleSets are accepted", wave2Rules.Count == RecoveredApiCommandCatalog.Wave2RuleBoundCommandCount && wave2Rules.Count == 2);
+
+var ruleBindingMatches = runtimeCatalog.All.All(policy =>
+{
+    if (!wave2Rules.TryGetValue(policy.CommandName, out var item))
+        return !policy.RuleContractRecovered;
+    return policy.RuleContractRecovered
+        && string.Equals(policy.RuleSet, item.GetProperty("ruleSet").GetString(), StringComparison.Ordinal)
+        && policy.StateContractRecovered;
+});
+Add("P0P1-CT-14", "runtime rule binding matches Wave 2 accepted G03 RuleSets exactly", ruleBindingMatches);
+Add("P0P1-CT-15", "all Product event contracts remain unrecovered", runtimeCatalog.All.All(x => !x.EventContractRecovered && x.EventName == "UNRECOVERED_EVENT_IDENTITY"));
+Add("P0P1-CT-16", "all Product mutation contracts remain unrecovered", runtimeCatalog.All.All(x => !x.MutationContractRecovered));
 
 var dependencies = new MustNotBeTouchedDependencies();
 var kernel = new AuthorityKernel(runtimeCatalog, dependencies, dependencies, dependencies, dependencies);
@@ -108,12 +125,18 @@ foreach (var policy in runtimeCatalog.All.OrderBy(x => x.CommandName, StringComp
         threw = true;
     }
 
-    var expectedCode = policy.StateContractRecovered
-        ? "P1_RULE_CONTRACT_NOT_RECOVERED"
-        : "P1_STATE_CONTRACT_NOT_RECOVERED";
+    var expectedCode = !policy.StateContractRecovered
+        ? "P1_STATE_CONTRACT_NOT_RECOVERED"
+        : !policy.RuleContractRecovered
+            ? "P1_RULE_CONTRACT_NOT_RECOVERED"
+            : !policy.EventContractRecovered
+                ? "P1_EVENT_CONTRACT_NOT_RECOVERED"
+                : !policy.MutationContractRecovered
+                    ? "P1_MUTATION_CONTRACT_NOT_RECOVERED"
+                    : "UNEXPECTED_EXECUTABLE_POLICY";
 
     Add($"P0P1-CT-20-{sequence:00}",
-        $"{policy.CommandName} remains fail closed at the correct recovery gate",
+        $"{policy.CommandName} remains fail closed at the correct layered recovery gate",
         !threw
         && result is not null
         && result.HttpStatus == 503
