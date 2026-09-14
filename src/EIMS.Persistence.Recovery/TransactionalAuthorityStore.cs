@@ -126,19 +126,19 @@ public sealed class TransactionalAuthorityStore : IAuthorityStore, IPersistenceE
                     contractError,
                     request.Command.CorrelationId));
 
-            var audit = SnapshotAudit(commit.Audit);
-            if (_audits.Any(x => string.Equals(x.AuditId, audit.AuditId, StringComparison.Ordinal)))
-                return ValueTask.FromResult(AuthorityResult.Deny(409, "P2_DUPLICATE_AUDIT_ID", request.Command.CorrelationId));
-
-            if (_outbox.Any(x => string.Equals(x.MessageId, commit.Outbox.MessageId, StringComparison.Ordinal)))
-                return ValueTask.FromResult(AuthorityResult.Deny(409, "P2_DUPLICATE_OUTBOX_ID", request.Command.CorrelationId));
-
             var decisions = (commit.Decisions ?? Array.Empty<DomainDecisionEnvelope>())
                 .Select(SnapshotDecision)
                 .ToArray();
             if (decisions.GroupBy(x => x.DecisionId, StringComparer.Ordinal).Any(g => g.Count() > 1)
                 || decisions.Any(d => _decisions.Any(existing => string.Equals(existing.DecisionId, d.DecisionId, StringComparison.Ordinal))))
                 return ValueTask.FromResult(AuthorityResult.Deny(409, "P2_DUPLICATE_DECISION_ID", request.Command.CorrelationId));
+
+            var audit = SnapshotAudit(commit.Audit);
+            if (_audits.Any(x => string.Equals(x.AuditId, audit.AuditId, StringComparison.Ordinal)))
+                return ValueTask.FromResult(AuthorityResult.Deny(409, "P2_DUPLICATE_AUDIT_ID", request.Command.CorrelationId));
+
+            if (_outbox.Any(x => string.Equals(x.MessageId, commit.Outbox.MessageId, StringComparison.Ordinal)))
+                return ValueTask.FromResult(AuthorityResult.Deny(409, "P2_DUPLICATE_OUTBOX_ID", request.Command.CorrelationId));
 
             var result = new AuthorityResult(
                 200,
