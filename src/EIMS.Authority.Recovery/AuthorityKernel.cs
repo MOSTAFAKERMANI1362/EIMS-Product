@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -59,12 +60,26 @@ public sealed class AuthorityKernel(
             return AuthorityResult.Deny(403, "P1_ROLE_SCOPE_DENIED", command.CorrelationId);
 
         if (!string.IsNullOrWhiteSpace(command.RequestedScope)
-            && !actor.Scopes.Contains(command.RequestedScope, StringComparer.OrdinalIgnoreCase))
+            && !actor.Scopes.Contains(command.RequestedScope.Trim(), StringComparer.OrdinalIgnoreCase))
             return AuthorityResult.Deny(403, "P1_ROLE_SCOPE_DENIED", command.CorrelationId, "Requested scope is not assigned to actor.");
 
         var aggregate = await store.GetAggregateAsync(command.AggregateId, cancellationToken);
         if (aggregate is null)
             return AuthorityResult.Deny(404, "P1_AGGREGATE_NOT_FOUND", command.CorrelationId);
+
+        if (string.IsNullOrWhiteSpace(aggregate.Scope))
+            return AuthorityResult.Deny(503, "P1_AGGREGATE_SCOPE_REQUIRED", command.CorrelationId,
+                "Authoritative aggregate scope is required before a recovered mutation may execute.");
+
+        var authoritativeScope = aggregate.Scope.Trim();
+        if (!actor.Scopes.Contains(authoritativeScope, StringComparer.OrdinalIgnoreCase))
+            return AuthorityResult.Deny(403, "P1_ROLE_SCOPE_DENIED", command.CorrelationId,
+                "Authoritative aggregate scope is not assigned to actor.");
+
+        if (!string.IsNullOrWhiteSpace(command.RequestedScope)
+            && !string.Equals(command.RequestedScope.Trim(), authoritativeScope, StringComparison.OrdinalIgnoreCase))
+            return AuthorityResult.Deny(403, "P1_ROLE_SCOPE_DENIED", command.CorrelationId,
+                "Requested scope does not match authoritative aggregate scope.");
 
         var fingerprint = Fingerprint(command);
         var prior = await store.GetIdempotencyAsync(command.CommandName, command.AggregateId, command.IdempotencyKey, cancellationToken);
@@ -109,6 +124,10 @@ public sealed class AuthorityKernel(
         if (!string.Equals(plan.After.AggregateId, aggregate.AggregateId, StringComparison.Ordinal))
             return AuthorityResult.Deny(500, "P1_MUTATION_AGGREGATE_MISMATCH", command.CorrelationId);
 
+        if (!string.Equals(plan.After.Scope, aggregate.Scope, StringComparison.OrdinalIgnoreCase))
+            return AuthorityResult.Deny(500, "P1_MUTATION_SCOPE_INVALID", command.CorrelationId,
+                "Mutation planner attempted to alter the authoritative aggregate scope.");
+
         if (string.IsNullOrWhiteSpace(plan.EventName))
             return AuthorityResult.Deny(500, "P1_MUTATION_EVENT_INVALID", command.CorrelationId);
 
@@ -145,7 +164,7 @@ public sealed class AuthorityKernel(
                 now,
                 command.CorrelationId,
                 intent.Note,
-                intent.Facts))
+                SnapshotFacts(intent.Facts)))
             .ToArray();
 
         return await store.CommitAsync(
@@ -158,5 +177,16 @@ public sealed class AuthorityKernel(
     {
         var material = $"{command.CommandName}\n{command.AggregateId}\n{command.ExpectedVersion}\n{command.RawBody}";
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(material))).ToLowerInvariant();
+    }
+
+    private static IReadOnlyDictionary<string, string>? SnapshotFacts(IReadOnlyDictionary<string, string>? facts)
+    {
+        if (facts is null || facts.Count == 0)
+            return null;
+
+        var copy = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var pair in facts)
+            copy[pair.Key] = pair.Value;
+        return new ReadOnlyDictionary<string, string>(copy);
     }
 }
