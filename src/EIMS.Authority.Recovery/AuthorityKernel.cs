@@ -54,15 +54,6 @@ public sealed class AuthorityKernel(
         if (aggregate is null)
             return AuthorityResult.Deny(404, "P1_AGGREGATE_NOT_FOUND", command.CorrelationId);
 
-        if (command.ExpectedVersion != aggregate.Version)
-            return AuthorityResult.Deny(409, "P1_VERSION_CONFLICT", command.CorrelationId,
-                $"Expected {command.ExpectedVersion}; current {aggregate.Version}.");
-
-        if (policy.AllowedStates.Count == 0
-            || !policy.AllowedStates.Contains(aggregate.State, StringComparer.OrdinalIgnoreCase))
-            return AuthorityResult.Deny(409, "P1_STATE_TRANSITION_DENIED", command.CorrelationId,
-                $"State '{aggregate.State}' is not allowed for '{command.CommandName}'.");
-
         var fingerprint = Fingerprint(command);
         var prior = await store.GetIdempotencyAsync(command.CommandName, command.AggregateId, command.IdempotencyKey, cancellationToken);
         if (prior is not null)
@@ -78,6 +69,15 @@ public sealed class AuthorityKernel(
                 CorrelationId = command.CorrelationId
             };
         }
+
+        if (command.ExpectedVersion != aggregate.Version)
+            return AuthorityResult.Deny(409, "P1_VERSION_CONFLICT", command.CorrelationId,
+                $"Expected {command.ExpectedVersion}; current {aggregate.Version}.");
+
+        if (policy.AllowedStates.Count == 0
+            || !policy.AllowedStates.Contains(aggregate.State, StringComparer.OrdinalIgnoreCase))
+            return AuthorityResult.Deny(409, "P1_STATE_TRANSITION_DENIED", command.CorrelationId,
+                $"State '{aggregate.State}' is not allowed for '{command.CommandName}'.");
 
         var sodResult = await sod.EvaluateAsync(command, actor, aggregate, policy, cancellationToken);
         if (!sodResult.Passed)
