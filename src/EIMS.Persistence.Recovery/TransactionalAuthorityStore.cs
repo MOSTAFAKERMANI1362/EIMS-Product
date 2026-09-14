@@ -18,7 +18,10 @@ public sealed class TransactionalAuthorityStore : IAuthorityStore, IPersistenceE
     {
         Contract = contract ?? PersistenceContractDescriptor.RecoveryBaseline();
         foreach (var aggregate in aggregates)
-            _aggregates[aggregate.AggregateId] = aggregate;
+        {
+            var snapshot = SnapshotAggregate(aggregate);
+            _aggregates[snapshot.AggregateId] = snapshot;
+        }
     }
 
     public PersistenceContractDescriptor Contract { get; }
@@ -50,7 +53,9 @@ public sealed class TransactionalAuthorityStore : IAuthorityStore, IPersistenceE
     {
         cancellationToken.ThrowIfCancellationRequested();
         lock (_sync)
-            return ValueTask.FromResult(_aggregates.TryGetValue(aggregateId, out var aggregate) ? aggregate : null);
+            return ValueTask.FromResult(_aggregates.TryGetValue(aggregateId, out var aggregate)
+                ? SnapshotAggregate(aggregate)
+                : null);
     }
 
     public ValueTask<IdempotencyRecord?> GetIdempotencyAsync(
@@ -121,7 +126,8 @@ public sealed class TransactionalAuthorityStore : IAuthorityStore, IPersistenceE
                     contractError,
                     request.Command.CorrelationId));
 
-            if (_audits.Any(x => string.Equals(x.AuditId, commit.Audit.AuditId, StringComparison.Ordinal)))
+            var audit = SnapshotAudit(commit.Audit);
+            if (_audits.Any(x => string.Equals(x.AuditId, audit.AuditId, StringComparison.Ordinal)))
                 return ValueTask.FromResult(AuthorityResult.Deny(409, "P2_DUPLICATE_AUDIT_ID", request.Command.CorrelationId));
 
             if (_outbox.Any(x => string.Equals(x.MessageId, commit.Outbox.MessageId, StringComparison.Ordinal)))
@@ -142,7 +148,7 @@ public sealed class TransactionalAuthorityStore : IAuthorityStore, IPersistenceE
                 IdempotentReplay: false,
                 NewVersion: commit.After.Version,
                 CorrelationId: request.Command.CorrelationId,
-                EmittedEvents: new[] { commit.Outbox.EventName });
+                EmittedEvents: Array.AsReadOnly(new[] { commit.Outbox.EventName }));
 
             var idempotency = new IdempotencyRecord(
                 request.Command.CommandName,
@@ -158,13 +164,13 @@ public sealed class TransactionalAuthorityStore : IAuthorityStore, IPersistenceE
 
             try
             {
-                _aggregates[commit.After.AggregateId] = commit.After;
+                _aggregates[commit.After.AggregateId] = SnapshotAggregate(commit.After);
                 ThrowIf(PersistenceFaultPoint.AfterStateStaged);
 
                 _decisions.AddRange(decisions);
                 ThrowIf(PersistenceFaultPoint.AfterDecisionStaged);
 
-                _audits.Add(commit.Audit);
+                _audits.Add(audit);
                 ThrowIf(PersistenceFaultPoint.AfterAuditStaged);
 
                 _outbox.Add(commit.Outbox);
@@ -246,12 +252,18 @@ public sealed class TransactionalAuthorityStore : IAuthorityStore, IPersistenceE
         return null;
     }
 
+    private static AggregateSnapshot SnapshotAggregate(AggregateSnapshot aggregate) =>
+        aggregate with { RuleFacts = SnapshotFacts(aggregate.RuleFacts) };
+
+    private static AuditEnvelope SnapshotAudit(AuditEnvelope audit) =>
+        audit with { Roles = Array.AsReadOnly(audit.Roles.ToArray()) };
+
     private static DomainDecisionEnvelope SnapshotDecision(DomainDecisionEnvelope decision) =>
         decision with { Facts = SnapshotFacts(decision.Facts) };
 
     private static IReadOnlyDictionary<string, string>? SnapshotFacts(IReadOnlyDictionary<string, string>? facts)
     {
-        if (facts is null || facts.Count == 0)
+        if (facts is null)
             return null;
 
         var copy = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
