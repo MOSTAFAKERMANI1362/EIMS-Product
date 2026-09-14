@@ -1,0 +1,284 @@
+{
+  "schema": "EIMS-P0-MACHINE-CONTRACT-RECOVERY-WAVE1-1.0",
+  "artifactIdentity": "P0_G01_G04_RECOVERED_CONTRACT_v1.0",
+  "recoveryStatus": "RECOVERED_FROM_FROZEN_EVIDENCE_NOT_ORIGINAL_P0_ARTIFACT",
+  "sourceProduct": {
+    "name": "EIMS_v6.360_WORKLIST_UX_ROLE_SELECTOR_CLEANUP.html",
+    "sha256": "057a224fa55e6ee17d128c41c86f3410206d7246723c35872f57757329c4e98a"
+  },
+  "bindingStatus": "RECOVERY_CANDIDATE_NOT_YET_BOUND_TO_P1",
+  "evidenceClasses": [
+    "CONFIRMED_V6_360",
+    "CONFIRMED_P0_CONTRACT",
+    "PROPOSED_P0_API",
+    "SUPPORTING_ENGINEERING",
+    "TBD_UNRECOVERED"
+  ],
+  "roles": [
+    {"code":"INTAKE_STEWARD","evidenceStatus":"PROPOSED_P0_API"},
+    {"code":"CASE_REVIEWER","evidenceStatus":"PROPOSED_P0_API"},
+    {"code":"NEED_OWNER","evidenceStatus":"PROPOSED_P0_API"},
+    {"code":"NEED_REVIEWER","evidenceStatus":"PROPOSED_P0_API"},
+    {"code":"IDEA_OWNER","evidenceStatus":"PROPOSED_P0_API"},
+    {"code":"MATCH_ASSIGNMENT_ROLE","evidenceStatus":"PROPOSED_P0_API","dynamic":true},
+    {"code":"G04_COMMITTEE_MEMBER","evidenceStatus":"PROPOSED_P0_API"},
+    {"code":"IDEA_DECISION","evidenceStatus":"PROPOSED_P0_API"}
+  ],
+  "commands": [
+    {"code":"g01.decide","httpPath":"/commands/g01/decide","requiredRole":"INTAKE_STEWARD","evidenceStatus":"PROPOSED_P0_API"},
+    {"code":"g02.decide","httpPath":"/commands/g02/decide","requiredRole":"CASE_REVIEWER","evidenceStatus":"PROPOSED_P0_API"},
+    {"code":"needs.submit-g03","httpPath":"/commands/needs/{needId}/submit-g03","requiredRole":"NEED_OWNER","evidenceStatus":"PROPOSED_P0_API"},
+    {"code":"needs.g03-decision","httpPath":"/commands/needs/{needId}/g03-decision","requiredRole":"NEED_REVIEWER","evidenceStatus":"PROPOSED_P0_API"},
+    {"code":"ideas.submit-g04","httpPath":"/commands/ideas/{ideaId}/submit-g04","requiredRole":"IDEA_OWNER","evidenceStatus":"PROPOSED_P0_API"},
+    {"code":"evaluation-assignments.complete","httpPath":"/commands/evaluation-assignments/{assignmentId}/complete","requiredRole":"MATCH_ASSIGNMENT_ROLE","evidenceStatus":"PROPOSED_P0_API"},
+    {"code":"g04.vote","httpPath":"/commands/g04/{assessmentId}/vote","requiredRole":"G04_COMMITTEE_MEMBER","evidenceStatus":"PROPOSED_P0_API"},
+    {"code":"g04.final-decision","httpPath":"/commands/g04/{assessmentId}/final-decision","requiredRole":"IDEA_DECISION","evidenceStatus":"PROPOSED_P0_API"}
+  ],
+  "transitions": [
+    {
+      "id":"G01-APPROVE-TO-CASE",
+      "gate":"G01",
+      "aggregate":"ImprovementSource",
+      "command":"g01.decide",
+      "decision":"APPROVE",
+      "fromStates":["SUBMITTED","SUBMITTED_FOR_G01"],
+      "toState":"CONVERTED_TO_CASE",
+      "sideEffects":[{"aggregate":"Case","create":true,"initialState":"UNDER_REVIEW"}],
+      "event":{"identity":"UNRECOVERED_ORIGINAL_P1_EVENT_IDENTITY","eventClass":"DOMAIN_EVENT","evidenceStatus":"TBD_UNRECOVERED","authoritativeForOutbox":false},
+      "observedRuleRef":"G01-RS-PILOT-1.0",
+      "ruleRefEvidenceStatus":"CONFIRMED_V6_360",
+      "evidenceStatus":"CONFIRMED_V6_360"
+    },
+    {
+      "id":"G01-RETURN",
+      "gate":"G01",
+      "aggregate":"ImprovementSource",
+      "command":"g01.decide",
+      "decision":"RETURN",
+      "fromStates":["SUBMITTED","SUBMITTED_FOR_G01"],
+      "toState":"G01_RETURNED",
+      "event":{"identity":"G01 returned for completion","eventClass":"AUDIT_RUNTIME_LABEL","evidenceStatus":"CONFIRMED_V6_360","authoritativeForOutbox":false},
+      "evidenceStatus":"CONFIRMED_V6_360"
+    },
+    {
+      "id":"G01-HOLD",
+      "gate":"G01",
+      "aggregate":"ImprovementSource",
+      "command":"g01.decide",
+      "decision":"HOLD",
+      "fromStates":["SUBMITTED","SUBMITTED_FOR_G01"],
+      "toState":"HOLD",
+      "requires":["reviewDate"],
+      "event":{"identity":"G01 hold","eventClass":"AUDIT_RUNTIME_LABEL","evidenceStatus":"CONFIRMED_V6_360","authoritativeForOutbox":false},
+      "evidenceStatus":"CONFIRMED_V6_360"
+    },
+    {
+      "id":"G01-REJECT",
+      "gate":"G01",
+      "aggregate":"ImprovementSource",
+      "command":"g01.decide",
+      "decision":"REJECT",
+      "fromStates":["SUBMITTED","SUBMITTED_FOR_G01"],
+      "toState":"G01_REJECTED",
+      "event":{"identity":"G01 rejected invalid/non-actionable source","eventClass":"AUDIT_RUNTIME_LABEL","evidenceStatus":"CONFIRMED_V6_360","authoritativeForOutbox":false},
+      "evidenceStatus":"CONFIRMED_V6_360"
+    },
+    {
+      "id":"G02-NEED-CANDIDATE",
+      "gate":"G02",
+      "aggregate":"Case",
+      "command":"g02.decide",
+      "decision":"NEED_CANDIDATE",
+      "fromStates":["UNDER_REVIEW"],
+      "toState":"APPROVED",
+      "sideEffects":[{"aggregate":"Need","create":true,"initialState":"DRAFT"}],
+      "event":{"identity":"UNRECOVERED_ORIGINAL_P1_EVENT_IDENTITY","eventClass":"DOMAIN_EVENT","evidenceStatus":"TBD_UNRECOVERED","authoritativeForOutbox":false},
+      "observedAuditIdentities":["NeedCreated","CaseQualifiedAsNeed"],
+      "observedRuleRef":"G02-RS-1.0",
+      "ruleRefEvidenceStatus":"CONFIRMED_V6_360",
+      "evidenceStatus":"CONFIRMED_V6_360",
+      "historyPolicy":"IMMUTABLE_DECISION_SNAPSHOT"
+    },
+    {
+      "id":"G02-ROUTE-OPERATIONAL",
+      "gate":"G02",
+      "aggregate":"Case",
+      "command":"g02.decide",
+      "decision":"ROUTE_OPERATIONAL",
+      "fromStates":["UNDER_REVIEW"],
+      "toState":"ROUTED_OPERATIONAL",
+      "observedAuditIdentity":"CaseRoutedOperational",
+      "evidenceStatus":"CONFIRMED_V6_360"
+    },
+    {
+      "id":"G02-RETURN",
+      "gate":"G02",
+      "aggregate":"Case",
+      "command":"g02.decide",
+      "decision":"RETURN",
+      "fromStates":["UNDER_REVIEW"],
+      "toState":"RETURNED",
+      "observedAuditIdentity":"CaseReturnedForCompletion",
+      "evidenceStatus":"CONFIRMED_V6_360"
+    },
+    {
+      "id":"G02-HOLD",
+      "gate":"G02",
+      "aggregate":"Case",
+      "command":"g02.decide",
+      "decision":"HOLD",
+      "fromStates":["UNDER_REVIEW"],
+      "toState":"HOLD",
+      "requires":["reviewDate"],
+      "observedAuditIdentity":"CasePutOnHold",
+      "evidenceStatus":"CONFIRMED_V6_360"
+    },
+    {
+      "id":"G02-REJECT",
+      "gate":"G02",
+      "aggregate":"Case",
+      "command":"g02.decide",
+      "decision":"REJECT",
+      "fromStates":["UNDER_REVIEW"],
+      "toState":"REJECTED",
+      "observedAuditIdentity":"CaseRejected",
+      "evidenceStatus":"CONFIRMED_V6_360"
+    },
+    {
+      "id":"G03-SUBMIT",
+      "gate":"G03",
+      "aggregate":"Need",
+      "command":"needs.submit-g03",
+      "fromStates":["DRAFT"],
+      "toState":"PENDING_G03_REVIEW",
+      "derived":{"g03ReviewStatus":"PENDING","assignedRole":"NEED_REVIEWER"},
+      "observedAuditIdentity":"NeedSubmittedForG03Review",
+      "evidenceStatus":"CONFIRMED_V6_360"
+    },
+    {
+      "id":"G03-APPROVE",
+      "gate":"G03",
+      "aggregate":"Need",
+      "command":"needs.g03-decision",
+      "decision":"APPROVE",
+      "fromStates":["PENDING_G03_REVIEW"],
+      "toState":"READY_FOR_IDEATION",
+      "derived":{"g03ReviewStatus":"APPROVED","assignedRole":"IDEA_OWNER"},
+      "observedAuditIdentity":"NeedApprovedAtG03AndRoutedToIdeationOwner",
+      "invariants":["G03_REVIEW_INDEPENDENT","IDEATION_REQUIRES_G03_APPROVAL_EVIDENCE"],
+      "evidenceStatus":"CONFIRMED_V6_360"
+    },
+    {
+      "id":"G03-RETURN",
+      "gate":"G03",
+      "aggregate":"Need",
+      "command":"needs.g03-decision",
+      "decision":"RETURN",
+      "fromStates":["PENDING_G03_REVIEW"],
+      "toState":"DRAFT",
+      "derived":{"g03ReviewStatus":"RETURNED","assignedRole":"NEED_OWNER"},
+      "observedAuditIdentity":"NeedReturnedByG03Reviewer",
+      "evidenceStatus":"CONFIRMED_V6_360"
+    },
+    {
+      "id":"G04-SUBMIT",
+      "gate":"G04",
+      "aggregate":"Idea",
+      "command":"ideas.submit-g04",
+      "fromStates":["DRAFT","RETURNED"],
+      "toState":"UNDER_REVIEW",
+      "sideEffects":[{"aggregate":"G04Assessment","create":true,"initialState":"PENDING","freezeEntityVersion":true,"freezeStrategyContext":true}],
+      "observedAuditIdentities":["IdeaSubmittedForAssessment","AssessmentCreated"],
+      "observedRuleRef":"G04-RS-1.0",
+      "ruleRefEvidenceStatus":"CONFIRMED_V6_360",
+      "invariants":["DYNAMIC_EVALUATION_PLAN_IS_SOURCE_OF_TRUTH"],
+      "evidenceStatus":"CONFIRMED_V6_360"
+    },
+    {
+      "id":"G04-APPROVE",
+      "gate":"G04",
+      "aggregate":"Idea",
+      "command":"g04.final-decision",
+      "decision":"APPROVE",
+      "fromStates":["UNDER_REVIEW"],
+      "toState":"APPROVED",
+      "event":{"identity":"IdeaApprovedForPortfolio.v1","eventClass":"DOMAIN_EVENT","evidenceStatus":"CONFIRMED_V6_360","authoritativeForOutbox":true},
+      "invariants":["COMMITTEE_MEMBER_VOTE_IS_NOT_FINAL_DECISION","FINAL_AUTHORITY_IS_IDEA_DECISION"],
+      "evidenceStatus":"CONFIRMED_V6_360"
+    },
+    {
+      "id":"G04-RETURN",
+      "gate":"G04",
+      "aggregate":"Idea",
+      "command":"g04.final-decision",
+      "decision":"RETURN",
+      "fromStates":["UNDER_REVIEW"],
+      "toState":"RETURNED",
+      "observedAuditIdentity":"Idea returned for revision",
+      "evidenceStatus":"CONFIRMED_V6_360"
+    },
+    {
+      "id":"G04-HOLD",
+      "gate":"G04",
+      "aggregate":"Idea",
+      "command":"g04.final-decision",
+      "decision":"HOLD",
+      "fromStates":["UNDER_REVIEW"],
+      "toState":"HOLD",
+      "requires":["reviewDate"],
+      "observedAuditIdentity":"Idea placed on hold",
+      "evidenceStatus":"CONFIRMED_V6_360"
+    },
+    {
+      "id":"G04-REJECT",
+      "gate":"G04",
+      "aggregate":"Idea",
+      "command":"g04.final-decision",
+      "decision":"REJECT",
+      "fromStates":["UNDER_REVIEW"],
+      "toState":"REJECTED",
+      "observedAuditIdentity":"Idea rejected",
+      "evidenceStatus":"CONFIRMED_V6_360"
+    }
+  ],
+  "invariants": [
+    {"code":"SERVER_REAUTHORIZE_MUTATION","statement":"Server must re-enforce Role + State + Version + Rule for every mutation.","evidenceStatus":"CONFIRMED_P0_CONTRACT"},
+    {"code":"G03_REVIEW_INDEPENDENT","statement":"Need Owner cannot self-approve G03.","evidenceStatus":"CONFIRMED_P0_CONTRACT"},
+    {"code":"DYNAMIC_EVALUATION_PLAN_IS_SOURCE_OF_TRUTH","statement":"Dynamic Evaluation Plan is the source of truth for required G04 evaluations.","evidenceStatus":"CONFIRMED_P0_CONTRACT"},
+    {"code":"COMMITTEE_MEMBER_VOTE_IS_NOT_FINAL_DECISION","statement":"G04 committee members cast individual votes; final decision authority is separate.","evidenceStatus":"CONFIRMED_P0_CONTRACT"},
+    {"code":"FINAL_AUTHORITY_IS_IDEA_DECISION","statement":"Final G04 decision authority is IDEA_DECISION.","evidenceStatus":"CONFIRMED_P0_CONTRACT"},
+    {"code":"HISTORICAL_DECISIONS_NOT_OVERWRITTEN","statement":"Return/resubmit creates new history/snapshot rather than overwriting history.","evidenceStatus":"CONFIRMED_P0_CONTRACT"},
+    {"code":"IDEMPOTENCY_REQUIRED","statement":"Mutating commands require server-side idempotency key semantics.","evidenceStatus":"CONFIRMED_P0_CONTRACT"},
+    {"code":"ATOMIC_STATE_AUDIT_OUTBOX","statement":"State + Audit + Event Outbox commit in one transaction.","evidenceStatus":"CONFIRMED_P0_CONTRACT"}
+  ],
+  "unresolved": [
+    {
+      "code":"G01_TO_CASE_ORIGINAL_P1_EVENT_IDENTITY",
+      "status":"TBD_UNRECOVERED",
+      "reason":"v6.360 explicitly says Event mapping TBD; P1 completion review says two unnamed events were later stabilized but the exact identity is not recovered."
+    },
+    {
+      "code":"G02_TO_NEED_ORIGINAL_P1_EVENT_IDENTITY",
+      "status":"TBD_UNRECOVERED",
+      "reason":"v6.360 explicitly says Event mapping TBD; exact stabilized P1 identity is unavailable."
+    },
+    {
+      "code":"ORIGINAL_P0_RULE_CATALOG",
+      "status":"TBD_UNRECOVERED"
+    },
+    {
+      "code":"ORIGINAL_P0_FULL_STATE_MACHINE",
+      "status":"TBD_UNRECOVERED"
+    },
+    {
+      "code":"ORIGINAL_P0_ROLE_PERMISSION_MATRIX",
+      "status":"TBD_UNRECOVERED"
+    },
+    {
+      "code":"P1_COMMAND_CATALOG_7_MISSING_IDENTITIES",
+      "status":"TBD_UNRECOVERED",
+      "knownRecoveredCount":21,
+      "completionReviewDeclaredCount":28
+    }
+  ]
+}
