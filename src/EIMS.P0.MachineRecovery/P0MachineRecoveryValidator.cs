@@ -10,6 +10,15 @@ public static class P0MachineRecoveryValidator
     public const string ExpectedStatus = "RECOVERED_REBASELINE_NOT_ORIGINAL";
     public const string FrozenSha256 = "057a224fa55e6ee17d128c41c86f3410206d7246723c35872f57757329c4e98a";
 
+    private static readonly string[] ExpectedCommandIds =
+    {
+        "g01.decide", "g02.decide", "needs.submit-g03", "needs.g03-decision", "ideas.submit-g04",
+        "evaluation-assignments.complete", "g04.vote", "g04.final-decision", "portfolio.assign-accept",
+        "executions.prepare", "executions.progress", "executions.submit-completion", "executions.completion-review",
+        "benefits.accept", "benefits.measure", "benefits.verify", "benefits.attribution", "benefits.realize",
+        "knowledge.validate", "knowledge.publish", "rewards.decide"
+    };
+
     public static IReadOnlyList<RecoveryCheck> Validate(string json)
     {
         using var document = JsonDocument.Parse(json);
@@ -70,11 +79,11 @@ public static class P0MachineRecoveryValidator
         Add("P0R-34", "Knowledge validation and publication roles remain separated", sod.Any(x => x.Contains("Knowledge Steward", StringComparison.Ordinal) && x.Contains("Knowledge Publisher", StringComparison.Ordinal)));
 
         var states = root.GetProperty("stateFragments");
-        Add("P0R-35", "G03 submission target state is explicit", Str(states.GetProperty("need.submit-g03"), "targetState") == "PENDING_G03_REVIEW");
+        Add("P0R-35", "G03 submission target state is explicit", Str(states.GetProperty("needs.submit-g03"), "targetState") == "PENDING_G03_REVIEW");
         Add("P0R-36", "G04 approval fragment retains versioned Portfolio event", G04ApprovalEvent(states.GetProperty("g04.final-decision")) == "IdeaApprovedForPortfolio.v1");
         Add("P0R-37", "Benefit recovered state fragments preserve ordered milestones", BenefitFragmentsAreConsistent(states));
-        Add("P0R-38", "Execution completion submission requires ACTIVE and enters COMPLETION_REVIEW", Str(states.GetProperty("execution.submit-completion"), "fromState") == "ACTIVE" && Str(states.GetProperty("execution.submit-completion"), "toState") == "COMPLETION_REVIEW");
-        Add("P0R-39", "Execution independent completion fragment ends at COMPLETED", Str(states.GetProperty("execution.completion-review"), "approveTo") == "COMPLETED");
+        Add("P0R-38", "Execution completion submission requires ACTIVE and enters COMPLETION_REVIEW", Str(states.GetProperty("executions.submit-completion"), "fromState") == "ACTIVE" && Str(states.GetProperty("executions.submit-completion"), "toState") == "COMPLETION_REVIEW");
+        Add("P0R-39", "Execution independent completion fragment ends at COMPLETED", Str(states.GetProperty("executions.completion-review"), "approveTo") == "COMPLETED");
         Add("P0R-40", "G02 Need creation fragment starts Need at DRAFT", G02NeedInitialState(states.GetProperty("g02.decide")) == "DRAFT");
 
         var authority = root.GetProperty("serverAuthorityInvariants").EnumerateArray().Select(x => x.GetString() ?? string.Empty).ToArray();
@@ -87,8 +96,9 @@ public static class P0MachineRecoveryValidator
         Add("P0R-45", "Oracle environment remains TBD rather than guessed", tbd.Any(x => x.Contains("Oracle version/connectivity/service account/schema owner", StringComparison.Ordinal)));
         Add("P0R-46", "production archive retention remains organizational TBD", tbd.Any(x => x.Contains("Production archive retention", StringComparison.Ordinal)));
 
-        Add("P0R-47", "critical recovered roles match P0 API draft", Role(commands, "g01.decide") == "INTAKE_STEWARD" && Role(commands, "g02.decide") == "CASE_REVIEWER" && Role(commands, "g04.final-decision") == "IDEA_DECISION" && Role(commands, "knowledge.publish") == "KNOWLEDGE_PUBLISHER" && Role(commands, "reward.decide") == "REWARD_COMMITTEE");
+        Add("P0R-47", "critical recovered roles match P0 API draft", Role(commands, "g01.decide") == "INTAKE_STEWARD" && Role(commands, "g02.decide") == "CASE_REVIEWER" && Role(commands, "g04.final-decision") == "IDEA_DECISION" && Role(commands, "knowledge.publish") == "KNOWLEDGE_PUBLISHER" && Role(commands, "rewards.decide") == "REWARD_COMMITTEE");
         Add("P0R-48", "no command can become executable by a single completeness flag", commands.All(x => !(Bool(x, "completeStateContract") && Bool(x, "executable"))));
+        Add("P0R-49", "recovered command IDs align exactly with the P1 authority recovery catalog", commands.Select(x => Str(x, "id")).OrderBy(x => x, StringComparer.Ordinal).SequenceEqual(ExpectedCommandIds.OrderBy(x => x, StringComparer.Ordinal), StringComparer.Ordinal));
 
         return checks;
     }
@@ -96,7 +106,7 @@ public static class P0MachineRecoveryValidator
     public static bool IsValid(string json) => Validate(json).All(x => x.Passed);
 
     private static string Str(JsonElement element, string property) => element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() ?? string.Empty : string.Empty;
-    private static bool Bool(JsonElement element, string property) => element.TryGetProperty(property, out var value) && value.ValueKind is JsonValueKind.True or JsonValueKind.False && value.GetBoolean();
+    private static bool Bool(JsonElement element, string property) => element.TryGetProperty(property, out var value) && (value.ValueKind == JsonValueKind.True || value.ValueKind == JsonValueKind.False) && value.GetBoolean();
     private static int Int(JsonElement element, string property) => element.TryGetProperty(property, out var value) && value.TryGetInt32(out var result) ? result : int.MinValue;
     private static bool Unique(IEnumerable<string> values) { var a = values.ToArray(); return a.All(x => !string.IsNullOrWhiteSpace(x)) && a.Distinct(StringComparer.Ordinal).Count() == a.Length; }
     private static string[] ArrayStrings(JsonElement element, string property) => element.GetProperty(property).EnumerateArray().Select(x => x.GetString() ?? string.Empty).ToArray();
@@ -118,11 +128,11 @@ public static class P0MachineRecoveryValidator
 
     private static bool BenefitFragmentsAreConsistent(JsonElement states)
     {
-        return Pair(states, "benefit.accept", "OBLIGATION_PENDING_ACCEPTANCE", "BASELINE_REQUIRED")
-            && Pair(states, "benefit.measure", "MEASUREMENT_PENDING", "MEASURED")
-            && Pair(states, "benefit.verify", "MEASURED", "VERIFIED")
-            && Pair(states, "benefit.attribution", "VERIFIED", "VALIDATED")
-            && Pair(states, "benefit.realize", "VALIDATED", "REALIZED");
+        return Pair(states, "benefits.accept", "OBLIGATION_PENDING_ACCEPTANCE", "BASELINE_REQUIRED")
+            && Pair(states, "benefits.measure", "MEASUREMENT_PENDING", "MEASURED")
+            && Pair(states, "benefits.verify", "MEASURED", "VERIFIED")
+            && Pair(states, "benefits.attribution", "VERIFIED", "VALIDATED")
+            && Pair(states, "benefits.realize", "VALIDATED", "REALIZED");
     }
 
     private static bool Pair(JsonElement states, string name, string from, string to)
