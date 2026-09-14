@@ -1,0 +1,43 @@
+name: ACR P0 004 Idea Submission
+
+on:
+  pull_request:
+    paths:
+      - 'architecture/decisions/ACR-P0-004_IDEA_SUBMISSION_EVALUATION_PLAN_v1.0.json'
+      - 'architecture/decisions/ACR-P0-004_IDEA_SUBMISSION_EVALUATION_PLAN_v1.0.md'
+      - 'architecture/decisions/ACR-P0-001_EVENT_NAMING_v1.0.json'
+      - 'recovery/p0-wave1/P0_G01_G04_RECOVERED_CONTRACT_v1.0.json'
+      - 'tests/EIMS.ACR.P0.IdeaSubmission.ContractTests/**'
+      - '.github/workflows/acr-p0-004-idea-submission.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'architecture/decisions/ACR-P0-004_IDEA_SUBMISSION_EVALUATION_PLAN_v1.0.json'
+      - 'architecture/decisions/ACR-P0-004_IDEA_SUBMISSION_EVALUATION_PLAN_v1.0.md'
+      - 'architecture/decisions/ACR-P0-001_EVENT_NAMING_v1.0.json'
+      - 'recovery/p0-wave1/P0_G01_G04_RECOVERED_CONTRACT_v1.0.json'
+      - 'tests/EIMS.ACR.P0.IdeaSubmission.ContractTests/**'
+      - '.github/workflows/acr-p0-004-idea-submission.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify-idea-submission-contract:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10.0.302
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.302'
+
+      - name: Build ACR-P0-004 contract tests
+        shell: pwsh
+        run: dotnet build .\tests\EIMS.ACR.P0.IdeaSubmission.ContractTests\EIMS.ACR.P0.IdeaSubmission.ContractTests.csproj -c Release
+
+      - name: Run ACR-P0-004 contract tests
+        shell: pwsh
+        run: dotnet run --project .\tests\EIMS.ACR.P0.IdeaSubmission.ContractTests\EIMS.ACR.P0.IdeaSubmission.ContractTests.csproj -c Release --no-build -- .\architecture\decisions\ACR-P0-004_IDEA_SUBMISSION_EVALUATION_PLAN_v1.0.json .\architecture\decisions\ACR-P0-001_EVENT_NAMING_v1.0.json .\recovery\p0-wave1\P0_G01_G04_RECOVERED_CONTRACT_v1.0.json
