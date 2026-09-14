@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://eims.local/schema/customer-config.schema.json",
+  "title": "EIMS Customer Configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "configVersion",
+    "productCompatibility",
+    "organization",
+    "locale",
+    "features",
+    "portfolios"
+  ],
+  "properties": {
+    "configVersion": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+$"
+    },
+    "productCompatibility": {
+      "type": "string",
+      "minLength": 1
+    },
+    "effectiveFrom": {
+      "type": ["string", "null"],
+      "format": "date-time"
+    },
+    "changeReference": {
+      "type": ["string", "null"],
+      "maxLength": 100
+    },
+    "organization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["organizationId", "displayName"],
+      "properties": {
+        "organizationId": {
+          "type": "string",
+          "pattern": "^[A-Z0-9_-]{2,64}$"
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 200
+        },
+        "branding": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "productLabel": {"type": "string", "maxLength": 100},
+            "logoAssetRef": {"type": ["string", "null"], "maxLength": 250}
+          }
+        }
+      }
+    },
+    "locale": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["language", "calendar", "currencyLabel"],
+      "properties": {
+        "language": {"enum": ["fa-IR", "en-US"]},
+        "calendar": {"enum": ["PERSIAN", "GREGORIAN"]},
+        "currencyLabel": {"type": "string", "maxLength": 50}
+      }
+    },
+    "features": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "localAiAssistant": {"type": "boolean", "default": false},
+        "knowledgeModule": {"type": "boolean", "default": true},
+        "rewardModule": {"type": "boolean", "default": false}
+      }
+    },
+    "portfolios": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["portfolioId", "name", "active"],
+        "properties": {
+          "portfolioId": {"type": "string", "pattern": "^[A-Z0-9_-]{2,64}$"},
+          "name": {"type": "string", "minLength": 2, "maxLength": 150},
+          "active": {"type": "boolean"}
+        }
+      }
+    },
+    "roleMappings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["sourceRoleKey", "eimsRole"],
+        "properties": {
+          "sourceRoleKey": {"type": "string", "maxLength": 100},
+          "eimsRole": {"type": "string", "maxLength": 100},
+          "scopeMode": {"enum": ["ORGANIZATION", "UNIT", "ASSIGNMENT"]}
+        }
+      }
+    },
+    "notificationPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "emailEnabled": {"type": "boolean", "default": false},
+        "inAppEnabled": {"type": "boolean", "default": true}
+      }
+    }
+  }
+}
