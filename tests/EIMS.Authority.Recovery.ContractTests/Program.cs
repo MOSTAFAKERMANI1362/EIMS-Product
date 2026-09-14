@@ -4,7 +4,7 @@ var tests = new List<(string Name, Func<Task> Run)>
 {
     ("P1R-CT-01 identity and assignment required", IdentityRequired),
     ("P1R-CT-02 unknown command denied", UnknownCommandDenied),
-    ("P1R-CT-03 recovered product catalog remains fail closed", ProductCatalogFailsClosed),
+    ("P1R-CT-03 state-bound product command remains fail closed at rule gate", ProductCatalogFailsClosed),
     ("P1R-CT-04 role denied", RoleDenied),
     ("P1R-CT-05 scope denied", ScopeDenied),
     ("P1R-CT-06 aggregate not found", AggregateNotFound),
@@ -20,7 +20,8 @@ var tests = new List<(string Name, Func<Task> Run)>
     ("P1R-CT-16 idempotency key payload conflict", IdempotencyConflict),
     ("P1R-CT-17 invalid mutation version denied", InvalidMutationVersion),
     ("P1R-CT-18 audit authority context retained", AuditContextRetained),
-    ("P1R-CT-19 catalog recovery gap explicit 21 of 28", CatalogGapExplicit)
+    ("P1R-CT-19 catalog recovery gap explicit 21 of 28", CatalogGapExplicit),
+    ("P1R-CT-20 state-unbound product command remains fail closed at state gate", StateUnboundProductFailsClosed)
 };
 
 var passed = 0;
@@ -80,7 +81,7 @@ static async Task ProductCatalogFailsClosed()
 {
     var kernel = new AuthorityKernel(new RecoveredApiCommandCatalog(), Store(), new PassRuleEvaluator(), new BaselineSodEvaluator(), new IncrementPlanner());
     var result = await kernel.ExecuteAsync(Command("g04.final-decision"), Actor("IDEA_DECISION"));
-    Eq(503, result.HttpStatus); Eq("P1_STATE_CONTRACT_NOT_RECOVERED", result.Code); False(result.StateMutated);
+    Eq(503, result.HttpStatus); Eq("P1_RULE_CONTRACT_NOT_RECOVERED", result.Code); False(result.StateMutated);
 }
 
 static async Task RoleDenied()
@@ -199,7 +200,17 @@ static Task CatalogGapExplicit()
 {
     var catalog = new RecoveredApiCommandCatalog();
     Eq(21, catalog.All.Count); Eq(28, RecoveredApiCommandCatalog.CompletionReviewDeclaredCommandCount); False(catalog.IsCatalogComplete);
+    Eq(6, RecoveredApiCommandCatalog.Wave1StateBoundCommandCount);
+    Eq(6, catalog.All.Count(x => x.StateContractRecovered));
+    True(catalog.All.All(x => !x.RuleContractRecovered));
     return Task.CompletedTask;
+}
+
+static async Task StateUnboundProductFailsClosed()
+{
+    var kernel = new AuthorityKernel(new RecoveredApiCommandCatalog(), Store(), new PassRuleEvaluator(), new BaselineSodEvaluator(), new IncrementPlanner());
+    var result = await kernel.ExecuteAsync(Command("g04.vote"), Actor("G04_COMMITTEE_MEMBER"));
+    Eq(503, result.HttpStatus); Eq("P1_STATE_CONTRACT_NOT_RECOVERED", result.Code); False(result.StateMutated);
 }
 
 static void True(bool value) { if (!value) throw new InvalidOperationException("Expected true."); }
