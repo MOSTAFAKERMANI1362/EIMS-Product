@@ -25,7 +25,8 @@ public sealed record AggregateSnapshot(
     string? OwnerPersonId = null,
     string? OwnerRole = null,
     string? Scope = null,
-    IReadOnlyDictionary<string, string>? RuleFacts = null);
+    IReadOnlyDictionary<string, string>? RuleFacts = null,
+    string? WorkRoutingRole = null);
 
 public sealed record CommandEventBinding(
     string Kind,
@@ -125,6 +126,25 @@ public sealed record AuthorityResult(
         new(status, code, false, false, false, null, correlationId, Array.Empty<string>(), detail);
 }
 
+public sealed record DecisionIntent(
+    string DecisionType,
+    string Outcome,
+    string? Note = null,
+    IReadOnlyDictionary<string, string>? Facts = null);
+
+public sealed record DomainDecisionEnvelope(
+    string DecisionId,
+    string DecisionType,
+    string Outcome,
+    string AggregateId,
+    long EntityVersion,
+    string PersonId,
+    string AssignmentId,
+    DateTimeOffset Timestamp,
+    string CorrelationId,
+    string? Note = null,
+    IReadOnlyDictionary<string, string>? Facts = null);
+
 public sealed record MutationRequest(
     AuthorityCommand Command,
     AuthorityActor Actor,
@@ -135,7 +155,8 @@ public sealed record MutationRequest(
 public sealed record MutationCommit(
     AggregateSnapshot After,
     AuditEnvelope Audit,
-    OutboxEnvelope Outbox);
+    OutboxEnvelope Outbox,
+    IReadOnlyCollection<DomainDecisionEnvelope>? Decisions = null);
 
 public sealed record AuditEnvelope(
     string AuditId,
