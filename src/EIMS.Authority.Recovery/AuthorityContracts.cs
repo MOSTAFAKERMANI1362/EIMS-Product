@@ -27,6 +27,51 @@ public sealed record AggregateSnapshot(
     string? Scope = null,
     IReadOnlyDictionary<string, string>? RuleFacts = null);
 
+public sealed record CommandEventBinding(
+    string Kind,
+    string? StaticEventName = null,
+    IReadOnlyDictionary<string, string>? OutcomeEventNames = null)
+{
+    public string? Resolve(string? outcome = null)
+    {
+        if (string.Equals(Kind, "STATIC", StringComparison.OrdinalIgnoreCase))
+            return string.IsNullOrWhiteSpace(StaticEventName) ? null : StaticEventName;
+
+        if (!string.Equals(Kind, "OUTCOME", StringComparison.OrdinalIgnoreCase)
+            || string.IsNullOrWhiteSpace(outcome)
+            || OutcomeEventNames is null)
+            return null;
+
+        foreach (var pair in OutcomeEventNames)
+        {
+            if (string.Equals(pair.Key, outcome, StringComparison.OrdinalIgnoreCase))
+                return string.IsNullOrWhiteSpace(pair.Value) ? null : pair.Value;
+        }
+
+        return null;
+    }
+
+    public bool IsValid
+    {
+        get
+        {
+            if (string.Equals(Kind, "STATIC", StringComparison.OrdinalIgnoreCase))
+                return !string.IsNullOrWhiteSpace(StaticEventName)
+                    && (OutcomeEventNames is null || OutcomeEventNames.Count == 0);
+
+            if (!string.Equals(Kind, "OUTCOME", StringComparison.OrdinalIgnoreCase)
+                || !string.IsNullOrWhiteSpace(StaticEventName)
+                || OutcomeEventNames is null
+                || OutcomeEventNames.Count == 0)
+                return false;
+
+            return OutcomeEventNames.Keys.All(x => !string.IsNullOrWhiteSpace(x))
+                && OutcomeEventNames.Values.All(x => !string.IsNullOrWhiteSpace(x))
+                && OutcomeEventNames.Keys.Distinct(StringComparer.OrdinalIgnoreCase).Count() == OutcomeEventNames.Count;
+        }
+    }
+}
+
 public sealed record CommandPolicy(
     string CommandName,
     IReadOnlyCollection<string> RequiredRoles,
@@ -36,7 +81,22 @@ public sealed record CommandPolicy(
     bool StateContractRecovered = true,
     bool RuleContractRecovered = true,
     bool EventContractRecovered = true,
-    bool MutationContractRecovered = true);
+    bool MutationContractRecovered = true,
+    CommandEventBinding? EventBinding = null)
+{
+    public string? ResolveEventName(string? outcome = null)
+    {
+        if (EventBinding is not null)
+            return EventBinding.Resolve(outcome);
+
+        if (string.IsNullOrWhiteSpace(EventName)
+            || string.Equals(EventName, "UNRECOVERED_EVENT_IDENTITY", StringComparison.Ordinal)
+            || string.Equals(EventName, "OUTCOME_AWARE_EVENT_CONTRACT", StringComparison.Ordinal))
+            return null;
+
+        return EventName;
+    }
+}
 
 public sealed record RuleEvaluation(bool Passed, string Code, string? Detail = null)
 {
