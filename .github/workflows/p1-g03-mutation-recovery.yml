@@ -1,0 +1,43 @@
+name: P1 G03 Mutation Recovery
+
+on:
+  pull_request:
+    paths:
+      - 'recovery/p1-wave4/**'
+      - 'architecture/decisions/ACR-P0-003_G03_MUTATION_ROUTING_v1.0.json'
+      - 'src/EIMS.Authority.Recovery/**'
+      - 'src/EIMS.Persistence.Recovery/**'
+      - 'src/EIMS.PilotAssembly.Core/**'
+      - 'tests/EIMS.G03.Mutation.Recovery.ContractTests/**'
+      - '.github/workflows/p1-g03-mutation-recovery.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'recovery/p1-wave4/**'
+      - 'architecture/decisions/ACR-P0-003_G03_MUTATION_ROUTING_v1.0.json'
+      - 'src/EIMS.Authority.Recovery/**'
+      - 'src/EIMS.Persistence.Recovery/**'
+      - 'src/EIMS.PilotAssembly.Core/**'
+      - 'tests/EIMS.G03.Mutation.Recovery.ContractTests/**'
+      - '.github/workflows/p1-g03-mutation-recovery.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify-g03-mutation:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10.0.302
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.302'
+
+      - name: Build Wave 4 G03 mutation tests
+        run: dotnet build .\tests\EIMS.G03.Mutation.Recovery.ContractTests\EIMS.G03.Mutation.Recovery.ContractTests.csproj -c Release
+
+      - name: Run Wave 4 G03 mutation tests
+        run: dotnet run --project .\tests\EIMS.G03.Mutation.Recovery.ContractTests\EIMS.G03.Mutation.Recovery.ContractTests.csproj -c Release --no-build -- .\recovery\p1-wave4\P1_WAVE4_G03_MUTATION_REBASELINE_v1.0.json
