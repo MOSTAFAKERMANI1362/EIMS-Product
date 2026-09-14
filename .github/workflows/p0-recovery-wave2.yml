@@ -1,0 +1,41 @@
+name: P0 Recovery Wave 2
+
+on:
+  pull_request:
+    paths:
+      - 'recovery/p0-wave2/**'
+      - 'tools/EIMS.P0.Wave2RecoveryVerifier/**'
+      - '.github/workflows/p0-recovery-wave2.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'recovery/p0-wave2/**'
+      - 'tools/EIMS.P0.Wave2RecoveryVerifier/**'
+      - '.github/workflows/p0-recovery-wave2.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify-recovery-contract:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10.0.302
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.302'
+
+      - name: Show SDK
+        shell: pwsh
+        run: dotnet --version
+
+      - name: Build verifier
+        shell: pwsh
+        run: dotnet build .\tools\EIMS.P0.Wave2RecoveryVerifier\EIMS.P0.Wave2RecoveryVerifier.csproj -c Release
+
+      - name: Verify Wave 2 machine contract
+        shell: pwsh
+        run: dotnet run --project .\tools\EIMS.P0.Wave2RecoveryVerifier\EIMS.P0.Wave2RecoveryVerifier.csproj -c Release --no-build -- .\recovery\p0-wave2\P0_PORTFOLIO_KNOWLEDGE_RECOVERED_CONTRACT_v1.0.json

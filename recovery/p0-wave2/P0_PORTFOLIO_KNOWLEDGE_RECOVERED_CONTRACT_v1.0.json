@@ -1,0 +1,287 @@
+{
+  "schema": "EIMS-P0-MACHINE-CONTRACT-RECOVERY-WAVE2-1.0",
+  "artifactIdentity": "P0_PORTFOLIO_KNOWLEDGE_RECOVERED_CONTRACT_v1.0",
+  "recoveryStatus": "RECOVERED_FROM_FROZEN_EVIDENCE_NOT_ORIGINAL_P0_ARTIFACT",
+  "sourceProduct": {
+    "name": "EIMS_v6.360_WORKLIST_UX_ROLE_SELECTOR_CLEANUP.html",
+    "sha256": "057a224fa55e6ee17d128c41c86f3410206d7246723c35872f57757329c4e98a"
+  },
+  "bindingStatus": "RECOVERY_CANDIDATE_NOT_YET_BOUND_TO_P1",
+  "roles": [
+    {"code":"PORTFOLIO_MANAGER","evidenceStatus":"PROPOSED_P0_API"},
+    {"code":"EXECUTION_OWNER","evidenceStatus":"PROPOSED_P0_API"},
+    {"code":"EXECUTION_COMPLETION_REVIEWER","evidenceStatus":"PROPOSED_P0_API"},
+    {"code":"BENEFIT_OWNER","evidenceStatus":"PROPOSED_P0_API"},
+    {"code":"BENEFIT_OWNER_OR_AUTHORIZED_DATA_PROVIDER","evidenceStatus":"PROPOSED_P0_API"},
+    {"code":"BENEFIT_VERIFIER","evidenceStatus":"PROPOSED_P0_API"},
+    {"code":"KNOWLEDGE_STEWARD","evidenceStatus":"PROPOSED_P0_API"},
+    {"code":"KNOWLEDGE_PUBLISHER","evidenceStatus":"PROPOSED_P0_API"}
+  ],
+  "p0ApiCommands": [
+    {"code":"portfolio.assign-accept","httpPath":"/commands/portfolio/{candidateId}/assign-accept","requiredRole":"PORTFOLIO_MANAGER","evidenceStatus":"PROPOSED_P0_API"},
+    {"code":"executions.prepare","httpPath":"/commands/executions/{executionId}/prepare","requiredRole":"EXECUTION_OWNER","evidenceStatus":"PROPOSED_P0_API"},
+    {"code":"executions.progress","httpPath":"/commands/executions/{executionId}/progress","requiredRole":"EXECUTION_OWNER","evidenceStatus":"PROPOSED_P0_API"},
+    {"code":"executions.submit-completion","httpPath":"/commands/executions/{executionId}/submit-completion","requiredRole":"EXECUTION_OWNER","evidenceStatus":"PROPOSED_P0_API"},
+    {"code":"executions.completion-review","httpPath":"/commands/executions/{executionId}/completion-review","requiredRole":"EXECUTION_COMPLETION_REVIEWER","evidenceStatus":"PROPOSED_P0_API"},
+    {"code":"benefits.accept","httpPath":"/commands/benefits/{benefitId}/accept","requiredRole":"BENEFIT_OWNER","evidenceStatus":"PROPOSED_P0_API"},
+    {"code":"benefits.measure","httpPath":"/commands/benefits/{benefitId}/measure","requiredRole":"BENEFIT_OWNER_OR_AUTHORIZED_DATA_PROVIDER","evidenceStatus":"PROPOSED_P0_API"},
+    {"code":"benefits.verify","httpPath":"/commands/benefits/{benefitId}/verify","requiredRole":"BENEFIT_VERIFIER","evidenceStatus":"PROPOSED_P0_API"},
+    {"code":"benefits.attribution","httpPath":"/commands/benefits/{benefitId}/attribution","requiredRole":"BENEFIT_VERIFIER","evidenceStatus":"PROPOSED_P0_API"},
+    {"code":"benefits.realize","httpPath":"/commands/benefits/{benefitId}/realize","requiredRole":"BENEFIT_OWNER","evidenceStatus":"PROPOSED_P0_API"},
+    {"code":"knowledge.validate","httpPath":"/commands/knowledge/{knowledgeId}/validate","requiredRole":"KNOWLEDGE_STEWARD","evidenceStatus":"PROPOSED_P0_API"},
+    {"code":"knowledge.publish","httpPath":"/commands/knowledge/{knowledgeId}/publish","requiredRole":"KNOWLEDGE_PUBLISHER","evidenceStatus":"PROPOSED_P0_API"}
+  ],
+  "portfolio": {
+    "invariants": [
+      {"code":"CANDIDATE_MEMBERSHIP_HANDOFF_DISTINCT","evidenceStatus":"CONFIRMED_P0_CONTRACT"},
+      {"code":"ASSIGNMENT_DOES_NOT_CREATE_MEMBERSHIP","evidenceStatus":"CONFIRMED_V6_360"},
+      {"code":"ACCEPTED_MEMBERSHIP_REQUIRED_FOR_RECOMMENDATION","evidenceStatus":"CONFIRMED_V6_360"},
+      {"code":"APPROVED_RECOMMENDATION_AND_BASELINE_REQUIRED_BEFORE_HANDOFF","evidenceStatus":"CONFIRMED_V6_360"}
+    ],
+    "behaviors": [
+      {
+        "id":"PORTFOLIO-ELIGIBILITY-PASS",
+        "actor":"SYSTEM_SERVICE",
+        "serverCommandIdentity":"TBD_UNRECOVERED_SERVER_COMMAND",
+        "preconditions":["Idea.status=APPROVED","hardReadinessGaps=0","policyExcluded=false"],
+        "effect":"Create PortfolioIntakeCandidate and bind approved Idea version",
+        "observedRuleRef":"EP06-ELIGIBILITY-PILOT",
+        "evidenceStatus":"CONFIRMED_V6_360"
+      },
+      {
+        "id":"PORTFOLIO-ASSIGN-CANDIDATE",
+        "actor":"PORTFOLIO_MANAGER",
+        "serverCommandIdentity":"portfolio.assign-accept",
+        "serverMappingStatus":"PARTIAL_P0_API_GROUPING_REQUIRES_BINDING_DECISION",
+        "from":"UNASSIGNED_CANDIDATE",
+        "to":"PENDING_ASSIGNMENT",
+        "effect":"Create versioned assignment with idempotency key; membership is not created",
+        "evidenceStatus":"CONFIRMED_V6_360"
+      },
+      {
+        "id":"PORTFOLIO-MEMBERSHIP-ACCEPT",
+        "actor":"PORTFOLIO_MANAGER",
+        "serverCommandIdentity":"portfolio.assign-accept",
+        "from":"PENDING",
+        "to":"ACCEPTED",
+        "event":"PortfolioMembershipAccepted.v1",
+        "eventAuthoritative":true,
+        "evidenceStatus":"CONFIRMED_V6_360"
+      },
+      {
+        "id":"PORTFOLIO-MEMBERSHIP-REJECT",
+        "actor":"PORTFOLIO_MANAGER",
+        "serverCommandIdentity":"TBD_UNRECOVERED_SERVER_COMMAND",
+        "from":"PENDING",
+        "to":"REJECTED",
+        "event":"PortfolioMembershipRejected.v1",
+        "eventAuthoritative":true,
+        "evidenceStatus":"CONFIRMED_V6_360"
+      },
+      {
+        "id":"PORTFOLIO-MEMBERSHIP-DEFER",
+        "actor":"PORTFOLIO_MANAGER",
+        "serverCommandIdentity":"TBD_UNRECOVERED_SERVER_COMMAND",
+        "from":"PENDING",
+        "to":"DEFERRED",
+        "event":"PortfolioMembershipDeferred.v1",
+        "eventAuthoritative":true,
+        "evidenceStatus":"CONFIRMED_V6_360"
+      },
+      {
+        "id":"EXECUTION-RECOMMENDATION-GENERATE",
+        "actor":"PORTFOLIO_MANAGER",
+        "serverCommandIdentity":"portfolio.assign-accept",
+        "serverMappingStatus":"PARTIAL_P0_API_GROUPING_REQUIRES_BINDING_DECISION",
+        "preconditions":["membership.status=ACCEPTED"],
+        "to":"DRAFT_RECOMMENDATION",
+        "requiredPreconditions":["GovernanceDecision","ApprovedPortfolioBaseline"],
+        "evidenceStatus":"CONFIRMED_V6_360"
+      },
+      {
+        "id":"EXECUTION-HANDOFF",
+        "actor":"PORTFOLIO_MANAGER",
+        "serverCommandIdentity":"TBD_UNRECOVERED_SERVER_COMMAND",
+        "preconditions":["recommendation.status=APPROVED","recommendation.baselineApproved=true"],
+        "events":["ExecutionHandoffRequested.v1","ExecutionCreatedFromRecommendation.v1"],
+        "eventAuthoritative":true,
+        "effect":"Create Execution in PLANNING and preserve Digital Thread",
+        "evidenceStatus":"CONFIRMED_V6_360"
+      }
+    ]
+  },
+  "execution": {
+    "states":["PLANNING","ACTIVE","COMPLETION_REVIEW","COMPLETED","CLOSURE_IN_PROGRESS","CLOSED"],
+    "terminalState":"CLOSED",
+    "behaviors":[
+      {
+        "id":"EXECUTION-PREPARE",
+        "actor":"EXECUTION_OWNER",
+        "serverCommandIdentity":"executions.prepare",
+        "effect":"Prepare Adaptive Lite/Standard execution; frozen prototype separately records Charter and Plan approval",
+        "serverMappingStatus":"P0_COMMAND_RECOVERED_DETAIL_BINDING_REQUIRED",
+        "evidenceStatus":"PROPOSED_P0_API"
+      },
+      {
+        "id":"EXECUTION-START",
+        "actor":"EXECUTION_OWNER",
+        "serverCommandIdentity":"TBD_UNRECOVERED_SERVER_COMMAND",
+        "from":"PLANNING",
+        "to":"ACTIVE",
+        "preconditions":["charterApproved=true","planApproved=true"],
+        "evidenceStatus":"CONFIRMED_V6_360"
+      },
+      {
+        "id":"EXECUTION-PROGRESS",
+        "actor":"EXECUTION_OWNER",
+        "serverCommandIdentity":"executions.progress",
+        "from":"ACTIVE",
+        "to":"ACTIVE",
+        "constraints":["progress between 0 and 100","progress=100 does not imply completion"],
+        "evidenceStatus":"CONFIRMED_P0_CONTRACT"
+      },
+      {
+        "id":"EXECUTION-SUBMIT-COMPLETION",
+        "actor":"EXECUTION_OWNER",
+        "serverCommandIdentity":"executions.submit-completion",
+        "from":"ACTIVE",
+        "to":"COMPLETION_REVIEW",
+        "preconditions":["progress=100","completion dossier submitted"],
+        "evidenceStatus":"CONFIRMED_V6_360"
+      },
+      {
+        "id":"EXECUTION-COMPLETION-REVIEW",
+        "actor":"EXECUTION_COMPLETION_REVIEWER",
+        "serverCommandIdentity":"executions.completion-review",
+        "from":"COMPLETION_REVIEW",
+        "approveTo":"COMPLETED",
+        "sod":["Execution Owner cannot approve own Completion"],
+        "legacyConflict":{"prototypeRole":"EXECUTION_OWNER","classification":"LEGACY_SUPERSEDED","reason":"P0 API and Product Contract require independent completion reviewer"},
+        "evidenceStatus":"CONFIRMED_P0_CONTRACT"
+      },
+      {
+        "id":"EXECUTION-BENEFIT-HANDOFF",
+        "actor":"EXECUTION_OWNER",
+        "serverCommandIdentity":"TBD_UNRECOVERED_SERVER_COMMAND",
+        "from":"COMPLETED",
+        "event":"BenefitHandoffRequested.v1",
+        "eventAuthoritative":true,
+        "effect":"Create Benefit in OBLIGATION_PENDING_ACCEPTANCE",
+        "evidenceStatus":"CONFIRMED_V6_360"
+      },
+      {
+        "id":"EXECUTION-BEGIN-CLOSURE",
+        "actor":"EXECUTION_OWNER",
+        "serverCommandIdentity":"TBD_UNRECOVERED_SERVER_COMMAND",
+        "from":"COMPLETED",
+        "to":"CLOSURE_IN_PROGRESS",
+        "preconditions":["Benefit obligation exists","Benefit owner accepted obligation"],
+        "evidenceStatus":"CONFIRMED_V6_360"
+      },
+      {
+        "id":"EXECUTION-CLOSE",
+        "actor":"EXECUTION_OWNER",
+        "serverCommandIdentity":"TBD_UNRECOVERED_SERVER_COMMAND",
+        "from":"CLOSURE_IN_PROGRESS",
+        "to":"CLOSED",
+        "evidenceStatus":"CONFIRMED_V6_360"
+      }
+    ]
+  },
+  "benefit": {
+    "stateSequence":["OBLIGATION_PENDING_ACCEPTANCE","BASELINE_REQUIRED","PLAN_REQUIRED","MEASUREMENT_PENDING","MEASURED","VERIFIED","VALIDATED","REALIZED","CLOSED"],
+    "invariants":[
+      {"code":"CLAIM_VERIFY_ATTRIBUTION_REALIZATION_DISTINCT","evidenceStatus":"CONFIRMED_P0_CONTRACT"},
+      {"code":"NON_FINANCIAL_BENEFIT_FIRST_CLASS","evidenceStatus":"CONFIRMED_P0_CONTRACT"},
+      {"code":"EXECUTION_OWNER_CANNOT_INDEPENDENTLY_VERIFY_OWN_OUTPUT","evidenceStatus":"CONFIRMED_P0_CONTRACT"}
+    ],
+    "behaviors":[
+      {"id":"BENEFIT-ACCEPT","actor":"BENEFIT_OWNER","serverCommandIdentity":"benefits.accept","from":"OBLIGATION_PENDING_ACCEPTANCE","to":"BASELINE_REQUIRED","evidenceStatus":"CONFIRMED_V6_360"},
+      {"id":"BENEFIT-BASELINE","actor":"BENEFIT_OWNER","serverCommandIdentity":"TBD_UNRECOVERED_SERVER_COMMAND","from":"BASELINE_REQUIRED","to":"PLAN_REQUIRED","evidenceStatus":"CONFIRMED_V6_360"},
+      {"id":"BENEFIT-PLAN","actor":"BENEFIT_OWNER","serverCommandIdentity":"TBD_UNRECOVERED_SERVER_COMMAND","from":"PLAN_REQUIRED","to":"MEASUREMENT_PENDING","evidenceStatus":"CONFIRMED_V6_360"},
+      {"id":"BENEFIT-MEASURE","actor":"BENEFIT_OWNER_OR_AUTHORIZED_DATA_PROVIDER","serverCommandIdentity":"benefits.measure","from":"MEASUREMENT_PENDING","to":"MEASURED","evidenceStatus":"CONFIRMED_P0_CONTRACT"},
+      {"id":"BENEFIT-VERIFY","actor":"BENEFIT_VERIFIER","serverCommandIdentity":"benefits.verify","from":"MEASURED","to":"VERIFIED","sod":["Verifier must be independent from Execution Owner for same output"],"evidenceStatus":"CONFIRMED_P0_CONTRACT"},
+      {"id":"BENEFIT-ATTRIBUTION","actor":"BENEFIT_VERIFIER","serverCommandIdentity":"benefits.attribution","from":"VERIFIED","to":"VALIDATED","evidenceStatus":"CONFIRMED_V6_360"},
+      {"id":"BENEFIT-REALIZE","actor":"BENEFIT_OWNER","serverCommandIdentity":"benefits.realize","from":"VALIDATED","to":"REALIZED","evidenceStatus":"CONFIRMED_V6_360"},
+      {"id":"BENEFIT-CLOSE","actor":"BENEFIT_OWNER","serverCommandIdentity":"TBD_UNRECOVERED_SERVER_COMMAND","from":"REALIZED","to":"CLOSED","preconditions":["Knowledge exists","Knowledge.status=PUBLISHED"],"evidenceStatus":"CONFIRMED_V6_360"}
+    ]
+  },
+  "knowledge": {
+    "states":["DRAFT","VALIDATED","PUBLISHED"],
+    "authorPolicy":{"default":"NEED_OWNER_OR_DOMAIN_EXPERT","exactResolution":"CONFIGURABLE_TBD","benefitOwnerPrimaryAuthor":false,"evidenceStatus":"CONFIRMED_P0_CONTRACT"},
+    "behaviors":[
+      {
+        "id":"KNOWLEDGE-CREATE-DRAFT",
+        "actor":"CONFIGURABLE_AUTHOR",
+        "serverCommandIdentity":"TBD_UNRECOVERED_SERVER_COMMAND",
+        "preconditions":["Benefit.status=REALIZED"],
+        "to":"DRAFT",
+        "legacyConflict":{"prototypeRole":"BENEFIT_OWNER","classification":"LEGACY_SUPERSEDED","reason":"P0 author policy says primary author is not Benefit Owner"},
+        "evidenceStatus":"CONFIRMED_P0_CONTRACT"
+      },
+      {
+        "id":"KNOWLEDGE-VALIDATE-APPROVE",
+        "actor":"KNOWLEDGE_STEWARD",
+        "serverCommandIdentity":"knowledge.validate",
+        "from":"DRAFT",
+        "to":"VALIDATED",
+        "evidenceStatus":"CONFIRMED_V6_360"
+      },
+      {
+        "id":"KNOWLEDGE-VALIDATE-RETURN",
+        "actor":"KNOWLEDGE_STEWARD",
+        "serverCommandIdentity":"knowledge.validate",
+        "from":"DRAFT",
+        "to":"DRAFT",
+        "correctionOwner":"CONFIGURABLE_TBD",
+        "legacyConflict":{"prototypeCorrectionRole":"BENEFIT_OWNER","classification":"LEGACY_SUPERSEDED_BY_P0_AUTHOR_POLICY"},
+        "evidenceStatus":"CONFIRMED_V6_360"
+      },
+      {
+        "id":"KNOWLEDGE-PUBLISH",
+        "actor":"KNOWLEDGE_PUBLISHER",
+        "serverCommandIdentity":"knowledge.publish",
+        "from":"VALIDATED",
+        "to":"PUBLISHED",
+        "evidenceStatus":"CONFIRMED_V6_360"
+      },
+      {
+        "id":"KNOWLEDGE-PUBLISH-RETURN",
+        "actor":"KNOWLEDGE_PUBLISHER",
+        "serverCommandIdentity":"knowledge.publish",
+        "from":"VALIDATED",
+        "to":"DRAFT",
+        "correctionOwner":"CONFIGURABLE_TBD",
+        "evidenceStatus":"CONFIRMED_V6_360"
+      }
+    ],
+    "sod":["KNOWLEDGE_STEWARD != KNOWLEDGE_PUBLISHER"]
+  },
+  "controlledMigrationDecisions":[
+    {
+      "code":"PORTFOLIO_ELIGIBILITY_AUTO_AFTER_G04_APPROVED",
+      "classification":"CONTROLLED_MIGRATION_DECISION",
+      "policy":"Keep PortfolioEligibilityService logic; invoke automatically after G04 Approved for normal operation; ordinary-user manual execute control removed; Admin/Test/UAT manual execution retained.",
+      "changesFrozenWorkflow":false,
+      "requiresImplementationChangePackage":true
+    },
+    {
+      "code":"POST_G04_DATA_VALUE_AUDIT_BEFORE_SIMPLIFICATION",
+      "classification":"CONTROLLED_MIGRATION_DECISION",
+      "policy":"No role/form/question reduction before Data Value Audit identifies consumer, decision, rule, KPI, audit or routing value.",
+      "changesFrozenWorkflow":false
+    }
+  ],
+  "unresolved": [
+    {"code":"PORTFOLIO_ELIGIBILITY_SERVER_COMMAND","status":"TBD_UNRECOVERED_SERVER_COMMAND"},
+    {"code":"PORTFOLIO_REJECT_DEFER_SERVER_COMMANDS","status":"TBD_UNRECOVERED_SERVER_COMMAND"},
+    {"code":"PORTFOLIO_HANDOFF_SERVER_COMMAND","status":"TBD_UNRECOVERED_SERVER_COMMAND"},
+    {"code":"EXECUTION_START_SERVER_COMMAND","status":"TBD_UNRECOVERED_SERVER_COMMAND"},
+    {"code":"EXECUTION_BENEFIT_HANDOFF_SERVER_COMMAND","status":"TBD_UNRECOVERED_SERVER_COMMAND"},
+    {"code":"EXECUTION_CLOSURE_SERVER_COMMANDS","status":"TBD_UNRECOVERED_SERVER_COMMAND"},
+    {"code":"BENEFIT_BASELINE_PLAN_CLOSE_SERVER_COMMANDS","status":"TBD_UNRECOVERED_SERVER_COMMAND"},
+    {"code":"KNOWLEDGE_CREATE_SERVER_COMMAND","status":"TBD_UNRECOVERED_SERVER_COMMAND"},
+    {"code":"KNOWLEDGE_AUTHOR_EXACT_RESOLUTION","status":"CONFIGURABLE_TBD"},
+    {"code":"P1_COMMAND_CATALOG_7_MISSING_IDENTITIES","status":"TBD_UNRECOVERED","knownRecoveredCount":21,"completionReviewDeclaredCount":28}
+  ]
+}
