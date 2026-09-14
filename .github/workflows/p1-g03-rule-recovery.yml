@@ -1,0 +1,43 @@
+name: P1 G03 Rule Recovery
+
+on:
+  pull_request:
+    paths:
+      - 'recovery/p1-wave2/**'
+      - 'src/EIMS.Authority.Recovery/RecoveredG03RuleEvaluator.cs'
+      - 'src/EIMS.Authority.Recovery/AuthorityContracts.cs'
+      - 'src/EIMS.Authority.Recovery/AuthorityKernel.cs'
+      - 'src/EIMS.Authority.Recovery/RecoveredApiCommandCatalog.cs'
+      - 'tests/EIMS.G03.RecoveryRules.ContractTests/**'
+      - '.github/workflows/p1-g03-rule-recovery.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'recovery/p1-wave2/**'
+      - 'src/EIMS.Authority.Recovery/RecoveredG03RuleEvaluator.cs'
+      - 'src/EIMS.Authority.Recovery/AuthorityContracts.cs'
+      - 'src/EIMS.Authority.Recovery/AuthorityKernel.cs'
+      - 'src/EIMS.Authority.Recovery/RecoveredApiCommandCatalog.cs'
+      - 'tests/EIMS.G03.RecoveryRules.ContractTests/**'
+      - '.github/workflows/p1-g03-rule-recovery.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify-g03-rules:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10.0.302
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.302'
+
+      - name: Build G03 recovered rule tests
+        run: dotnet build .\tests\EIMS.G03.RecoveryRules.ContractTests\EIMS.G03.RecoveryRules.ContractTests.csproj -c Release
+
+      - name: Run G03 recovered rule tests
+        run: dotnet run --project .\tests\EIMS.G03.RecoveryRules.ContractTests\EIMS.G03.RecoveryRules.ContractTests.csproj -c Release --no-build
