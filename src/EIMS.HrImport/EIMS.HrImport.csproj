@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>EIMS.HrImport</AssemblyName>
+    <RootNamespace>EIMS.HrImport</RootNamespace>
+  </PropertyGroup>
+</Project>
