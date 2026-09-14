@@ -6,12 +6,15 @@ on:
       - 'src/EIMS.Authority.Recovery/**'
       - 'tests/EIMS.Authority.Recovery.ContractTests/**'
       - 'recovery/P1_RECOVERY_IMPLEMENTATION_v1.0.md'
+      - 'recovery/p1-wave1/**'
       - '.github/workflows/p1-recovery-build.yml'
   push:
     branches: [ main ]
     paths:
       - 'src/EIMS.Authority.Recovery/**'
       - 'tests/EIMS.Authority.Recovery.ContractTests/**'
+      - 'recovery/P1_RECOVERY_IMPLEMENTATION_v1.0.md'
+      - 'recovery/p1-wave1/**'
       - '.github/workflows/p1-recovery-build.yml'
 
 permissions:
