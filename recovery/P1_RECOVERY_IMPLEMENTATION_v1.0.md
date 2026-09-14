@@ -45,6 +45,7 @@ Client-side visibility is never an authorization boundary.
 - atomic commit contract for Aggregate + Audit + Outbox + idempotency record.
 - Audit authority context: PersonID + Role + Assignment + IdentitySource + EntityVersion + RuleSet + Timestamp + Correlation.
 - `AggregateSnapshot.RuleFacts` for authoritative server-loaded rule facts; request bodies cannot substitute persisted aggregate facts.
+- outcome-aware `CommandEventBinding` supporting fail-closed `STATIC` and `OUTCOME` event resolution.
 - contract tests using an in-memory transactional test adapter only.
 
 A Product command with incomplete recovery metadata is rejected **before Store, Rule Evaluator, SoD evaluator or Mutation Planner is touched**. This prevents a later partial recovery step from accidentally turning a command into a mutating path.
@@ -70,20 +71,24 @@ This is a **new recovery rebaseline acceptance**, not a claim that the missing o
 
 `evaluation-assignments.complete`, `g04.vote`, and the remaining recovered commands do not yet have an accepted complete command-level state contract and therefore continue to fail at `P1_STATE_CONTRACT_NOT_RECOVERED`.
 
-### 4.2 Event naming decision
+### 4.2 Event naming decisions
 
 `ACR-P0-001` stabilizes the post-freeze event names:
 
 - `CaseCreatedFromApprovedSource.v1`;
 - `NeedCreatedFromQualifiedCase.v1`.
 
-The ACR explicitly records that the historical original event mapping in v6.360 was TBD. The names are therefore a controlled new architecture decision, not recovered historical identities.
+`ACR-P0-002` stabilizes the post-freeze G03 Need lifecycle events:
 
-These two names do not by themselves bind any P1 mutation/event planner. Event naming alone cannot promote a command.
+- `NeedSubmittedForG03Review.v1`;
+- `NeedApprovedForIdeation.v1`;
+- `NeedReturnedFromG03Review.v1`.
+
+Both ACRs explicitly preserve provenance: these are controlled post-freeze architecture decisions, not recovered historical identities from the missing P0 Event Catalog. Event naming by itself cannot promote a Product command.
 
 ### 4.3 Wave 2 — G03 rule rebaseline
 
-`P1_WAVE2_G03_RULE_REBASELINE_v1.0.json` formally re-baselines only the two G03 RuleSets whose rules are directly executable and explicit in frozen v6.360:
+`P1_WAVE2_G03_RULE_REBASELINE_v1.0.json` formally re-baselines only the two G03 RuleSets whose rules are directly executable and explicit in frozen v6.360.
 
 #### `needs.submit-g03`
 
@@ -112,15 +117,28 @@ The persisted `g03ReviewStatus` must be `PENDING`. Request decision is restricte
 - Need Owner cannot independently review the same Need at G03.
 - final frozen routing is role-based: APPROVE → `IDEA_OWNER`, RETURN → `NEED_OWNER`. No old `ideaOwnerCandidate` requirement is restored.
 
-The frozen prototype audit labels are **not** promoted into Domain Event identities. Both G03 commands remain `EventContractRecovered=false` and `MutationContractRecovered=false`.
+At the end of Wave 2 the two G03 commands stopped at `P1_EVENT_CONTRACT_NOT_RECOVERED`. No audit label was promoted into a Domain Event identity.
 
-Therefore the two G03 commands now stop at:
+### 4.4 Wave 3 — G03 event rebaseline
 
-`P1_EVENT_CONTRACT_NOT_RECOVERED`
+`P1_WAVE3_G03_EVENT_REBASELINE_v1.0.json` consumes approved `ACR-P0-002` and formally binds the G03 Domain Event contracts in P1:
 
-before any Store/Rule/SoD/Planner execution. Four other Wave 1 state-bound commands remain at `P1_RULE_CONTRACT_NOT_RECOVERED`. All other recovered Product commands remain at `P1_STATE_CONTRACT_NOT_RECOVERED`.
+- `needs.submit-g03` → static `NeedSubmittedForG03Review.v1`;
+- `needs.g03-decision` → outcome-aware mapping:
+  - APPROVE → `NeedApprovedForIdeation.v1`;
+  - RETURN → `NeedReturnedFromG03Review.v1`.
 
-No Product command is executable after Wave 2.
+The outcome-aware binding is fail-closed. A missing or unknown decision outcome resolves to no event and cannot fall back to a generic event identity.
+
+For the two G03 commands, State, Rule and Event contracts are now recovered/re-baselined, but `MutationContractRecovered=false` remains mandatory. They therefore stop at:
+
+`P1_MUTATION_CONTRACT_NOT_RECOVERED`
+
+before Store, Rule Evaluator, SoD evaluator or Mutation Planner is touched. No event is emitted merely because an event binding exists.
+
+Four other Wave 1 state-bound commands (`g01.decide`, `g02.decide`, `ideas.submit-g04`, `g04.final-decision`) remain at `P1_RULE_CONTRACT_NOT_RECOVERED`. All commands without accepted state contracts remain at `P1_STATE_CONTRACT_NOT_RECOVERED`.
+
+No Product command is executable after Wave 3.
 
 ## 5. SoD explicitly recovered
 
@@ -164,10 +182,10 @@ P0→P1 recovery consistency gate:
 
 ```powershell
 dotnet build .\tests\EIMS.P0P1.RecoveryGate.ContractTests\EIMS.P0P1.RecoveryGate.ContractTests.csproj -c Release
-dotnet run --project .\tests\EIMS.P0P1.RecoveryGate.ContractTests\EIMS.P0P1.RecoveryGate.ContractTests.csproj -c Release --no-build -- .\recovery\p0\P0_MACHINE_CONTRACT_RECOVERY_v1.0.json .\recovery\p1-wave1\P1_WAVE1_STATE_REBASELINE_ACCEPTANCE_v1.0.json .\recovery\p1-wave2\P1_WAVE2_G03_RULE_REBASELINE_v1.0.json
+dotnet run --project .\tests\EIMS.P0P1.RecoveryGate.ContractTests\EIMS.P0P1.RecoveryGate.ContractTests.csproj -c Release --no-build -- .\recovery\p0\P0_MACHINE_CONTRACT_RECOVERY_v1.0.json .\recovery\p1-wave1\P1_WAVE1_STATE_REBASELINE_ACCEPTANCE_v1.0.json .\recovery\p1-wave2\P1_WAVE2_G03_RULE_REBASELINE_v1.0.json .\recovery\p1-wave3\P1_WAVE3_G03_EVENT_REBASELINE_v1.0.json
 ```
 
-All three gates and the repository Security Pipeline must pass before merge.
+All gates and the repository Security Pipeline must pass before merge.
 
 ## 8. Exit condition for full P1 recovery
 
