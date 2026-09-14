@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Text.Json;
 using EIMS.Authority.Recovery;
 using EIMS.HrImport;
 using EIMS.Identity.Rbac;
@@ -7,21 +8,26 @@ using EIMS.Persistence.Recovery;
 var now = DateTimeOffset.Parse("2026-09-14T11:00:00Z");
 var tests = new List<(string Name, Func<Task> Run)>
 {
-    ("PLC-CT-01 approved P4 identity without assignment cannot authorize", P4IdentityWithoutAssignmentDenied),
-    ("PLC-CT-02 separate assignment enables P3 authority actor", SeparateAssignmentEnablesActor),
-    ("PLC-CT-03 forged client headers do not alter Windows identity", ForgedHeadersDoNotAlterIdentity),
-    ("PLC-CT-04 P3 exact role accepted by P1 and committed by P2", EndToEndCommit),
-    ("PLC-CT-05 end-to-end audit preserves Person Assignment Role and correlation", EndToEndAuditContext),
-    ("PLC-CT-06 exact replay is idempotent across P1 and P2", EndToEndReplay),
-    ("PLC-CT-07 wrong requested scope stops before mutation", WrongScopeStopsPipeline),
-    ("PLC-CT-08 wrong exact assignment role is denied by P1", WrongRoleStopsPipeline),
-    ("PLC-CT-09 inactive P4-derived person stops before mutation", InactivePersonStopsPipeline),
-    ("PLC-CT-10 duplicate NetworkAccount stops before mutation", DuplicateIdentityStopsPipeline),
-    ("PLC-CT-11 invalid P4 batch cannot enter identity projection", InvalidP4CannotProject),
-    ("PLC-CT-12 unresolved real Product command remains fail closed", ProductCommandStillFailClosed),
-    ("PLC-CT-13 P2 injected fault rolls back full P1 mutation", P2FaultRollsBackComposition),
-    ("PLC-CT-14 P4 data cannot synthesize role assignment", P4CannotSynthesizeAssignment),
-    ("PLC-CT-15 different assignment scopes are not unioned", NoCrossAssignmentScopeUnion)
+    ("PLC2-CT-01 valid P4 owner and reviewer identities project to P3", P4ProjectsOwnerAndReviewer),
+    ("PLC2-CT-02 separate assignments resolve exact G03 actors", SeparateAssignmentsResolveActors),
+    ("PLC2-CT-03 forged client headers do not alter Windows identity", ForgedHeadersDoNotAlterIdentity),
+    ("PLC2-CT-04 real G03 submit flows P4 to P3 to P1 to P2", RealSubmitEndToEnd),
+    ("PLC2-CT-05 real G03 approve flows through recovered product path", RealApproveEndToEnd),
+    ("PLC2-CT-06 two-step audit preserves distinct authority contexts", TwoStepAuditContexts),
+    ("PLC2-CT-07 approve decision preserves reviewer authority context", ApproveDecisionContext),
+    ("PLC2-CT-08 real G03 return routes to owner and retains note", RealReturnEndToEnd),
+    ("PLC2-CT-09 submit exact replay is idempotent", SubmitReplay),
+    ("PLC2-CT-10 approve exact replay is idempotent", ApproveReplay),
+    ("PLC2-CT-11 omitted requested scope cannot bypass aggregate scope", OmittedScopeCannotBypassAggregateScope),
+    ("PLC2-CT-12 forged requested scope cannot override aggregate scope", ForgedRequestedScopeDenied),
+    ("PLC2-CT-13 Need Owner self-review remains denied after P3 resolution", NeedOwnerSelfReviewDenied),
+    ("PLC2-CT-14 inactive P4 identity stops before mutation", InactiveIdentityDenied),
+    ("PLC2-CT-15 duplicate NetworkAccount stops before mutation", DuplicateIdentityDenied),
+    ("PLC2-CT-16 wrong assignment role stops real G03 command", WrongRoleDenied),
+    ("PLC2-CT-17 P4 identity data cannot synthesize Role Scope Assignment", P4CannotSynthesizeAssignment),
+    ("PLC2-CT-18 P2 decision-stage fault rolls back full product mutation", DecisionStageFaultRollsBack),
+    ("PLC2-CT-19 non-G03 Product command remains fail closed", NonG03ProductRemainsClosed),
+    ("PLC2-CT-20 assignment scopes are never unioned across assignments", NoCrossAssignmentScopeUnion)
 };
 
 var passed = 0;
@@ -43,91 +49,175 @@ Console.WriteLine($"RESULT {passed}/{tests.Count} PASS");
 return passed == tests.Count ? 0 : 1;
 
 string Header() => string.Join(',', P4CanonicalContract.Columns) + "\n";
-string Row(string person = "P-001", string employee = "E-001", string account = "DOMAIN\\user1", string status = "ACTIVE") =>
-    $"{person},{employee},{account},Synthetic User,RND,Research and Development,,{status},2026-09-14\n";
+string Row(
+    string person,
+    string employee,
+    string account,
+    string name,
+    string status = "ACTIVE") =>
+    $"{person},{employee},{account},{name},RND,Research and Development,,{status},2026-09-14\n";
 
 HrImportValidationResult ValidatedP4(string? csv = null)
 {
     var service = new HrOrgImportService();
-    return service.ValidateCanonicalCsv(csv ?? Header() + Row(), "PLC-BATCH", extractedAtUtc: now);
+    var content = csv ?? Header()
+        + Row("P-OWNER", "E-OWNER", "DOMAIN\\owner", "Need Owner")
+        + Row("P-REVIEW", "E-REVIEW", "DOMAIN\\reviewer", "Need Reviewer");
+    return service.ValidateCanonicalCsv(content, "PLC2-BATCH", extractedAtUtc: now);
 }
 
-PersonDirectoryEntry ProjectPerson(HrImportValidationResult validation)
+IReadOnlyCollection<PersonDirectoryEntry> ProjectPersons(HrImportValidationResult validation)
 {
-    if (!validation.IsValid || validation.Records.Count != 1)
-        throw new InvalidOperationException("P4 projection requires one valid approved record in this contract fixture.");
-    var r = validation.Records.Single();
-    return new PersonDirectoryEntry(
+    if (!validation.IsValid || validation.Records.Count == 0)
+        throw new InvalidOperationException("P4 projection requires a valid canonical batch.");
+
+    return Array.AsReadOnly(validation.Records.Select(r => new PersonDirectoryEntry(
         r.PersonId,
         r.NetworkAccount,
-        r.EmploymentStatus == CanonicalEmploymentStatus.ACTIVE ? DirectoryPersonStatus.Active : DirectoryPersonStatus.Inactive);
+        r.EmploymentStatus == CanonicalEmploymentStatus.ACTIVE
+            ? DirectoryPersonStatus.Active
+            : DirectoryPersonStatus.Inactive)).ToArray());
 }
 
+PersonDirectoryEntry Person(IReadOnlyCollection<PersonDirectoryEntry> persons, string personId) =>
+    persons.Single(x => string.Equals(x.PersonId, personId, StringComparison.OrdinalIgnoreCase));
+
 RoleAssignmentEntry Assignment(
-    string id = "ASG-IDEA-001",
-    string person = "P-001",
-    string role = "IDEA_OWNER",
+    string id,
+    string person,
+    string role,
     string[]? scopes = null) =>
     new(id, person, role, scopes ?? new[] { "UNIT:RND" }, now.AddDays(-1), null, false);
+
+RoleAssignmentEntry OwnerAssignment(string[]? scopes = null) =>
+    Assignment("ASG-OWNER", "P-OWNER", "NEED_OWNER", scopes);
+
+RoleAssignmentEntry ReviewerAssignment(string person = "P-REVIEW", string id = "ASG-REVIEW", string[]? scopes = null) =>
+    Assignment(id, person, "NEED_REVIEWER", scopes);
 
 WindowsIdentityRbacResolver Resolver(
     IEnumerable<PersonDirectoryEntry> persons,
     IEnumerable<RoleAssignmentEntry> assignments) =>
     new(new InMemoryIdentityDirectoryStore(persons, assignments));
 
-AggregateSnapshot Aggregate() =>
-    new("AGG-1", "TEST", "READY", 1, "P-OWNER", "TEST_OWNER", "UNIT:RND");
-
-CommandPolicy TestPolicy() =>
-    new("test.command", new[] { "IDEA_OWNER" }, new[] { "READY" }, "TEST-RULESET-1.0", "TestCommitted.v1");
-
-AuthorityCommand TestCommand(string key = "PLC-IDEMP-1", string scope = "UNIT:RND", string corr = "PLC-CORR-1") =>
-    new("test.command", "AGG-1", 1, key, corr, "{}", scope);
-
-(AuthorityKernel Kernel, TransactionalAuthorityStore Store) KernelWithP2(CommandPolicy? policy = null)
-{
-    var store = new TransactionalAuthorityStore(PersistenceContractDescriptor.RecoveryBaseline(), Aggregate());
-    var kernel = new AuthorityKernel(
-        new SinglePolicyCatalog(policy ?? TestPolicy()),
-        store,
-        new PassRuleEvaluator(),
-        new BaselineSodEvaluator(),
-        new IncrementPlanner());
-    return (kernel, store);
-}
-
 async Task<AuthorityActor> ResolveActor(
-    PersonDirectoryEntry person,
+    IReadOnlyCollection<PersonDirectoryEntry> persons,
     IEnumerable<RoleAssignmentEntry> assignments,
-    string assignmentId = "ASG-IDEA-001",
-    string scope = "UNIT:RND")
+    string networkAccount,
+    string assignmentId,
+    string? requestedScope = "UNIT:RND")
 {
-    var result = await Resolver(new[] { person }, assignments).ResolveAsync(
-        new IdentityResolutionRequest(person.NetworkAccount, assignmentId, scope, now));
+    var result = await Resolver(persons, assignments).ResolveAsync(
+        new IdentityResolutionRequest(networkAccount, assignmentId, requestedScope, now));
     True(result.Allowed);
     return result.Actor!;
 }
 
-async Task P4IdentityWithoutAssignmentDenied()
+Dictionary<string, string> GoodNeedFacts() => new(StringComparer.OrdinalIgnoreCase)
 {
-    var p4 = ValidatedP4();
-    True(p4.IsValid);
-    var person = ProjectPerson(p4);
-    var result = await Resolver(new[] { person }, Array.Empty<RoleAssignmentEntry>()).ResolveAsync(
-        new IdentityResolutionRequest(person.NetworkAccount, "ASG-001", "UNIT:RND", now));
-    Eq(403, result.HttpStatus); Eq("P3_ASSIGNMENT_NOT_FOUND", result.Code);
+    ["title"] = "کاهش توقف اضطراری خط نورد",
+    ["owner"] = "سرپرست نورد",
+    ["current"] = "میانگین توقف اضطراری ماهانه ۱۸ ساعت است.",
+    ["desired"] = "توقف اضطراری ماهانه باید به کمتر از ۶ ساعت برسد.",
+    ["gap"] = "کاهش حداقل ۱۲ ساعت توقف در ماه لازم است."
+};
+
+AggregateSnapshot DraftNeed()
+{
+    return new AggregateSnapshot(
+        "NEED-1",
+        "Need",
+        "DRAFT",
+        1,
+        "P-OWNER",
+        "NEED_OWNER",
+        "UNIT:RND",
+        GoodNeedFacts(),
+        "NEED_OWNER");
 }
 
-async Task SeparateAssignmentEnablesActor()
+AggregateSnapshot PendingNeed()
 {
-    var person = ProjectPerson(ValidatedP4());
-    var actor = await ResolveActor(person, new[] { Assignment() });
-    Eq("P-001", actor.PersonId); Eq("ASG-IDEA-001", actor.AssignmentId); True(actor.Roles.SequenceEqual(new[] { "IDEA_OWNER" }));
+    var facts = GoodNeedFacts();
+    facts["g03ReviewStatus"] = "PENDING";
+    return new AggregateSnapshot(
+        "NEED-1",
+        "Need",
+        "PENDING_G03_REVIEW",
+        2,
+        "P-OWNER",
+        "NEED_OWNER",
+        "UNIT:RND",
+        facts,
+        "NEED_REVIEWER");
+}
+
+AuthorityCommand Submit(string key = "PLC2-SUBMIT", string corr = "PLC2-CORR-SUBMIT", string? scope = "UNIT:RND") =>
+    new("needs.submit-g03", "NEED-1", 1, key, corr, "{}", scope);
+
+AuthorityCommand Approve(string key = "PLC2-APPROVE", string corr = "PLC2-CORR-APPROVE", string? scope = "UNIT:RND") =>
+    new(
+        "needs.g03-decision",
+        "NEED-1",
+        2,
+        key,
+        corr,
+        "{\"decision\":\"APPROVE\",\"definitionComplete\":\"YES\",\"measurable\":\"YES\",\"solutionBiasFree\":\"YES\"}",
+        scope);
+
+AuthorityCommand Return(string note, string key = "PLC2-RETURN", string corr = "PLC2-CORR-RETURN", string? scope = "UNIT:RND") =>
+    new(
+        "needs.g03-decision",
+        "NEED-1",
+        2,
+        key,
+        corr,
+        $"{{\"decision\":\"RETURN\",\"note\":{JsonSerializer.Serialize(note)}}}",
+        scope);
+
+(AuthorityKernel Kernel, TransactionalAuthorityStore Store) ProductKernel(AggregateSnapshot initial)
+{
+    var store = new TransactionalAuthorityStore(PersistenceContractDescriptor.RecoveryBaseline(), initial);
+    var kernel = new AuthorityKernel(
+        new RecoveredApiCommandCatalog(),
+        store,
+        new RecoveredG03RuleEvaluator(),
+        new BaselineSodEvaluator(),
+        new RecoveredG03MutationPlanner());
+    return (kernel, store);
+}
+
+async Task<(IReadOnlyCollection<PersonDirectoryEntry> Persons, AuthorityActor Owner, AuthorityActor Reviewer)> Actors()
+{
+    var persons = ProjectPersons(ValidatedP4());
+    var assignments = new[] { OwnerAssignment(), ReviewerAssignment() };
+    var owner = await ResolveActor(persons, assignments, "DOMAIN\\owner", "ASG-OWNER");
+    var reviewer = await ResolveActor(persons, assignments, "DOMAIN\\reviewer", "ASG-REVIEW");
+    return (persons, owner, reviewer);
+}
+
+async Task P4ProjectsOwnerAndReviewer()
+{
+    var validation = ValidatedP4();
+    True(validation.IsValid);
+    Eq(2, validation.Records.Count);
+    var persons = ProjectPersons(validation);
+    Eq(2, persons.Count);
+    Eq(DirectoryPersonStatus.Active, Person(persons, "P-OWNER").Status);
+    Eq(DirectoryPersonStatus.Active, Person(persons, "P-REVIEW").Status);
+}
+
+async Task SeparateAssignmentsResolveActors()
+{
+    var (_, owner, reviewer) = await Actors();
+    Eq("P-OWNER", owner.PersonId); Eq("ASG-OWNER", owner.AssignmentId); Seq(new[] { "NEED_OWNER" }, owner.Roles);
+    Eq("P-REVIEW", reviewer.PersonId); Eq("ASG-REVIEW", reviewer.AssignmentId); Seq(new[] { "NEED_REVIEWER" }, reviewer.Roles);
+    Seq(new[] { "UNIT:RND" }, owner.Scopes); Seq(new[] { "UNIT:RND" }, reviewer.Scopes);
 }
 
 Task ForgedHeadersDoNotAlterIdentity()
 {
-    var identity = new ClaimsIdentity(new[] { new Claim(ClaimTypes.Name, "DOMAIN\\user1") }, "Negotiate");
+    var identity = new ClaimsIdentity(new[] { new Claim(ClaimTypes.Name, "DOMAIN\\owner") }, "Negotiate");
     var principal = new ClaimsPrincipal(identity);
     var headers = new Dictionary<string, string>
     {
@@ -135,113 +225,162 @@ Task ForgedHeadersDoNotAlterIdentity()
         ["X-Role"] = "ADMIN",
         ["X-Scope"] = "GLOBAL"
     };
-    Eq("DOMAIN\\user1", WindowsPrincipalIdentitySource.GetAuthenticatedNetworkName(principal, headers)!);
+    Eq("DOMAIN\\owner", WindowsPrincipalIdentitySource.GetAuthenticatedNetworkName(principal, headers)!);
     return Task.CompletedTask;
 }
 
-async Task EndToEndCommit()
+async Task RealSubmitEndToEnd()
 {
-    var actor = await ResolveActor(ProjectPerson(ValidatedP4()), new[] { Assignment() });
-    var (kernel, store) = KernelWithP2();
-    var result = await kernel.ExecuteAsync(TestCommand(), actor);
-    Eq(200, result.HttpStatus); True(result.StateMutated); Eq(2L, (await store.GetAggregateAsync("AGG-1"))!.Version);
-    Eq(1, store.AuditLog.Count); Eq(1, store.Outbox.Count); Eq(1, store.IdempotencyRecords.Count);
+    var (_, owner, _) = await Actors();
+    var (kernel, store) = ProductKernel(DraftNeed());
+    var result = await kernel.ExecuteAsync(Submit(), owner);
+    Eq(200, result.HttpStatus); True(result.StateMutated); Seq(new[] { "NeedSubmittedForG03Review.v1" }, result.EmittedEvents);
+    var need = (await store.GetAggregateAsync("NEED-1"))!;
+    Eq("PENDING_G03_REVIEW", need.State); Eq(2L, need.Version); Eq("PENDING", Fact(need, "g03ReviewStatus")); Eq("NEED_REVIEWER", need.WorkRoutingRole!);
+    Eq(0, store.DomainDecisions.Count); Eq(1, store.AuditLog.Count); Eq(1, store.Outbox.Count); Eq(1, store.IdempotencyRecords.Count);
 }
 
-async Task EndToEndAuditContext()
+async Task RealApproveEndToEnd()
 {
-    var actor = await ResolveActor(ProjectPerson(ValidatedP4()), new[] { Assignment() });
-    var (kernel, store) = KernelWithP2();
-    await kernel.ExecuteAsync(TestCommand(), actor);
-    var audit = store.AuditLog.Single();
-    Eq("P-001", audit.PersonId); Eq("DOMAIN\\user1", audit.NetworkIdentity); Eq("ASG-IDEA-001", audit.Assignment!);
-    True(audit.Roles.SequenceEqual(new[] { "IDEA_OWNER" })); Eq("PLC-CORR-1", audit.CorrelationId); Eq(2L, audit.EntityVersion);
+    var (_, owner, reviewer) = await Actors();
+    var (kernel, store) = ProductKernel(DraftNeed());
+    Eq(200, (await kernel.ExecuteAsync(Submit(), owner)).HttpStatus);
+    var result = await kernel.ExecuteAsync(Approve(), reviewer);
+    Eq(200, result.HttpStatus); True(result.StateMutated); Seq(new[] { "NeedApprovedForIdeation.v1" }, result.EmittedEvents);
+    var need = (await store.GetAggregateAsync("NEED-1"))!;
+    Eq("READY_FOR_IDEATION", need.State); Eq(3L, need.Version); Eq("APPROVED", Fact(need, "g03ReviewStatus")); Eq("IDEA_OWNER", need.WorkRoutingRole!);
+    Eq(1, store.DomainDecisions.Count); Eq(2, store.AuditLog.Count); Eq(2, store.Outbox.Count); Eq(2, store.IdempotencyRecords.Count);
 }
 
-async Task EndToEndReplay()
+async Task TwoStepAuditContexts()
 {
-    var actor = await ResolveActor(ProjectPerson(ValidatedP4()), new[] { Assignment() });
-    var (kernel, store) = KernelWithP2();
-    var command = TestCommand();
-    var first = await kernel.ExecuteAsync(command, actor);
-    var second = await kernel.ExecuteAsync(command, actor);
-    True(first.StateMutated); True(second.IdempotentReplay); False(second.StateMutated);
-    Eq(1, store.AuditLog.Count); Eq(1, store.Outbox.Count); Eq(1, store.IdempotencyRecords.Count);
+    var (_, owner, reviewer) = await Actors();
+    var (kernel, store) = ProductKernel(DraftNeed());
+    await kernel.ExecuteAsync(Submit(), owner);
+    await kernel.ExecuteAsync(Approve(), reviewer);
+    var audits = store.AuditLog.ToArray();
+    Eq(2, audits.Length);
+    Eq("P-OWNER", audits[0].PersonId); Eq("ASG-OWNER", audits[0].Assignment); True(audits[0].Roles.Contains("NEED_OWNER"));
+    Eq("P-REVIEW", audits[1].PersonId); Eq("ASG-REVIEW", audits[1].Assignment); True(audits[1].Roles.Contains("NEED_REVIEWER"));
+    Eq("PLC2-CORR-SUBMIT", audits[0].CorrelationId); Eq("PLC2-CORR-APPROVE", audits[1].CorrelationId);
 }
 
-async Task WrongScopeStopsPipeline()
+async Task ApproveDecisionContext()
 {
-    var person = ProjectPerson(ValidatedP4());
-    var p3 = await Resolver(new[] { person }, new[] { Assignment(scopes: new[] { "UNIT:RND" }) }).ResolveAsync(
-        new IdentityResolutionRequest(person.NetworkAccount, "ASG-IDEA-001", "UNIT:FIN", now));
-    Eq(403, p3.HttpStatus); Eq("P3_SCOPE_DENIED", p3.Code);
-    var (_, store) = KernelWithP2();
-    await AssertUnchanged(store);
+    var (_, owner, reviewer) = await Actors();
+    var (kernel, store) = ProductKernel(DraftNeed());
+    await kernel.ExecuteAsync(Submit(), owner);
+    await kernel.ExecuteAsync(Approve(), reviewer);
+    var decision = store.DomainDecisions.Single();
+    Eq("G03ReviewDecision", decision.DecisionType); Eq("APPROVE", decision.Outcome);
+    Eq("P-REVIEW", decision.PersonId); Eq("ASG-REVIEW", decision.AssignmentId); Eq(3L, decision.EntityVersion);
+    Eq("PLC2-CORR-APPROVE", decision.CorrelationId);
+    Eq(store.AuditLog.Last().Timestamp, decision.Timestamp);
 }
 
-async Task WrongRoleStopsPipeline()
+async Task RealReturnEndToEnd()
 {
-    var person = ProjectPerson(ValidatedP4());
-    var actor = await ResolveActor(person, new[] { Assignment(role: "FINANCIAL_ASSESSOR") });
-    var (kernel, store) = KernelWithP2();
-    var result = await kernel.ExecuteAsync(TestCommand(), actor);
-    Eq(403, result.HttpStatus); Eq("P1_ROLE_SCOPE_DENIED", result.Code); await AssertUnchanged(store);
+    const string note = "لطفاً خط مبنای توقف و مقدار شکاف را دقیق‌تر ثبت کنید.";
+    var (_, owner, reviewer) = await Actors();
+    var (kernel, store) = ProductKernel(DraftNeed());
+    await kernel.ExecuteAsync(Submit(), owner);
+    var result = await kernel.ExecuteAsync(Return(note), reviewer);
+    Eq(200, result.HttpStatus); Seq(new[] { "NeedReturnedFromG03Review.v1" }, result.EmittedEvents);
+    var need = (await store.GetAggregateAsync("NEED-1"))!;
+    Eq("DRAFT", need.State); Eq("RETURNED", Fact(need, "g03ReviewStatus")); Eq("NEED_OWNER", need.WorkRoutingRole!);
+    var decision = store.DomainDecisions.Single(); Eq("RETURN", decision.Outcome); Eq(note, decision.Note!);
+    False(store.Outbox.Last().EventName.Contains(note, StringComparison.Ordinal));
 }
 
-async Task InactivePersonStopsPipeline()
+async Task SubmitReplay()
 {
-    var person = ProjectPerson(ValidatedP4(Header() + Row(status: "INACTIVE")));
-    var result = await Resolver(new[] { person }, new[] { Assignment() }).ResolveAsync(
-        new IdentityResolutionRequest(person.NetworkAccount, "ASG-IDEA-001", "UNIT:RND", now));
+    var (_, owner, _) = await Actors();
+    var (kernel, store) = ProductKernel(DraftNeed());
+    var command = Submit();
+    var first = await kernel.ExecuteAsync(command, owner);
+    var replay = await kernel.ExecuteAsync(command, owner);
+    True(first.StateMutated); True(replay.IdempotentReplay); False(replay.StateMutated);
+    Eq(1, store.AuditLog.Count); Eq(1, store.Outbox.Count); Eq(1, store.IdempotencyRecords.Count); Eq(0, store.DomainDecisions.Count);
+}
+
+async Task ApproveReplay()
+{
+    var (_, owner, reviewer) = await Actors();
+    var (kernel, store) = ProductKernel(DraftNeed());
+    await kernel.ExecuteAsync(Submit(), owner);
+    var command = Approve();
+    var first = await kernel.ExecuteAsync(command, reviewer);
+    var replay = await kernel.ExecuteAsync(command, reviewer);
+    True(first.StateMutated); True(replay.IdempotentReplay); False(replay.StateMutated);
+    Eq(1, store.DomainDecisions.Count); Eq(2, store.AuditLog.Count); Eq(2, store.Outbox.Count); Eq(2, store.IdempotencyRecords.Count);
+}
+
+async Task OmittedScopeCannotBypassAggregateScope()
+{
+    var persons = ProjectPersons(ValidatedP4());
+    var finOwner = OwnerAssignment(new[] { "UNIT:FIN" });
+    var actor = await ResolveActor(persons, new[] { finOwner }, "DOMAIN\\owner", "ASG-OWNER", requestedScope: null);
+    var (kernel, store) = ProductKernel(DraftNeed());
+    var result = await kernel.ExecuteAsync(Submit(scope: null), actor);
+    Eq(403, result.HttpStatus); Eq("P1_ROLE_SCOPE_DENIED", result.Code); await AssertPristine(store, 1);
+}
+
+async Task ForgedRequestedScopeDenied()
+{
+    var persons = ProjectPersons(ValidatedP4());
+    var broadOwner = OwnerAssignment(new[] { "UNIT:RND", "UNIT:FIN" });
+    var actor = await ResolveActor(persons, new[] { broadOwner }, "DOMAIN\\owner", "ASG-OWNER", requestedScope: "UNIT:FIN");
+    var (kernel, store) = ProductKernel(DraftNeed());
+    var result = await kernel.ExecuteAsync(Submit(scope: "UNIT:FIN"), actor);
+    Eq(403, result.HttpStatus); Eq("P1_ROLE_SCOPE_DENIED", result.Code); await AssertPristine(store, 1);
+}
+
+async Task NeedOwnerSelfReviewDenied()
+{
+    var persons = ProjectPersons(ValidatedP4());
+    var selfReview = ReviewerAssignment(person: "P-OWNER", id: "ASG-SELF-REVIEW");
+    var actor = await ResolveActor(persons, new[] { selfReview }, "DOMAIN\\owner", "ASG-SELF-REVIEW");
+    var (kernel, store) = ProductKernel(PendingNeed());
+    var result = await kernel.ExecuteAsync(Approve(), actor);
+    Eq(403, result.HttpStatus); Eq("SOD_G03_NEED_OWNER_SELF_REVIEW", result.Code); await AssertPristine(store, 2);
+}
+
+async Task InactiveIdentityDenied()
+{
+    var validation = ValidatedP4(Header() + Row("P-OWNER", "E-OWNER", "DOMAIN\\owner", "Need Owner", "INACTIVE"));
+    True(validation.IsValid);
+    var persons = ProjectPersons(validation);
+    var result = await Resolver(persons, new[] { OwnerAssignment() }).ResolveAsync(
+        new IdentityResolutionRequest("DOMAIN\\owner", "ASG-OWNER", "UNIT:RND", now));
     Eq(403, result.HttpStatus); Eq("P3_PERSON_INACTIVE", result.Code);
-    var (_, store) = KernelWithP2(); await AssertUnchanged(store);
+    var (_, store) = ProductKernel(DraftNeed()); await AssertPristine(store, 1);
 }
 
-async Task DuplicateIdentityStopsPipeline()
+async Task DuplicateIdentityDenied()
 {
-    var person = ProjectPerson(ValidatedP4());
-    var duplicate = person with { PersonId = "P-002" };
-    var result = await Resolver(new[] { person, duplicate }, new[] { Assignment() }).ResolveAsync(
-        new IdentityResolutionRequest(person.NetworkAccount, "ASG-IDEA-001", "UNIT:RND", now));
+    var persons = ProjectPersons(ValidatedP4());
+    var owner = Person(persons, "P-OWNER");
+    var duplicate = owner with { PersonId = "P-DUP" };
+    var result = await Resolver(persons.Concat(new[] { duplicate }), new[] { OwnerAssignment() }).ResolveAsync(
+        new IdentityResolutionRequest("DOMAIN\\owner", "ASG-OWNER", "UNIT:RND", now));
     Eq(409, result.HttpStatus); Eq("P3_NETWORK_IDENTITY_NOT_UNIQUE", result.Code);
-    var (_, store) = KernelWithP2(); await AssertUnchanged(store);
+    var (_, store) = ProductKernel(DraftNeed()); await AssertPristine(store, 1);
 }
 
-Task InvalidP4CannotProject()
+async Task WrongRoleDenied()
 {
-    var invalid = ValidatedP4(Header() + Row(account: "not-a-domain-account"));
-    False(invalid.IsValid);
-    var threw = false;
-    try { _ = ProjectPerson(invalid); } catch (InvalidOperationException) { threw = true; }
-    True(threw);
-    return Task.CompletedTask;
-}
-
-async Task ProductCommandStillFailClosed()
-{
-    var actor = await ResolveActor(ProjectPerson(ValidatedP4()), new[] { Assignment(role: "IDEA_DECISION") });
-    var store = new TransactionalAuthorityStore(PersistenceContractDescriptor.RecoveryBaseline(), Aggregate());
-    var kernel = new AuthorityKernel(
-        new RecoveredApiCommandCatalog(), store, new PassRuleEvaluator(), new BaselineSodEvaluator(), new IncrementPlanner());
-    var command = new AuthorityCommand("g04.final-decision", "AGG-1", 1, "PROD-1", "PROD-CORR", "{}", "UNIT:RND");
-    var result = await kernel.ExecuteAsync(command, actor);
-    Eq(503, result.HttpStatus); Eq("P1_STATE_CONTRACT_NOT_RECOVERED", result.Code); await AssertUnchanged(store);
-}
-
-async Task P2FaultRollsBackComposition()
-{
-    var actor = await ResolveActor(ProjectPerson(ValidatedP4()), new[] { Assignment() });
-    var (kernel, store) = KernelWithP2();
-    store.FaultPoint = PersistenceFaultPoint.AfterOutboxStaged;
-    var threw = false;
-    try { await kernel.ExecuteAsync(TestCommand(), actor); } catch (PersistenceAtomicityException) { threw = true; }
-    True(threw); await AssertUnchanged(store);
+    var persons = ProjectPersons(ValidatedP4());
+    var wrong = Assignment("ASG-WRONG", "P-OWNER", "FINANCIAL_ASSESSOR");
+    var actor = await ResolveActor(persons, new[] { wrong }, "DOMAIN\\owner", "ASG-WRONG");
+    var (kernel, store) = ProductKernel(DraftNeed());
+    var result = await kernel.ExecuteAsync(Submit(), actor);
+    Eq(403, result.HttpStatus); Eq("P1_ROLE_SCOPE_DENIED", result.Code); await AssertPristine(store, 1);
 }
 
 Task P4CannotSynthesizeAssignment()
 {
-    var p4 = ValidatedP4();
-    True(p4.IsValid);
+    var validation = ValidatedP4();
+    True(validation.IsValid);
     var names = typeof(HrOrgRecord).GetProperties().Select(x => x.Name).ToArray();
     False(names.Any(x => x.Contains("Role", StringComparison.OrdinalIgnoreCase)));
     False(names.Any(x => x.Contains("Scope", StringComparison.OrdinalIgnoreCase)));
@@ -249,24 +388,48 @@ Task P4CannotSynthesizeAssignment()
     return Task.CompletedTask;
 }
 
+async Task DecisionStageFaultRollsBack()
+{
+    var (_, _, reviewer) = await Actors();
+    var (kernel, store) = ProductKernel(PendingNeed());
+    store.FaultPoint = PersistenceFaultPoint.AfterDecisionStaged;
+    var threw = false;
+    try { await kernel.ExecuteAsync(Approve(), reviewer); }
+    catch (PersistenceAtomicityException) { threw = true; }
+    True(threw); await AssertPristine(store, 2);
+}
+
+async Task NonG03ProductRemainsClosed()
+{
+    var (_, _, reviewer) = await Actors();
+    var (kernel, store) = ProductKernel(PendingNeed());
+    var command = new AuthorityCommand("g04.vote", "NEED-1", 2, "PLC2-G04", "PLC2-CORR-G04", "{}", "UNIT:RND");
+    var result = await kernel.ExecuteAsync(command, reviewer);
+    Eq(503, result.HttpStatus); Eq("P1_STATE_CONTRACT_NOT_RECOVERED", result.Code); await AssertPristine(store, 2);
+}
+
 async Task NoCrossAssignmentScopeUnion()
 {
-    var person = ProjectPerson(ValidatedP4());
+    var persons = ProjectPersons(ValidatedP4());
     var assignments = new[]
     {
-        Assignment("ASG-RND", role: "IDEA_OWNER", scopes: new[] { "UNIT:RND" }),
-        Assignment("ASG-FIN", role: "FINANCIAL_ASSESSOR", scopes: new[] { "UNIT:FIN" })
+        OwnerAssignment(new[] { "UNIT:RND" }),
+        Assignment("ASG-FIN", "P-OWNER", "FINANCIAL_ASSESSOR", new[] { "UNIT:FIN" })
     };
-    var result = await Resolver(new[] { person }, assignments).ResolveAsync(
-        new IdentityResolutionRequest(person.NetworkAccount, "ASG-RND", "UNIT:FIN", now));
+    var result = await Resolver(persons, assignments).ResolveAsync(
+        new IdentityResolutionRequest("DOMAIN\\owner", "ASG-OWNER", "UNIT:FIN", now));
     Eq(403, result.HttpStatus); Eq("P3_SCOPE_DENIED", result.Code);
 }
 
-async Task AssertUnchanged(TransactionalAuthorityStore store)
+async Task AssertPristine(TransactionalAuthorityStore store, long expectedVersion)
 {
-    Eq(1L, (await store.GetAggregateAsync("AGG-1"))!.Version);
-    Eq(0, store.AuditLog.Count); Eq(0, store.Outbox.Count); Eq(0, store.IdempotencyRecords.Count);
+    var aggregate = (await store.GetAggregateAsync("NEED-1"))!;
+    Eq(expectedVersion, aggregate.Version);
+    Eq(0, store.DomainDecisions.Count); Eq(0, store.AuditLog.Count); Eq(0, store.Outbox.Count); Eq(0, store.IdempotencyRecords.Count);
 }
+
+static string Fact(AggregateSnapshot aggregate, string key) =>
+    aggregate.RuleFacts!.First(x => string.Equals(x.Key, key, StringComparison.OrdinalIgnoreCase)).Value;
 
 static void True(bool value) { if (!value) throw new InvalidOperationException("Expected true."); }
 static void False(bool value) { if (value) throw new InvalidOperationException("Expected false."); }
@@ -275,19 +438,8 @@ static void Eq<T>(T expected, T actual) where T : notnull
     if (!EqualityComparer<T>.Default.Equals(expected, actual))
         throw new InvalidOperationException($"Expected '{expected}', actual '{actual}'.");
 }
-
-sealed class SinglePolicyCatalog(CommandPolicy policy) : ICommandPolicyCatalog
+static void Seq<T>(IEnumerable<T> expected, IEnumerable<T> actual)
 {
-    public IReadOnlyCollection<CommandPolicy> All { get; } = new[] { policy };
-    public bool TryGet(string commandName, out CommandPolicy found)
-    {
-        if (string.Equals(commandName, policy.CommandName, StringComparison.OrdinalIgnoreCase)) { found = policy; return true; }
-        found = null!; return false;
-    }
-}
-
-sealed class IncrementPlanner : ICommandMutationPlanner
-{
-    public ValueTask<MutationPlan?> PlanAsync(AuthorityCommand command, AuthorityActor actor, AggregateSnapshot aggregate, CommandPolicy policy, CancellationToken cancellationToken = default) =>
-        ValueTask.FromResult<MutationPlan?>(new MutationPlan(aggregate with { Version = aggregate.Version + 1 }, policy.EventName));
+    if (!expected.SequenceEqual(actual))
+        throw new InvalidOperationException("Sequences differ.");
 }
