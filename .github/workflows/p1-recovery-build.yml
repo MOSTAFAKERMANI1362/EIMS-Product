@@ -1,0 +1,42 @@
+name: P1 Recovery Build
+
+on:
+  pull_request:
+    paths:
+      - 'src/EIMS.Authority.Recovery/**'
+      - 'tests/EIMS.Authority.Recovery.ContractTests/**'
+      - 'recovery/P1_RECOVERY_IMPLEMENTATION_v1.0.md'
+      - '.github/workflows/p1-recovery-build.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'src/EIMS.Authority.Recovery/**'
+      - 'tests/EIMS.Authority.Recovery.ContractTests/**'
+      - '.github/workflows/p1-recovery-build.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-contract-test:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10.0.302
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.302'
+
+      - name: Show SDK
+        shell: pwsh
+        run: dotnet --version
+
+      - name: Build P1 Recovery contract tests
+        shell: pwsh
+        run: dotnet build .\tests\EIMS.Authority.Recovery.ContractTests\EIMS.Authority.Recovery.ContractTests.csproj -c Release
+
+      - name: Run P1 Recovery contract tests
+        shell: pwsh
+        run: dotnet run --project .\tests\EIMS.Authority.Recovery.ContractTests\EIMS.Authority.Recovery.ContractTests.csproj -c Release --no-build
