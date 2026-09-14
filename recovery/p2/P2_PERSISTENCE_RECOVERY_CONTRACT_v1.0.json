@@ -1,0 +1,84 @@
+{
+  "schema": "EIMS-P2-PERSISTENCE-RECOVERY-1.0",
+  "artifactIdentity": "P2_PERSISTENCE_RECOVERY_CONTRACT_v1.0",
+  "recoveryStatus": "RECOVERED_LOGICAL_CONTRACT_NOT_ORIGINAL_P2_ARTIFACT",
+  "sourceProduct": {
+    "name": "EIMS_v6.360_WORKLIST_UX_ROLE_SELECTOR_CLEANUP.html",
+    "sha256": "057a224fa55e6ee17d128c41c86f3410206d7246723c35872f57757329c4e98a"
+  },
+  "authoritySource": "P1_RECOVERY_KERNEL_PLUS_P0_PRODUCT_CONTRACT",
+  "logicalContractStatus": "READY_FOR_ADAPTER_IMPLEMENTATION",
+  "physicalOracleStatus": "BLOCKED_ON_ENVIRONMENT_EVIDENCE",
+  "atomicTransactionUnit": [
+    "AggregateState",
+    "AppendOnlyAudit",
+    "EventOutbox",
+    "IdempotencyRecord"
+  ],
+  "requiredSemantics": {
+    "optimisticConcurrency": true,
+    "expectedVersionRequired": true,
+    "serverSideIdempotency": true,
+    "exactReplayReturnsPriorResultWithoutMutation": true,
+    "idempotencyFingerprintConflictRejected": true,
+    "appendOnlyAudit": true,
+    "atomicStateAuditOutboxIdempotency": true,
+    "correlationIdPreservedAcrossAuditAndOutbox": true,
+    "aggregateVersionPreservedAcrossStateAuditAndOutbox": true,
+    "rollbackOnAnyWriteFailure": true
+  },
+  "logicalUniqueness": [
+    {
+      "name": "UX_IDEMPOTENCY_COMMAND_AGGREGATE_KEY",
+      "fields": ["CommandName", "AggregateId", "IdempotencyKey"],
+      "physicalDDLStatus": "TBD_ORACLE_BINDING"
+    },
+    {
+      "name": "UX_AUDIT_ID",
+      "fields": ["AuditId"],
+      "physicalDDLStatus": "TBD_ORACLE_BINDING"
+    },
+    {
+      "name": "UX_OUTBOX_MESSAGE_ID",
+      "fields": ["MessageId"],
+      "physicalDDLStatus": "TBD_ORACLE_BINDING"
+    }
+  ],
+  "oracleBindingEvidence": {
+    "oracleVersion": null,
+    "dotNetProvider": null,
+    "connectivityMode": null,
+    "serviceAccountModel": null,
+    "schemaOwner": null,
+    "evidenceReference": null,
+    "connectionString": "PROHIBITED_FROM_CONTRACT",
+    "password": "PROHIBITED_FROM_CONTRACT",
+    "secret": "PROHIBITED_FROM_CONTRACT"
+  },
+  "physicalDecisionsNotYetAuthorized": [
+    "Oracle .NET provider package/version",
+    "Oracle client mode if any",
+    "TNS/EZConnect/other connectivity form",
+    "production connection string",
+    "service account credentials",
+    "schema/table/sequence/index names",
+    "tablespace/storage parameters",
+    "Oracle-specific locking/SQL syntax",
+    "migration tooling"
+  ],
+  "adapterBoundary": {
+    "authorityPort": "EIMS.Authority.Recovery.IAuthorityStore",
+    "recoveryImplementation": "EIMS.Persistence.Recovery.TransactionalAuthorityStore",
+    "productionOracleAdapter": "TBD_AFTER_ENVIRONMENT_BINDING"
+  },
+  "failurePolicy": {
+    "partialCommitAllowed": false,
+    "failClosedWhenOracleBindingIncomplete": true,
+    "liveOracleProbeRequiredBeforeNetworkPilot": true
+  },
+  "evidence": {
+    "contractTestProject": "tests/EIMS.Persistence.Recovery.ContractTests",
+    "sdk": "10.0.302",
+    "minimumRequiredTests": 23
+  }
+}
