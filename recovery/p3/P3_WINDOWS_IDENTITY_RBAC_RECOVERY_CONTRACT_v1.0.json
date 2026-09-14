@@ -1,0 +1,78 @@
+{
+  "schema": "EIMS-P3-WINDOWS-IDENTITY-RBAC-RECOVERY-1.0",
+  "artifactIdentity": "P3_WINDOWS_IDENTITY_RBAC_RECOVERY_CONTRACT_v1.0",
+  "recoveryStatus": "LOGICAL_RUNTIME_RECOVERED_LIVE_DOMAIN_EVIDENCE_PENDING",
+  "sourceProduct": {
+    "name": "EIMS_v6.360_WORKLIST_UX_ROLE_SELECTOR_CLEANUP.html",
+    "sha256": "057a224fa55e6ee17d128c41c86f3410206d7246723c35872f57757329c4e98a"
+  },
+  "identityChain": [
+    "AuthenticatedWindowsPrincipal",
+    "NormalizedNetworkAccount",
+    "UniqueActivePersonId",
+    "ExactEffectiveAssignment",
+    "ServerLoadedRoleScope",
+    "AuthorityActor"
+  ],
+  "hostingContract": {
+    "mode": "IIS_WINDOWS_AUTH",
+    "anonymousAllowed": false,
+    "clientIdentityHeadersTrusted": false,
+    "liveDomainEvidenceRequired": true
+  },
+  "identityRules": {
+    "networkAccountFormat": "DOMAIN\\user",
+    "networkAccountCaseInsensitive": true,
+    "exactlyOnePersonRequired": true,
+    "inactivePersonDenied": true,
+    "clientSuppliedPersonIdTrusted": false
+  },
+  "assignmentRules": {
+    "assignmentIdRequiredForMutationContext": true,
+    "assignmentMustBelongToResolvedPerson": true,
+    "revokedAssignmentDenied": true,
+    "notYetEffectiveAssignmentDenied": true,
+    "expiredAssignmentDenied": true,
+    "roleMustBeServerLoaded": true,
+    "scopesMustBeServerLoaded": true,
+    "requestedScopeMustBeAssigned": true,
+    "authorityActorUsesExactAssignmentOnly": true,
+    "unionAllUserRolesAcrossAssignments": false,
+    "unionAllUserScopesAcrossAssignments": false
+  },
+  "headerTrust": {
+    "X-EIMS-Pilot-User": false,
+    "X-User": false,
+    "X-Role": false,
+    "X-Scope": false
+  },
+  "p4Boundary": {
+    "personDirectoryMayBePopulatedFromApprovedP4Activation": true,
+    "networkAccountMayBePopulatedFromApprovedP4Activation": true,
+    "p4MayCreateRoleAssignment": false,
+    "p4MayGrantScope": false
+  },
+  "authorityOutput": {
+    "type": "EIMS.Authority.Recovery.AuthorityActor",
+    "identitySource": "WINDOWS_PRINCIPAL",
+    "fields": ["PersonId", "NetworkIdentity", "IdentitySource", "AssignmentId", "Roles", "Scopes"]
+  },
+  "roleAssignmentAdministration": {
+    "separateControlledBoundaryRequired": true,
+    "auditRequired": true,
+    "automaticFromJobTitle": false,
+    "automaticFromOrgUnit": false,
+    "physicalAdministrationWorkflow": "TBD_PRODUCTIZATION"
+  },
+  "readiness": {
+    "logicalResolverStatus": "READY_FOR_COMPOSITION",
+    "p3.windows.live": "TEST_REQUIRED",
+    "liveEvidence": "Real DOMAIN account under IIS Windows Authentication must resolve to one ACTIVE PersonID and one effective requested Assignment with server-side Role/Scope."
+  },
+  "implementation": {
+    "project": "src/EIMS.Identity.Rbac",
+    "testProject": "tests/EIMS.Identity.Rbac.ContractTests",
+    "sdk": "10.0.302",
+    "minimumContractTests": 25
+  }
+}
