@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using EIMS.Authority.Recovery;
 
 namespace EIMS.Persistence.Recovery;
@@ -126,7 +127,9 @@ public sealed class TransactionalAuthorityStore : IAuthorityStore, IPersistenceE
             if (_outbox.Any(x => string.Equals(x.MessageId, commit.Outbox.MessageId, StringComparison.Ordinal)))
                 return ValueTask.FromResult(AuthorityResult.Deny(409, "P2_DUPLICATE_OUTBOX_ID", request.Command.CorrelationId));
 
-            var decisions = (commit.Decisions ?? Array.Empty<DomainDecisionEnvelope>()).ToArray();
+            var decisions = (commit.Decisions ?? Array.Empty<DomainDecisionEnvelope>())
+                .Select(SnapshotDecision)
+                .ToArray();
             if (decisions.GroupBy(x => x.DecisionId, StringComparer.Ordinal).Any(g => g.Count() > 1)
                 || decisions.Any(d => _decisions.Any(existing => string.Equals(existing.DecisionId, d.DecisionId, StringComparison.Ordinal))))
                 return ValueTask.FromResult(AuthorityResult.Deny(409, "P2_DUPLICATE_DECISION_ID", request.Command.CorrelationId));
@@ -215,6 +218,9 @@ public sealed class TransactionalAuthorityStore : IAuthorityStore, IPersistenceE
         if (!string.Equals(commit.Audit.CommandName, request.Command.CommandName, StringComparison.OrdinalIgnoreCase))
             return "P2_AUDIT_COMMAND_MISMATCH";
 
+        if (commit.Outbox.OccurredAt != commit.Audit.Timestamp)
+            return "P2_EVIDENCE_TIMESTAMP_MISMATCH";
+
         foreach (var decision in commit.Decisions ?? Array.Empty<DomainDecisionEnvelope>())
         {
             if (string.IsNullOrWhiteSpace(decision.DecisionId)
@@ -232,9 +238,26 @@ public sealed class TransactionalAuthorityStore : IAuthorityStore, IPersistenceE
             if (!string.Equals(decision.PersonId, request.Actor.PersonId, StringComparison.OrdinalIgnoreCase)
                 || !string.Equals(decision.AssignmentId, request.Actor.AssignmentId, StringComparison.OrdinalIgnoreCase))
                 return "P2_DECISION_AUTHORITY_MISMATCH";
+
+            if (decision.Timestamp != commit.Audit.Timestamp)
+                return "P2_DECISION_TIMESTAMP_MISMATCH";
         }
 
         return null;
+    }
+
+    private static DomainDecisionEnvelope SnapshotDecision(DomainDecisionEnvelope decision) =>
+        decision with { Facts = SnapshotFacts(decision.Facts) };
+
+    private static IReadOnlyDictionary<string, string>? SnapshotFacts(IReadOnlyDictionary<string, string>? facts)
+    {
+        if (facts is null || facts.Count == 0)
+            return null;
+
+        var copy = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var pair in facts)
+            copy[pair.Key] = pair.Value;
+        return new ReadOnlyDictionary<string, string>(copy);
     }
 
     private void ThrowIf(PersistenceFaultPoint point)
