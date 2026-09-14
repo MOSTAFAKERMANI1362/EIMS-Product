@@ -40,4 +40,4 @@ jobs:
         run: dotnet build .\tests\EIMS.G03.RecoveryRules.ContractTests\EIMS.G03.RecoveryRules.ContractTests.csproj -c Release
 
       - name: Run G03 recovered rule tests
-        run: dotnet run --project .\tests\EIMS.G03.RecoveryRules.ContractTests\EIMS.G03.RecoveryRules.ContractTests.csproj -c Release --no-build
+        run: dotnet run --project .\tests\EIMS.G03.RecoveryRules.ContractTests\EIMS.G03.RecoveryRules.ContractTests.csproj -c Release --no-build -- .\recovery\p1-wave2\P1_WAVE2_G03_RULE_REBASELINE_v1.0.json
