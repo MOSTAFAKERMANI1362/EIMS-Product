@@ -1,0 +1,51 @@
+name: P1 Wave 5 Idea Submission
+
+on:
+  pull_request:
+    paths:
+      - 'architecture/decisions/ACR-P0-004_IDEA_SUBMISSION_EVALUATION_PLAN_v1.0.json'
+      - 'recovery/p1-wave5/**'
+      - 'src/EIMS.Authority.Recovery/**'
+      - 'src/EIMS.Persistence.Recovery/**'
+      - 'src/EIMS.PilotAssembly.Core/**'
+      - 'tests/EIMS.P1.Wave5.IdeaSubmission.ContractTests/**'
+      - 'tests/EIMS.P0P1.Wave5RecoveryGate.ContractTests/**'
+      - '.github/workflows/p1-wave5-idea-submission.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'architecture/decisions/ACR-P0-004_IDEA_SUBMISSION_EVALUATION_PLAN_v1.0.json'
+      - 'recovery/p1-wave5/**'
+      - 'src/EIMS.Authority.Recovery/**'
+      - 'src/EIMS.Persistence.Recovery/**'
+      - 'src/EIMS.PilotAssembly.Core/**'
+      - 'tests/EIMS.P1.Wave5.IdeaSubmission.ContractTests/**'
+      - 'tests/EIMS.P0P1.Wave5RecoveryGate.ContractTests/**'
+      - '.github/workflows/p1-wave5-idea-submission.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify-wave5:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10.0.302
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.302'
+
+      - name: Build Wave 5 Idea submission tests
+        run: dotnet build .\tests\EIMS.P1.Wave5.IdeaSubmission.ContractTests\EIMS.P1.Wave5.IdeaSubmission.ContractTests.csproj -c Release
+
+      - name: Run Wave 5 Idea submission tests
+        run: dotnet run --project .\tests\EIMS.P1.Wave5.IdeaSubmission.ContractTests\EIMS.P1.Wave5.IdeaSubmission.ContractTests.csproj -c Release --no-build -- .\architecture\decisions\ACR-P0-004_IDEA_SUBMISSION_EVALUATION_PLAN_v1.0.json .\recovery\p1-wave5\P1_WAVE5_IDEA_SUBMISSION_REBASELINE_v1.0.json
+
+      - name: Build cumulative P0-P1 Wave 5 gate
+        run: dotnet build .\tests\EIMS.P0P1.Wave5RecoveryGate.ContractTests\EIMS.P0P1.Wave5RecoveryGate.ContractTests.csproj -c Release
+
+      - name: Run cumulative P0-P1 Wave 5 gate
+        run: dotnet run --project .\tests\EIMS.P0P1.Wave5RecoveryGate.ContractTests\EIMS.P0P1.Wave5RecoveryGate.ContractTests.csproj -c Release --no-build -- .\recovery\p0\P0_MACHINE_CONTRACT_RECOVERY_v1.0.json .\architecture\decisions\ACR-P0-004_IDEA_SUBMISSION_EVALUATION_PLAN_v1.0.json .\recovery\p1-wave5\P1_WAVE5_IDEA_SUBMISSION_REBASELINE_v1.0.json
