@@ -144,83 +144,27 @@
     "appliesOnlyWhenOutcome": "APPROVE",
     "negativeOutcomesMayProceedWhenApprovalRulesFail": ["RETURN", "HOLD", "REJECT"],
     "checks": [
-      {
-        "id": "PROFILE_SNAPSHOT_VALID",
-        "required": true,
-        "rule": "Use the exact frozen decision profile/rule evidence; never substitute a later active profile."
-      },
-      {
-        "id": "GATE_SCORE_THRESHOLD",
-        "required": true,
-        "rule": "Calculated gate score must be greater than or equal to the frozen profile passThreshold."
-      },
-      {
-        "id": "DATA_READINESS_THRESHOLD",
-        "required": true,
-        "rule": "Data readiness must be greater than or equal to the frozen profile dataThreshold."
-      },
-      {
-        "id": "BASE_NEED_PRESENT",
-        "required": true,
-        "rule": "Idea must reference a base Need."
-      },
-      {
-        "id": "CONDITIONAL_TECHNICAL_VALIDITY",
-        "required": true,
-        "rule": "Technical assessment is required only when the current Evaluation Plan requires TECHNICAL_ASSESSOR or frozen profile hard keys include TECHNICAL_ASSESSMENT_VALID/HSE_AND_TECH_VALID."
-      },
-      {
-        "id": "HARD_CONDITIONS",
-        "required": true,
-        "rule": "Every frozen profile hard condition must map to a known machine key and pass; unknown hard-condition text fails closed."
-      },
-      {
-        "id": "SPECIALIST_OUTCOMES",
-        "required": true,
-        "rule": "Required specialist outcomes are evaluated with the authoritative current vocabulary CONFIRMED/CONDITIONAL/NOT_CONFIRMED/MORE_EVIDENCE. NOT_CONFIRMED and MORE_EVIDENCE block APPROVE. Legacy PASS/FAIL-style values are read compatibility only and are normalized before evaluation."
-      },
-      {
-        "id": "COMMITTEE_POSITIVE_RESULT",
-        "requiredWhen": "decisionRoute == G04_COMMITTEE AND outcome == APPROVE",
-        "rule": "Wave 7 committee stage must be COMPLETED and ApprovalRuleSatisfied=true against the exact frozen committee snapshot/version."
-      },
-      {
-        "id": "SEPARATION_OF_DUTIES",
-        "required": true,
-        "rule": "Final authority cannot be a frozen committee member for the same assessment; evaluator/final-decider conflict is denied unless frozen governance explicitly allows ALLOW_WITH_AUDIT."
-      }
+      {"id":"PROFILE_SNAPSHOT_VALID","required":true,"rule":"Use the exact frozen decision profile/rule evidence; never substitute a later active profile."},
+      {"id":"GATE_SCORE_THRESHOLD","required":true,"rule":"Calculated gate score must be greater than or equal to the frozen profile passThreshold."},
+      {"id":"DATA_READINESS_THRESHOLD","required":true,"rule":"Data readiness must be greater than or equal to the frozen profile dataThreshold."},
+      {"id":"BASE_NEED_PRESENT","required":true,"rule":"Idea must reference a base Need."},
+      {"id":"CONDITIONAL_TECHNICAL_VALIDITY","required":true,"rule":"Technical assessment is required only when the current Evaluation Plan requires TECHNICAL_ASSESSOR or frozen profile hard keys include TECHNICAL_ASSESSMENT_VALID/HSE_AND_TECH_VALID."},
+      {"id":"HARD_CONDITIONS","required":true,"rule":"Every frozen profile hard condition must map to a known machine key and pass; unknown hard-condition text fails closed."},
+      {"id":"SPECIALIST_OUTCOMES","required":true,"rule":"Required specialist outcomes are evaluated with the authoritative current vocabulary CONFIRMED/CONDITIONAL/NOT_CONFIRMED/MORE_EVIDENCE. NOT_CONFIRMED and MORE_EVIDENCE block APPROVE. Legacy PASS/FAIL-style values are read compatibility only and are normalized before evaluation."},
+      {"id":"COMMITTEE_POSITIVE_RESULT","requiredWhen":"decisionRoute == G04_COMMITTEE AND outcome == APPROVE","rule":"Wave 7 committee stage must be COMPLETED and ApprovalRuleSatisfied=true against the exact frozen committee snapshot/version."},
+      {"id":"SEPARATION_OF_DUTIES","required":true,"rule":"Final authority cannot be a frozen committee member for the same assessment; evaluator/final-decider conflict is denied unless frozen governance explicitly allows ALLOW_WITH_AUDIT."}
     ]
   },
   "profileAndRuleFreeze": {
     "openAssessmentProfileSource": "CURRENT_ACTIVE_PROFILE",
     "freezeOccursAt": "FINAL_DECISION",
-    "requiredFrozenEvidence": [
-      "profileId",
-      "profileVersion",
-      "profileSnapshot",
-      "profileSnapshotHash",
-      "ruleSet",
-      "hardConditionMappingVersion",
-      "gateScore",
-      "dataReadiness",
-      "ideaRevision",
-      "evaluationPlanId",
-      "evaluationPlanVersion",
-      "assessmentId",
-      "frozenAt"
-    ],
+    "requiredFrozenEvidence": ["profileId","profileVersion","profileSnapshot","profileSnapshotHash","ruleSet","hardConditionMappingVersion","gateScore","dataReadiness","ideaRevision","evaluationPlanId","evaluationPlanVersion","assessmentId","frozenAt"],
     "closedHistoryMayInferFromCurrentProfile": false
   },
   "committeeEvidenceForFinalDecision": {
     "requiredWhenRoute": "G04_COMMITTEE",
-    "requiredForEveryOutcome": [
-      "committeeSnapshotId",
-      "committeeVersion",
-      "votingStageState=COMPLETED"
-    ],
-    "additionalRequiredForApprove": [
-      "approvalRuleSatisfied=true"
-    ],
+    "requiredForEveryOutcome": ["committeeSnapshotId","committeeVersion","votingStageState=COMPLETED"],
+    "additionalRequiredForApprove": ["approvalRuleSatisfied=true"],
     "negativeOutcomeAfterCompletedNonApprovingVoteAllowed": true,
     "committeeStageMustCompleteBeforeAnyFinalOutcome": true,
     "fullMemberSnapshotCopiedIntoIntegrationEvent": false,
@@ -228,40 +172,7 @@
   },
   "immutableDecisionEvidence": {
     "appendOnly": true,
-    "fields": [
-      "decisionId",
-      "assessmentId",
-      "ideaId",
-      "ideaRevisionBefore",
-      "ideaRevisionAfter",
-      "technicalStateMutationVersionBefore",
-      "technicalStateMutationVersionAfter",
-      "outcome",
-      "reasonCode",
-      "decisionComment",
-      "reviewDateWhenHold",
-      "personId",
-      "authorityAssignmentId",
-      "networkIdentity",
-      "identitySource",
-      "profileId",
-      "profileVersion",
-      "profileSnapshotHash",
-      "ruleSet",
-      "hardConditionMappingVersion",
-      "gateScore",
-      "dataReadiness",
-      "ruleCheckResults",
-      "specialistOutcomeSummary",
-      "committeeSnapshotIdWhenApplicable",
-      "committeeVersionWhenApplicable",
-      "committeeStageStateWhenApplicable",
-      "committeeApprovalResultWhenApplicable",
-      "sodResult",
-      "sodExceptionPolicyWhenApplicable",
-      "timestamp",
-      "correlationId"
-    ],
+    "fields": ["decisionId","assessmentId","ideaId","ideaRevisionBefore","ideaRevisionAfter","technicalStateMutationVersionBefore","technicalStateMutationVersionAfter","outcome","reasonCode","decisionComment","reviewDateWhenHold","personId","authorityAssignmentId","networkIdentity","identitySource","profileId","profileVersion","profileSnapshotHash","ruleSet","hardConditionMappingVersion","gateScore","dataReadiness","ruleCheckResults","specialistOutcomeSummary","committeeSnapshotIdWhenApplicable","committeeVersionWhenApplicable","committeeStageStateWhenApplicable","committeeApprovalResultWhenApplicable","sodResult","sodExceptionPolicyWhenApplicable","timestamp","correlationId"],
     "historicalDecisionMayBeOverwritten": false
   },
   "returnInvalidation": {
@@ -275,35 +186,14 @@
     "newRevisionRequiresFreshEvaluationContext": true
   },
   "transactionBoundary": {
-    "singleLogicalTransaction": [
-      "IdeaStateAndBusinessRevision",
-      "IdeaTechnicalStateMutationVersion",
-      "G04AssessmentDecisionAndClosure",
-      "ImmutableFinalDecisionEvidence",
-      "ReturnVersionSupersessionMetadataWhenApplicable",
-      "Audit",
-      "OutcomeOutbox",
-      "Idempotency"
-    ],
+    "singleLogicalTransaction": ["IdeaStateAndBusinessRevision","IdeaTechnicalStateMutationVersion","G04AssessmentDecisionAndClosure","ImmutableFinalDecisionEvidence","ReturnVersionSupersessionMetadataWhenApplicable","Audit","OutcomeOutbox","Idempotency"],
     "portfolioEligibilityInsideTransaction": false,
     "portfolioFailureMayRollbackCommittedFinalDecision": false
   },
   "events": {
     "payloadPolicy": "IDENTIFIERS_STATUS_VERSION_AND_DECISION_EVIDENCE_REFERENCES_ONLY",
-    "forbiddenPayload": [
-      "decisionComment",
-      "evaluatorAnswers",
-      "fullIdeaDossier",
-      "fullProfileSnapshot",
-      "fullCommitteeMemberSnapshot",
-      "voteNotes"
-    ],
-    "outcomeBindings": {
-      "APPROVE": "IdeaApprovedForPortfolio.v1",
-      "RETURN": "IdeaReturnedFromG04.v1",
-      "HOLD": "IdeaHeldAtG04.v1",
-      "REJECT": "IdeaRejectedAtG04.v1"
-    }
+    "forbiddenPayload": ["decisionComment","evaluatorAnswers","fullIdeaDossier","fullProfileSnapshot","fullCommitteeMemberSnapshot","voteNotes"],
+    "outcomeBindings": {"APPROVE":"IdeaApprovedForPortfolio.v1","RETURN":"IdeaReturnedFromG04.v1","HOLD":"IdeaHeldAtG04.v1","REJECT":"IdeaRejectedAtG04.v1"}
   },
   "portfolioBoundary": {
     "triggerEvent": "IdeaApprovedForPortfolio.v1",
