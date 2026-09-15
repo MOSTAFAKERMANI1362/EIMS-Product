@@ -1,5 +1,6 @@
 {
-  "schemaVersion": "1.0",
+  "schemaVersion": "1.1",
+  "evidenceClass": "PILOT_ENVIRONMENT_EVIDENCE",
   "referenceCustomer": "Mes Shahid Bahonar",
   "windows": {
     "serverName": "",

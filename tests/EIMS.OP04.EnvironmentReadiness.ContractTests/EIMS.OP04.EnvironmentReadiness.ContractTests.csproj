@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>EIMS.OP04.EnvironmentReadiness.ContractTests</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/EIMS.PilotEnvironment.Readiness/EIMS.PilotEnvironment.Readiness.csproj" />
+  </ItemGroup>
+</Project>

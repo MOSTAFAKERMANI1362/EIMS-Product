@@ -1,0 +1,54 @@
+name: OP-04 Environment Readiness
+
+on:
+  pull_request:
+    paths:
+      - 'pilot/evidence/**'
+      - 'pilot/scripts/**'
+      - 'src/EIMS.PilotEnvironment.Readiness/**'
+      - 'tests/EIMS.OP04.EnvironmentReadiness.ContractTests/**'
+      - '.github/workflows/op04-environment-readiness.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'pilot/evidence/**'
+      - 'pilot/scripts/**'
+      - 'src/EIMS.PilotEnvironment.Readiness/**'
+      - 'tests/EIMS.OP04.EnvironmentReadiness.ContractTests/**'
+      - '.github/workflows/op04-environment-readiness.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  evidence-gate:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10.0.302
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.302'
+
+      - name: Build OP-04 readiness validator
+        shell: pwsh
+        run: dotnet build .\src\EIMS.PilotEnvironment.Readiness\EIMS.PilotEnvironment.Readiness.csproj -c Release
+
+      - name: Build OP-04 contract tests
+        shell: pwsh
+        run: dotnet build .\tests\EIMS.OP04.EnvironmentReadiness.ContractTests\EIMS.OP04.EnvironmentReadiness.ContractTests.csproj -c Release
+
+      - name: Run OP-04 contract tests
+        shell: pwsh
+        run: dotnet run --project .\tests\EIMS.OP04.EnvironmentReadiness.ContractTests\EIMS.OP04.EnvironmentReadiness.ContractTests.csproj -c Release --no-build
+
+      - name: Prove blank template remains fail closed
+        shell: pwsh
+        run: |
+          dotnet run --project .\src\EIMS.PilotEnvironment.Readiness\EIMS.PilotEnvironment.Readiness.csproj -c Release --no-build -- .\pilot\evidence\pilot-environment-evidence.template.json
+          $exitCode = $LASTEXITCODE
+          if ($exitCode -ne 3) { throw "Blank OP-04 template must remain BLOCKED (exit 3). Actual exit: $exitCode" }
+          Write-Host "PASS: blank OP-04 template is correctly BLOCKED with exit code 3."
+          exit 0
