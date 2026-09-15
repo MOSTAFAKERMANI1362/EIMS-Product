@@ -48,4 +48,7 @@ jobs:
         shell: pwsh
         run: |
           dotnet run --project .\src\EIMS.PilotEnvironment.Readiness\EIMS.PilotEnvironment.Readiness.csproj -c Release --no-build -- .\pilot\evidence\pilot-environment-evidence.template.json
-          if ($LASTEXITCODE -ne 3) { throw "Blank OP-04 template must remain BLOCKED (exit 3). Actual exit: $LASTEXITCODE" }
+          $exitCode = $LASTEXITCODE
+          if ($exitCode -ne 3) { throw "Blank OP-04 template must remain BLOCKED (exit 3). Actual exit: $exitCode" }
+          Write-Host "PASS: blank OP-04 template is correctly BLOCKED with exit code 3."
+          exit 0
