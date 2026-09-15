@@ -1,7 +1,7 @@
 @echo off
 setlocal
 set "SCRIPT_DIR=%~dp0"
-set "COLLECTOR=%SCRIPT_DIR%Collect-EimsPilotEnvironmentEvidence.ps1"
+set "COLLECTOR=%SCRIPT_DIR%Collect-EimsEnvironmentEvidenceV11.ps1"
 set "OUTPUT=%SCRIPT_DIR%eims-pilot-environment-evidence.json"
 
 if not exist "%COLLECTOR%" (
@@ -19,7 +19,7 @@ if not defined PS_EXE (
   goto :fail
 )
 
-echo Collecting EIMS PILOT environment evidence...
+echo Collecting EIMS PILOT environment evidence (schema 1.1)...
 "%PS_EXE%" -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%COLLECTOR%" -EvidenceClass PILOT_ENVIRONMENT_EVIDENCE -OutputPath "%OUTPUT%"
 if errorlevel 1 goto :fail
 if not exist "%OUTPUT%" (
@@ -28,8 +28,9 @@ if not exist "%OUTPUT%" (
 )
 
 echo.
-echo SUCCESS: Evidence file created:
+echo SUCCESS: PILOT evidence file created:
 echo %OUTPUT%
+echo IMPORTANT: auto-collection does not imply readiness; unproven fields remain blank/false.
 echo Review the JSON, then upload only that JSON file back to ChatGPT.
 echo Optional Oracle TCP probing is intentionally NOT performed by this one-click runner.
 if not "%EIMS_NO_PAUSE%"=="1" pause
