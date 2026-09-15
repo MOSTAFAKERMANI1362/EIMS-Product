@@ -148,8 +148,7 @@ int I(JsonElement e,string p) => e.GetProperty(p).GetInt32();
 string[] Strings(JsonElement e,string p) => e.GetProperty(p).EnumerateArray().Select(x=>x.GetString()??"").ToArray();
 void True(bool v){if(!v)throw new Exception("expected true");}
 void False(bool v){if(v)throw new Exception("expected false");}
-void Eq(string expected,string actual){if(!string.Equals(expected,actual,StringComparison.Ordinal))throw new Exception($"expected '{expected}', actual '{actual}'");}
-void Eq(int expected,int actual){if(expected!=actual)throw new Exception($"expected {expected}, actual {actual}");}
+void Eq(object expected,object actual){if(!Equals(expected,actual))throw new Exception($"expected '{expected}', actual '{actual}'");}
 void Contains(string actual,string expected){if(!actual.Contains(expected,StringComparison.Ordinal))throw new Exception($"expected text containing '{expected}'");}
 void SetEq(IEnumerable<string> expected,IEnumerable<string> actual){var a=expected.OrderBy(x=>x,StringComparer.Ordinal).ToArray();var b=actual.OrderBy(x=>x,StringComparer.Ordinal).ToArray();if(!a.SequenceEqual(b,StringComparer.Ordinal))throw new Exception($"set mismatch expected=[{string.Join(',',a)}], actual=[{string.Join(',',b)}]");}
 void Frozen(JsonElement e){Eq("EIMS_v6.360_WORKLIST_UX_ROLE_SELECTOR_CLEANUP.html",S(e,"file"));Eq("057a224fa55e6ee17d128c41c86f3410206d7246723c35872f57757329c4e98a",S(e,"sha256")); if(e.TryGetProperty("modifiedByThisDecision",out var m))False(m.GetBoolean()); if(e.TryGetProperty("modifiedByThisRecovery",out var r))False(r.GetBoolean());}
