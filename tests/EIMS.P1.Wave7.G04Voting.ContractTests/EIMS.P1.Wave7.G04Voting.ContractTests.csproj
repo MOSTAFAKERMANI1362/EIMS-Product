@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\EIMS.Authority.Recovery\EIMS.Authority.Recovery.csproj" />
+    <ProjectReference Include="..\..\src\EIMS.Persistence.Recovery\EIMS.Persistence.Recovery.csproj" />
+    <ProjectReference Include="..\..\src\EIMS.Identity.Rbac\EIMS.Identity.Rbac.csproj" />
+    <ProjectReference Include="..\..\src\EIMS.PilotAssembly.Core\EIMS.PilotAssembly.Core.csproj" />
+  </ItemGroup>
+</Project>
