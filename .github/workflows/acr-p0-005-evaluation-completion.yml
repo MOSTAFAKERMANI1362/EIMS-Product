@@ -1,0 +1,41 @@
+name: ACR P0 005 Evaluation Completion
+
+on:
+  pull_request:
+    paths:
+      - 'architecture/decisions/ACR-P0-005_EVALUATION_ASSIGNMENT_COMPLETION_v1.0.json'
+      - 'architecture/decisions/ACR-P0-005_EVALUATION_ASSIGNMENT_COMPLETION_v1.0.md'
+      - 'architecture/decisions/ACR-P0-004_IDEA_SUBMISSION_EVALUATION_PLAN_v1.0.json'
+      - 'recovery/p0/P0_MACHINE_CONTRACT_RECOVERY_v1.0.json'
+      - 'tests/EIMS.ACR.P0.EvaluationCompletion.ContractTests/**'
+      - '.github/workflows/acr-p0-005-evaluation-completion.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'architecture/decisions/ACR-P0-005_EVALUATION_ASSIGNMENT_COMPLETION_v1.0.json'
+      - 'architecture/decisions/ACR-P0-005_EVALUATION_ASSIGNMENT_COMPLETION_v1.0.md'
+      - 'architecture/decisions/ACR-P0-004_IDEA_SUBMISSION_EVALUATION_PLAN_v1.0.json'
+      - 'recovery/p0/P0_MACHINE_CONTRACT_RECOVERY_v1.0.json'
+      - 'tests/EIMS.ACR.P0.EvaluationCompletion.ContractTests/**'
+      - '.github/workflows/acr-p0-005-evaluation-completion.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify-evaluation-completion-contract:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10.0.302
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.302'
+
+      - name: Build ACR-P0-005 contract tests
+        run: dotnet build .\tests\EIMS.ACR.P0.EvaluationCompletion.ContractTests\EIMS.ACR.P0.EvaluationCompletion.ContractTests.csproj -c Release
+
+      - name: Run ACR-P0-005 contract tests
+        run: dotnet run --project .\tests\EIMS.ACR.P0.EvaluationCompletion.ContractTests\EIMS.ACR.P0.EvaluationCompletion.ContractTests.csproj -c Release --no-build -- .\architecture\decisions\ACR-P0-005_EVALUATION_ASSIGNMENT_COMPLETION_v1.0.json .\architecture\decisions\ACR-P0-004_IDEA_SUBMISSION_EVALUATION_PLAN_v1.0.json .\recovery\p0\P0_MACHINE_CONTRACT_RECOVERY_v1.0.json
