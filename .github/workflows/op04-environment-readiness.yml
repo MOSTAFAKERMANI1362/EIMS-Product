@@ -44,6 +44,21 @@ jobs:
         shell: pwsh
         run: dotnet run --project .\tests\EIMS.OP04.EnvironmentReadiness.ContractTests\EIMS.OP04.EnvironmentReadiness.ContractTests.csproj -c Release --no-build
 
+      - name: Prove schema 1.1 LAB collector remains fail closed
+        shell: pwsh
+        run: |
+          $labEvidence = Join-Path $env:RUNNER_TEMP 'eims-lab-evidence.json'
+          & .\pilot\scripts\Collect-EimsEnvironmentEvidenceV11.ps1 -EvidenceClass LAB_EVIDENCE -OutputPath $labEvidence
+          if (-not (Test-Path $labEvidence)) { throw 'LAB collector did not create evidence JSON.' }
+          $json = Get-Content $labEvidence -Raw | ConvertFrom-Json
+          if ($json.schemaVersion -ne '1.1') { throw "Expected schemaVersion 1.1, actual: $($json.schemaVersion)" }
+          if ($json.evidenceClass -ne 'LAB_EVIDENCE') { throw "Expected LAB_EVIDENCE, actual: $($json.evidenceClass)" }
+          dotnet run --project .\src\EIMS.PilotEnvironment.Readiness\EIMS.PilotEnvironment.Readiness.csproj -c Release --no-build -- $labEvidence
+          $exitCode = $LASTEXITCODE
+          if ($exitCode -ne 3) { throw "LAB evidence must remain BLOCKED (exit 3). Actual exit: $exitCode" }
+          Write-Host 'PASS: schema 1.1 LAB evidence is valid and cannot activate the Network Pilot.'
+          exit 0
+
       - name: Prove blank template remains fail closed
         shell: pwsh
         run: |
