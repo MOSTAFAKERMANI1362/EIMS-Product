@@ -1,0 +1,85 @@
+{
+  "schema": "EIMS-P1-WAVE6-EVALUATION-COMPLETION-1.0",
+  "artifactId": "P1_WAVE6_EVALUATION_COMPLETION_REBASELINE_v1.0",
+  "status": "POST_FREEZE_IMPLEMENTATION_REBASELINE_NOT_ORIGINAL",
+  "frozenProduct": {
+    "file": "EIMS_v6.360_WORKLIST_UX_ROLE_SELECTOR_CLEANUP.html",
+    "sha256": "057a224fa55e6ee17d128c41c86f3410206d7246723c35872f57757329c4e98a",
+    "modified": false
+  },
+  "authorityBasis": [
+    "architecture/decisions/ACR-P0-005_EVALUATION_ASSIGNMENT_COMPLETION_v1.0.json",
+    "recovery/evaluation-schemas/EVALUATOR_ASSESSMENT_SCHEMA_REGISTRY_v1.0.json",
+    "recovery/p1-wave5/P1_WAVE5_IDEA_SUBMISSION_REBASELINE_v1.0.json"
+  ],
+  "catalog": {
+    "knownP0CommandIdentityCount": 21,
+    "cumulativeRuntimeBoundMutationCount": 4,
+    "newlyRuntimeBoundCommand": "evaluation-assignments.complete",
+    "historicalWave5RuntimeBoundMutationCount": 3,
+    "historicalCatalogsRewritten": false
+  },
+  "completionBoundary": {
+    "authorityAssignmentIdSource": "P3_AUTHORITY_ACTOR_ASSIGNMENT",
+    "evaluationAssignmentIdSource": "DYNAMIC_EVALUATION_PLAN_MISSION",
+    "identitiesInterchangeable": false,
+    "exactMissionRequired": true,
+    "roleMustMatchMission": true,
+    "scopeMustMatchMissionAndIdea": true,
+    "schemaSelectedByServerFromMissionRole": true,
+    "assignmentTransition": "PENDING_TO_COMPLETED",
+    "professionalOutcomeSeparateFromWorkflowCompletion": true,
+    "immutableAssessmentSnapshot": true,
+    "exactReplayIdempotent": true,
+    "changedReplayConflicts": true
+  },
+  "readiness": {
+    "sourceOfTruth": "DYNAMIC_EVALUATION_PLAN_ACTIVATED_REQUIRED_ASSIGNMENTS",
+    "optionalUnactivatedRolesBlock": false,
+    "beforeFinalRequiredCompletionPlanState": "ACTIVE",
+    "afterFinalRequiredCompletionPlanState": "READY_FOR_G04_DECISION",
+    "g04AssessmentCreatedOnlyOnFinalRequiredCompletion": true,
+    "g04AssessmentInitialState": "PENDING",
+    "g04VoteCreatedByCompletion": false,
+    "finalIdeaDecisionCreatedByCompletion": false
+  },
+  "events": [
+    {
+      "eventType": "EvaluationAssignmentCompleted.v1",
+      "emission": "EVERY_SUCCESSFUL_COMPLETION",
+      "payloadPolicy": "IDENTIFIERS_AND_STATUS_ONLY"
+    },
+    {
+      "eventType": "G04DecisionAssessmentCreated.v1",
+      "emission": "FINAL_REQUIRED_COMPLETION_ONLY",
+      "payloadPolicy": "IDENTIFIERS_AND_STATUS_ONLY"
+    }
+  ],
+  "atomicPersistence": {
+    "components": [
+      "EvaluationAssignmentCompletion",
+      "ImmutableAssessmentSnapshot",
+      "EvaluationPlanReadiness",
+      "ConditionalG04Assessment",
+      "Audit",
+      "OutboxEvents",
+      "Idempotency"
+    ],
+    "singleLogicalTransactionRequired": true,
+    "rollbackAllOnFailure": true,
+    "optimisticConcurrency": true
+  },
+  "failClosedBoundaries": {
+    "g04.vote": true,
+    "g04.final-decision": true,
+    "p5CommandGateway": true,
+    "missingEvaluatorSchema": true,
+    "staleAssignmentOrPlan": true,
+    "roleOrScopeMismatch": true
+  },
+  "environmentClaims": {
+    "physicalOracleReady": false,
+    "liveWindowsDomainReady": false,
+    "networkPilotReady": false
+  }
+}
