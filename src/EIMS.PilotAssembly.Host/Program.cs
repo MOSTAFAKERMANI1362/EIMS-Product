@@ -1,10 +1,17 @@
+using EIMS.PilotAssembly.Binding;
 using EIMS.PilotAssembly.Core;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseIISIntegration();
+
+// The binding adapter is compiled into the Host, but production activation remains fail-closed
+// until durable P2 persistence and authoritative live P3 directory composition are supplied.
 builder.Services.AddSingleton<ICommandGateway, FailClosedCommandGateway>();
 
 var app = builder.Build();
+
+bool RuntimeGatewayBound() =>
+    app.Services.GetRequiredService<ICommandGateway>() is not FailClosedCommandGateway;
 
 PilotBindingSnapshot Snapshot()
 {
@@ -14,8 +21,11 @@ PilotBindingSnapshot Snapshot()
     if (!string.IsNullOrWhiteSpace(p4Path) && !Path.IsPathRooted(p4Path))
         p4Path = Path.GetFullPath(Path.Combine(app.Environment.ContentRootPath, p4Path));
 
+    // A config flag alone can never promote P1 to READY. The active DI gateway must also be a real bound gateway.
+    var p1RuntimeBound = Flag("Pilot:P1Authority:RuntimeBound") && RuntimeGatewayBound();
+
     return new PilotBindingSnapshot(
-        Flag("Pilot:P1Authority:RuntimeBound"),
+        p1RuntimeBound,
         Flag("Pilot:P1Authority:ContractTestsPassed"),
         Get("Pilot:P1Authority:PackagePath"),
         Get("Pilot:Oracle:Version"),
@@ -40,15 +50,26 @@ PilotBindingSnapshot Snapshot()
         Flag("Pilot:Evidence:MonitoringValidated"));
 }
 
-app.MapGet("/health", () => Results.Ok(new
+app.MapGet("/health", () =>
 {
-    status = "Healthy",
-    assembly = PilotBaseline.Version,
-    productBaseline = PilotBaseline.ProductBaseline,
-    productSha256 = PilotBaseline.ProductSha256,
-    serverAuthorityBoundary = true,
-    domainCommandAuthorityBound = false
-}));
+    var snapshot = Snapshot();
+    return Results.Ok(new
+    {
+        status = "Healthy",
+        assembly = PilotBaseline.Version,
+        productBaseline = PilotBaseline.ProductBaseline,
+        productSha256 = PilotBaseline.ProductSha256,
+        serverAuthorityBoundary = true,
+        p1P5BindingAdapterAvailable = true,
+        p1P5BindingContract = P1P5BindingContract.Version,
+        recoveredMutationCommandCount = P1P5BindingContract.RecoveredMutationCommandCount,
+        runtimeGatewayBound = RuntimeGatewayBound(),
+        domainCommandAuthorityBound = snapshot.P1AuthorityRuntimeBound,
+        activationState = snapshot.P1AuthorityRuntimeBound
+            ? "RUNTIME_COMPOSITION_ACTIVE"
+            : "FAIL_CLOSED_UNTIL_P2_P3_COMPOSED"
+    });
+});
 
 app.MapGet("/api/pilot/readiness", () =>
 {
@@ -73,11 +94,25 @@ app.MapPost("/api/authority/check", (HttpContext ctx) =>
     var networkName = IdentitySourcePolicy.GetAuthenticatedNetworkName(ctx.User);
     if (networkName is null)
         return Results.Json(new { code = "P5_WINDOWS_IDENTITY_REQUIRED" }, statusCode: 401);
+
+    var snapshot = Snapshot();
+    if (!snapshot.P1AuthorityRuntimeBound)
+    {
+        return Results.Json(new
+        {
+            code = "P5_AUTHORITY_RUNTIME_NOT_BOUND",
+            allowed = false,
+            bindingAdapterAvailable = true,
+            bindingContract = P1P5BindingContract.Version,
+            message = "P1-P5 adapter is compiled and contract-tested, but durable P2 and authoritative live P3 composition are not activated."
+        }, statusCode: 503);
+    }
+
     return Results.Json(new
     {
-        code = "P5_AUTHORITY_RUNTIME_NOT_BOUND",
+        code = "P5_AUTHORITY_CHECK_ENDPOINT_NOT_ACTIVATED",
         allowed = false,
-        message = "P1 authority source/runtime must be physically composed before authority checks can return ALLOW."
+        message = "Runtime composition is active, but this diagnostic endpoint has no standalone authority query contract. Use an assignment-bound command path."
     }, statusCode: 503);
 });
 

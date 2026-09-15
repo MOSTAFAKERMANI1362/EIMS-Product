@@ -1,0 +1,51 @@
+name: P1 P5 Runtime Binding
+
+on:
+  pull_request:
+    paths:
+      - 'src/EIMS.PilotAssembly.Binding/**'
+      - 'src/EIMS.PilotAssembly.Core/**'
+      - 'src/EIMS.PilotAssembly.Host/**'
+      - 'src/EIMS.Authority.Recovery/**'
+      - 'src/EIMS.Identity.Rbac/**'
+      - 'src/EIMS.Persistence.Recovery/**'
+      - 'tests/EIMS.P1P5.RuntimeBinding.ContractTests/**'
+      - '.github/workflows/p1-p5-runtime-binding.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'src/EIMS.PilotAssembly.Binding/**'
+      - 'src/EIMS.PilotAssembly.Core/**'
+      - 'src/EIMS.PilotAssembly.Host/**'
+      - 'src/EIMS.Authority.Recovery/**'
+      - 'src/EIMS.Identity.Rbac/**'
+      - 'src/EIMS.Persistence.Recovery/**'
+      - 'tests/EIMS.P1P5.RuntimeBinding.ContractTests/**'
+      - '.github/workflows/p1-p5-runtime-binding.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  binding:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10.0.302
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.302'
+
+      - name: Build Pilot Host with P1-P5 binding contract
+        shell: pwsh
+        run: dotnet build .\src\EIMS.PilotAssembly.Host\EIMS.PilotAssembly.Host.csproj -c Release
+
+      - name: Build P1-P5 runtime binding tests
+        shell: pwsh
+        run: dotnet build .\tests\EIMS.P1P5.RuntimeBinding.ContractTests\EIMS.P1P5.RuntimeBinding.ContractTests.csproj -c Release
+
+      - name: Run P1-P5 runtime binding tests
+        shell: pwsh
+        run: dotnet run --project .\tests\EIMS.P1P5.RuntimeBinding.ContractTests\EIMS.P1P5.RuntimeBinding.ContractTests.csproj -c Release --no-build
