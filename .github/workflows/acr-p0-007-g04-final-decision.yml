@@ -1,0 +1,49 @@
+name: ACR P0 007 G04 Final Decision
+
+on:
+  pull_request:
+    paths:
+      - 'architecture/decisions/ACR-P0-007_G04_FINAL_DECISION_v1.0.json'
+      - 'architecture/decisions/ACR-P0-007_G04_FINAL_DECISION_v1.0.md'
+      - 'architecture/decisions/ACR-P0-007_ROUTE_INTEGRITY_ADDENDUM_v1.0.json'
+      - 'recovery/g04-decision/G04_DECISION_PROFILE_RULE_REGISTRY_v1.0.json'
+      - 'tests/EIMS.ACR.P0.007.G04FinalDecision.ContractTests/**'
+      - 'tests/EIMS.ACR.P0.007.RouteIntegrity.ContractTests/**'
+      - '.github/workflows/acr-p0-007-g04-final-decision.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'architecture/decisions/ACR-P0-007_G04_FINAL_DECISION_v1.0.json'
+      - 'architecture/decisions/ACR-P0-007_G04_FINAL_DECISION_v1.0.md'
+      - 'architecture/decisions/ACR-P0-007_ROUTE_INTEGRITY_ADDENDUM_v1.0.json'
+      - 'recovery/g04-decision/G04_DECISION_PROFILE_RULE_REGISTRY_v1.0.json'
+      - 'tests/EIMS.ACR.P0.007.G04FinalDecision.ContractTests/**'
+      - 'tests/EIMS.ACR.P0.007.RouteIntegrity.ContractTests/**'
+      - '.github/workflows/acr-p0-007-g04-final-decision.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify-g04-final-decision-contract:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10.0.302
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.302'
+
+      - name: Build ACR-P0-007 contract tests
+        run: dotnet build .\tests\EIMS.ACR.P0.007.G04FinalDecision.ContractTests\EIMS.ACR.P0.007.G04FinalDecision.ContractTests.csproj -c Release
+
+      - name: Run ACR-P0-007 contract tests
+        run: dotnet run --project .\tests\EIMS.ACR.P0.007.G04FinalDecision.ContractTests\EIMS.ACR.P0.007.G04FinalDecision.ContractTests.csproj -c Release --no-build -- .\architecture\decisions\ACR-P0-007_G04_FINAL_DECISION_v1.0.json .\recovery\g04-decision\G04_DECISION_PROFILE_RULE_REGISTRY_v1.0.json
+
+      - name: Build route-integrity tests
+        run: dotnet build .\tests\EIMS.ACR.P0.007.RouteIntegrity.ContractTests\EIMS.ACR.P0.007.RouteIntegrity.ContractTests.csproj -c Release
+
+      - name: Run route-integrity tests
+        run: dotnet run --project .\tests\EIMS.ACR.P0.007.RouteIntegrity.ContractTests\EIMS.ACR.P0.007.RouteIntegrity.ContractTests.csproj -c Release --no-build -- .\architecture\decisions\ACR-P0-007_ROUTE_INTEGRITY_ADDENDUM_v1.0.json
