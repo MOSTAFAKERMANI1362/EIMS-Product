@@ -3,7 +3,7 @@ using EIMS.Authority.Recovery;
 
 namespace EIMS.Persistence.Recovery;
 
-public sealed class TransactionalAuthorityStore : IAuthorityStore, IPersistenceEvidenceSource, IFaultInjectablePersistence
+public sealed class TransactionalAuthorityStore : IEvaluationWorkflowStore, IPersistenceEvidenceSource, IFaultInjectablePersistence
 {
     private readonly object _sync = new();
     private readonly Dictionary<string, AggregateSnapshot> _aggregates = new(StringComparer.OrdinalIgnoreCase);
@@ -13,6 +13,8 @@ public sealed class TransactionalAuthorityStore : IAuthorityStore, IPersistenceE
     private readonly List<DomainDecisionEnvelope> _decisions = new();
     private readonly List<EvaluationPlanEnvelope> _evaluationPlans = new();
     private readonly List<EvaluationAssignmentEnvelope> _evaluationAssignments = new();
+    private readonly List<AssessmentSnapshotEnvelope> _assessmentSnapshots = new();
+    private readonly List<G04AssessmentEnvelope> _g04Assessments = new();
 
     public TransactionalAuthorityStore(
         PersistenceContractDescriptor? contract = null,
@@ -59,6 +61,16 @@ public sealed class TransactionalAuthorityStore : IAuthorityStore, IPersistenceE
         get { lock (_sync) return Array.AsReadOnly(_evaluationAssignments.ToArray()); }
     }
 
+    public IReadOnlyCollection<AssessmentSnapshotEnvelope> AssessmentSnapshots
+    {
+        get { lock (_sync) return Array.AsReadOnly(_assessmentSnapshots.ToArray()); }
+    }
+
+    public IReadOnlyCollection<G04AssessmentEnvelope> G04Assessments
+    {
+        get { lock (_sync) return Array.AsReadOnly(_g04Assessments.ToArray()); }
+    }
+
     public ValueTask<AggregateSnapshot?> GetAggregateAsync(
         string aggregateId,
         CancellationToken cancellationToken = default)
@@ -79,6 +91,47 @@ public sealed class TransactionalAuthorityStore : IAuthorityStore, IPersistenceE
         cancellationToken.ThrowIfCancellationRequested();
         lock (_sync)
             return ValueTask.FromResult(_idempotency.TryGetValue(Key(commandName, aggregateId, idempotencyKey), out var record) ? record : null);
+    }
+
+    public ValueTask<EvaluationPlanEnvelope?> GetEvaluationPlanAsync(
+        string planId,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_sync)
+            return ValueTask.FromResult(_evaluationPlans.FirstOrDefault(x => string.Equals(x.PlanId, planId, StringComparison.Ordinal)));
+    }
+
+    public ValueTask<EvaluationAssignmentEnvelope?> GetEvaluationAssignmentAsync(
+        string evaluationAssignmentId,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_sync)
+            return ValueTask.FromResult(_evaluationAssignments.FirstOrDefault(x => string.Equals(x.AssignmentId, evaluationAssignmentId, StringComparison.Ordinal)));
+    }
+
+    public ValueTask<IReadOnlyCollection<EvaluationAssignmentEnvelope>> GetEvaluationAssignmentsForPlanAsync(
+        string planId,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_sync)
+        {
+            var items = _evaluationAssignments
+                .Where(x => string.Equals(x.PlanId, planId, StringComparison.Ordinal))
+                .ToArray();
+            return ValueTask.FromResult<IReadOnlyCollection<EvaluationAssignmentEnvelope>>(Array.AsReadOnly(items));
+        }
+    }
+
+    public ValueTask<G04AssessmentEnvelope?> GetG04AssessmentForPlanAsync(
+        string planId,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_sync)
+            return ValueTask.FromResult(_g04Assessments.FirstOrDefault(x => string.Equals(x.PlanId, planId, StringComparison.Ordinal)));
     }
 
     public ValueTask<AuthorityResult> CommitAsync(
@@ -239,6 +292,273 @@ public sealed class TransactionalAuthorityStore : IAuthorityStore, IPersistenceE
                 throw;
             }
         }
+    }
+
+    public ValueTask<AuthorityResult> CommitEvaluationCompletionAsync(
+        EvaluationCompletionRequest request,
+        EvaluationCompletionCommit commit,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        lock (_sync)
+        {
+            const string commandName = "evaluation-assignments.complete";
+            var idempotencyKey = Key(commandName, request.Command.IdeaId, request.Command.IdempotencyKey);
+            if (_idempotency.TryGetValue(idempotencyKey, out var prior))
+            {
+                if (!string.Equals(prior.Fingerprint, request.IdempotencyFingerprint, StringComparison.Ordinal))
+                    return ValueTask.FromResult(AuthorityResult.Deny(409, "P2_IDEMPOTENCY_CONFLICT", request.Command.CorrelationId));
+
+                return ValueTask.FromResult(prior.Result with
+                {
+                    IdempotentReplay = true,
+                    StateMutated = false,
+                    CorrelationId = request.Command.CorrelationId
+                });
+            }
+
+            if (!_aggregates.TryGetValue(request.Idea.AggregateId, out var currentIdea))
+                return ValueTask.FromResult(AuthorityResult.Deny(404, "P2_AGGREGATE_NOT_FOUND", request.Command.CorrelationId));
+
+            var planIndex = _evaluationPlans.FindIndex(x => string.Equals(x.PlanId, request.Plan.PlanId, StringComparison.Ordinal));
+            var assignmentIndex = _evaluationAssignments.FindIndex(x => string.Equals(x.AssignmentId, request.Assignment.AssignmentId, StringComparison.Ordinal));
+            if (planIndex < 0 || assignmentIndex < 0)
+                return ValueTask.FromResult(AuthorityResult.Deny(404, "P2_EVALUATION_CONTEXT_NOT_FOUND", request.Command.CorrelationId));
+
+            var currentPlan = _evaluationPlans[planIndex];
+            var currentAssignment = _evaluationAssignments[assignmentIndex];
+
+            if (currentIdea.Version != request.Idea.Version || currentIdea.Version != request.Command.ExpectedIdeaVersion)
+                return ValueTask.FromResult(AuthorityResult.Deny(409, "P2_VERSION_CONFLICT", request.Command.CorrelationId));
+            if (currentPlan.PlanVersion != request.Plan.PlanVersion || currentPlan.PlanVersion != request.Command.ExpectedPlanVersion)
+                return ValueTask.FromResult(AuthorityResult.Deny(409, "P2_EVALUATION_PLAN_VERSION_CONFLICT", request.Command.CorrelationId));
+            if (currentAssignment.AssignmentVersion != request.Assignment.AssignmentVersion
+                || currentAssignment.AssignmentVersion != request.Command.ExpectedAssignmentVersion)
+                return ValueTask.FromResult(AuthorityResult.Deny(409, "P2_EVALUATION_ASSIGNMENT_VERSION_CONFLICT", request.Command.CorrelationId));
+
+            if (!string.Equals(currentAssignment.State, "PENDING", StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(currentPlan.State, "ACTIVE", StringComparison.OrdinalIgnoreCase))
+                return ValueTask.FromResult(AuthorityResult.Deny(409, "P2_EVALUATION_CONTEXT_NOT_MUTABLE", request.Command.CorrelationId));
+
+            var error = ValidateEvaluationCompletionShape(request, commit, currentIdea, currentPlan, currentAssignment);
+            if (error is not null)
+                return ValueTask.FromResult(AuthorityResult.Deny(500, error, request.Command.CorrelationId));
+
+            if (_assessmentSnapshots.Any(x => string.Equals(x.SnapshotId, commit.AssessmentSnapshot.SnapshotId, StringComparison.Ordinal)
+                || string.Equals(x.EvaluationAssignmentId, currentAssignment.AssignmentId, StringComparison.Ordinal)))
+                return ValueTask.FromResult(AuthorityResult.Deny(409, "P2_DUPLICATE_ASSESSMENT_SNAPSHOT", request.Command.CorrelationId));
+
+            if (commit.G04Assessment is not null
+                && (_g04Assessments.Any(x => string.Equals(x.AssessmentId, commit.G04Assessment.AssessmentId, StringComparison.Ordinal))
+                    || _g04Assessments.Any(x => string.Equals(x.PlanId, currentPlan.PlanId, StringComparison.Ordinal))))
+                return ValueTask.FromResult(AuthorityResult.Deny(409, "P2_DUPLICATE_G04_ASSESSMENT", request.Command.CorrelationId));
+
+            if (_audits.Any(x => string.Equals(x.AuditId, commit.Audit.AuditId, StringComparison.Ordinal)))
+                return ValueTask.FromResult(AuthorityResult.Deny(409, "P2_DUPLICATE_AUDIT_ID", request.Command.CorrelationId));
+
+            var outboxEvents = commit.OutboxEvents.Select(SnapshotOutbox).ToArray();
+            if (outboxEvents.Length is < 1 or > 2
+                || outboxEvents.GroupBy(x => x.MessageId, StringComparer.Ordinal).Any(g => g.Count() > 1)
+                || outboxEvents.Any(x => _outbox.Any(existing => string.Equals(existing.MessageId, x.MessageId, StringComparison.Ordinal))))
+                return ValueTask.FromResult(AuthorityResult.Deny(409, "P2_COMPLETION_OUTBOX_INVALID", request.Command.CorrelationId));
+
+            var expectedReadiness = _evaluationAssignments
+                .Where(x => string.Equals(x.PlanId, currentPlan.PlanId, StringComparison.Ordinal) && x.Required)
+                .Select(x => string.Equals(x.AssignmentId, currentAssignment.AssignmentId, StringComparison.Ordinal) ? commit.AssignmentAfter : x)
+                .All(x => string.Equals(x.State, "COMPLETED", StringComparison.OrdinalIgnoreCase));
+
+            if (expectedReadiness != string.Equals(commit.PlanAfter.State, "READY_FOR_G04_DECISION", StringComparison.Ordinal))
+                return ValueTask.FromResult(AuthorityResult.Deny(500, "P2_EVALUATION_READINESS_MISMATCH", request.Command.CorrelationId));
+            if (expectedReadiness != (commit.G04Assessment is not null))
+                return ValueTask.FromResult(AuthorityResult.Deny(500, "P2_G04_ASSESSMENT_READINESS_MISMATCH", request.Command.CorrelationId));
+
+            var emittedEvents = outboxEvents.Select(x => x.EventName).ToArray();
+            var result = new AuthorityResult(
+                200,
+                "P2_EVALUATION_COMPLETION_ATOMIC_COMMIT",
+                Allowed: true,
+                StateMutated: true,
+                IdempotentReplay: false,
+                NewVersion: commit.AssignmentAfter.AssignmentVersion,
+                CorrelationId: request.Command.CorrelationId,
+                EmittedEvents: Array.AsReadOnly(emittedEvents));
+
+            var idempotency = new IdempotencyRecord(
+                commandName,
+                request.Command.IdeaId,
+                request.Command.IdempotencyKey,
+                request.IdempotencyFingerprint,
+                result);
+
+            var oldPlan = currentPlan;
+            var oldAssignment = currentAssignment;
+            var oldSnapshotCount = _assessmentSnapshots.Count;
+            var oldG04Count = _g04Assessments.Count;
+            var oldAuditCount = _audits.Count;
+            var oldOutboxCount = _outbox.Count;
+
+            try
+            {
+                _evaluationAssignments[assignmentIndex] = commit.AssignmentAfter;
+                ThrowIf(PersistenceFaultPoint.AfterEvaluationAssignmentCompletionStaged);
+
+                _assessmentSnapshots.Add(commit.AssessmentSnapshot);
+                ThrowIf(PersistenceFaultPoint.AfterAssessmentSnapshotStaged);
+
+                _evaluationPlans[planIndex] = commit.PlanAfter;
+                ThrowIf(PersistenceFaultPoint.AfterEvaluationPlanReadinessStaged);
+
+                if (commit.G04Assessment is not null)
+                    _g04Assessments.Add(commit.G04Assessment);
+                ThrowIf(PersistenceFaultPoint.AfterG04AssessmentStaged);
+
+                _audits.Add(SnapshotAudit(commit.Audit));
+                ThrowIf(PersistenceFaultPoint.AfterAuditStaged);
+
+                _outbox.AddRange(outboxEvents);
+                ThrowIf(PersistenceFaultPoint.AfterCompletionOutboxStaged);
+
+                _idempotency.Add(idempotencyKey, idempotency);
+                ThrowIf(PersistenceFaultPoint.AfterIdempotencyStaged);
+                ThrowIf(PersistenceFaultPoint.BeforeCommitPublish);
+
+                return ValueTask.FromResult(result);
+            }
+            catch
+            {
+                _evaluationAssignments[assignmentIndex] = oldAssignment;
+                _evaluationPlans[planIndex] = oldPlan;
+
+                while (_assessmentSnapshots.Count > oldSnapshotCount)
+                    _assessmentSnapshots.RemoveAt(_assessmentSnapshots.Count - 1);
+                while (_g04Assessments.Count > oldG04Count)
+                    _g04Assessments.RemoveAt(_g04Assessments.Count - 1);
+                while (_audits.Count > oldAuditCount)
+                    _audits.RemoveAt(_audits.Count - 1);
+                while (_outbox.Count > oldOutboxCount)
+                    _outbox.RemoveAt(_outbox.Count - 1);
+
+                _idempotency.Remove(idempotencyKey);
+                throw;
+            }
+        }
+    }
+
+    private static string? ValidateEvaluationCompletionShape(
+        EvaluationCompletionRequest request,
+        EvaluationCompletionCommit commit,
+        AggregateSnapshot currentIdea,
+        EvaluationPlanEnvelope currentPlan,
+        EvaluationAssignmentEnvelope currentAssignment)
+    {
+        var after = commit.AssignmentAfter;
+        if (!string.Equals(after.AssignmentId, currentAssignment.AssignmentId, StringComparison.Ordinal)
+            || !string.Equals(after.PlanId, currentPlan.PlanId, StringComparison.Ordinal)
+            || !string.Equals(after.IdeaId, currentIdea.AggregateId, StringComparison.Ordinal)
+            || after.IdeaVersion != currentIdea.Version
+            || !string.Equals(after.Role, currentAssignment.Role, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(after.Scope, currentAssignment.Scope, StringComparison.OrdinalIgnoreCase)
+            || after.Required != currentAssignment.Required)
+            return "P2_EVALUATION_ASSIGNMENT_LINK_MISMATCH";
+
+        if (after.AssignmentVersion != currentAssignment.AssignmentVersion + 1
+            || !string.Equals(after.State, "COMPLETED", StringComparison.Ordinal)
+            || after.CompletedAt is null
+            || string.IsNullOrWhiteSpace(after.CompletedByPersonId)
+            || string.IsNullOrWhiteSpace(after.AuthorityAssignmentId)
+            || string.IsNullOrWhiteSpace(after.AssessmentSchemaId)
+            || string.IsNullOrWhiteSpace(after.AssessmentSchemaVersion)
+            || string.IsNullOrWhiteSpace(after.AssessmentOutcome))
+            return "P2_EVALUATION_ASSIGNMENT_COMPLETION_SHAPE_INVALID";
+
+        if (!string.Equals(after.CompletedByPersonId, request.Actor.PersonId, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(after.AuthorityAssignmentId, request.Actor.AssignmentId, StringComparison.OrdinalIgnoreCase))
+            return "P2_EVALUATION_ASSIGNMENT_AUTHORITY_MISMATCH";
+
+        var planAfter = commit.PlanAfter;
+        if (!string.Equals(planAfter.PlanId, currentPlan.PlanId, StringComparison.Ordinal)
+            || !string.Equals(planAfter.IdeaId, currentPlan.IdeaId, StringComparison.Ordinal)
+            || planAfter.IdeaVersion != currentPlan.IdeaVersion
+            || planAfter.PlanVersion != currentPlan.PlanVersion + 1
+            || planAfter.CreatedAt != currentPlan.CreatedAt
+            || !string.Equals(planAfter.CorrelationId, currentPlan.CorrelationId, StringComparison.Ordinal))
+            return "P2_EVALUATION_PLAN_COMPLETION_SHAPE_INVALID";
+
+        if (planAfter.State is not ("ACTIVE" or "READY_FOR_G04_DECISION"))
+            return "P2_EVALUATION_PLAN_STATE_INVALID";
+
+        var snapshot = commit.AssessmentSnapshot;
+        if (string.IsNullOrWhiteSpace(snapshot.SnapshotId)
+            || !string.Equals(snapshot.EvaluationAssignmentId, after.AssignmentId, StringComparison.Ordinal)
+            || !string.Equals(snapshot.PlanId, after.PlanId, StringComparison.Ordinal)
+            || !string.Equals(snapshot.IdeaId, after.IdeaId, StringComparison.Ordinal)
+            || snapshot.IdeaVersion != after.IdeaVersion
+            || !string.Equals(snapshot.Role, after.Role, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(snapshot.Scope, after.Scope, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(snapshot.SchemaId, after.AssessmentSchemaId, StringComparison.Ordinal)
+            || !string.Equals(snapshot.SchemaVersion, after.AssessmentSchemaVersion, StringComparison.Ordinal)
+            || !string.Equals(snapshot.Outcome, after.AssessmentOutcome, StringComparison.Ordinal)
+            || string.IsNullOrWhiteSpace(snapshot.NormalizedAssessmentJson)
+            || string.IsNullOrWhiteSpace(snapshot.ContentSha256))
+            return "P2_ASSESSMENT_SNAPSHOT_SHAPE_INVALID";
+
+        if (!string.Equals(snapshot.PersonId, request.Actor.PersonId, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(snapshot.AuthorityAssignmentId, request.Actor.AssignmentId, StringComparison.OrdinalIgnoreCase))
+            return "P2_ASSESSMENT_SNAPSHOT_AUTHORITY_MISMATCH";
+
+        if (!string.Equals(commit.Audit.AggregateId, currentIdea.AggregateId, StringComparison.Ordinal)
+            || commit.Audit.EntityVersion != currentIdea.Version
+            || !string.Equals(commit.Audit.PersonId, request.Actor.PersonId, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(commit.Audit.Assignment, request.Actor.AssignmentId, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(commit.Audit.CommandName, "evaluation-assignments.complete", StringComparison.Ordinal)
+            || !string.Equals(commit.Audit.CorrelationId, request.Command.CorrelationId, StringComparison.Ordinal))
+            return "P2_EVALUATION_AUDIT_MISMATCH";
+
+        if (after.CompletedAt != commit.Audit.Timestamp
+            || snapshot.CreatedAt != commit.Audit.Timestamp)
+            return "P2_EVALUATION_TIMESTAMP_MISMATCH";
+
+        if (string.Equals(planAfter.State, "READY_FOR_G04_DECISION", StringComparison.Ordinal))
+        {
+            if (planAfter.ReadyAt != commit.Audit.Timestamp || commit.G04Assessment is null)
+                return "P2_G04_READINESS_SHAPE_INVALID";
+        }
+        else if (planAfter.ReadyAt is not null || commit.G04Assessment is not null)
+            return "P2_G04_PREMATURE_ASSESSMENT";
+
+        if (commit.G04Assessment is not null)
+        {
+            var g04 = commit.G04Assessment;
+            if (string.IsNullOrWhiteSpace(g04.AssessmentId)
+                || !string.Equals(g04.PlanId, planAfter.PlanId, StringComparison.Ordinal)
+                || !string.Equals(g04.IdeaId, currentIdea.AggregateId, StringComparison.Ordinal)
+                || g04.IdeaVersion != currentIdea.Version
+                || g04.PlanVersion != planAfter.PlanVersion
+                || !string.Equals(g04.State, "PENDING", StringComparison.Ordinal)
+                || string.IsNullOrWhiteSpace(g04.RequiredAssignmentSnapshotSha256)
+                || g04.CreatedAt != commit.Audit.Timestamp
+                || !string.Equals(g04.CorrelationId, request.Command.CorrelationId, StringComparison.Ordinal))
+                return "P2_G04_ASSESSMENT_SHAPE_INVALID";
+        }
+
+        var events = commit.OutboxEvents.ToArray();
+        if (events.Length == 0
+            || !string.Equals(events[0].EventName, "EvaluationAssignmentCompleted.v1", StringComparison.Ordinal)
+            || (commit.G04Assessment is null && events.Length != 1)
+            || (commit.G04Assessment is not null && (events.Length != 2 || !events.Any(x => string.Equals(x.EventName, "G04DecisionAssessmentCreated.v1", StringComparison.Ordinal)))))
+            return "P2_EVALUATION_EVENT_SET_INVALID";
+
+        foreach (var item in events)
+        {
+            if (!string.Equals(item.AggregateId, currentIdea.AggregateId, StringComparison.Ordinal)
+                || item.AggregateVersion != currentIdea.Version
+                || !string.Equals(item.CorrelationId, request.Command.CorrelationId, StringComparison.Ordinal)
+                || item.OccurredAt != commit.Audit.Timestamp)
+                return "P2_EVALUATION_EVENT_CONTEXT_MISMATCH";
+        }
+
+        return null;
     }
 
     private static string? ValidateCommitShape(MutationRequest request, MutationCommit commit)

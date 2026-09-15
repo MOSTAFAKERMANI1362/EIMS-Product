@@ -12,7 +12,12 @@ public enum PersistenceFaultPoint
     BeforeCommitPublish = 5,
     AfterDecisionStaged = 6,
     AfterEvaluationPlanStaged = 7,
-    AfterEvaluationAssignmentsStaged = 8
+    AfterEvaluationAssignmentsStaged = 8,
+    AfterAssessmentSnapshotStaged = 9,
+    AfterEvaluationAssignmentCompletionStaged = 10,
+    AfterEvaluationPlanReadinessStaged = 11,
+    AfterG04AssessmentStaged = 12,
+    AfterCompletionOutboxStaged = 13
 }
 
 public sealed class PersistenceAtomicityException(string message) : Exception(message);
@@ -63,19 +68,24 @@ public sealed record PersistenceContractDescriptor(
 {
     // Wave 4 extends the logical transaction with immutable domain decision history.
     // Wave 5 extends the same transaction boundary with Idea Evaluation Plan + Assignments.
+    // Wave 6 adds immutable evaluator assessment evidence + assignment completion + Plan readiness + optional G04Assessment.
     // Historical constructor shape remains unchanged for prior recovery evidence.
     public bool AppendOnlyDecisionHistoryRequired => true;
     public bool AtomicStateDecisionAuditOutboxIdempotencyRequired => AtomicStateAuditOutboxIdempotencyRequired;
     public bool AtomicEvaluationPlanAssignmentsSupported => true;
+    public bool AtomicEvaluationCompletionSupported => true;
+    public bool AppendOnlyAssessmentSnapshotRequired => true;
 
     public bool IsLogicalContractReady =>
         OptimisticConcurrencyRequired
         && ServerIdempotencyRequired
         && AppendOnlyAuditRequired
         && AppendOnlyDecisionHistoryRequired
+        && AppendOnlyAssessmentSnapshotRequired
         && AtomicStateAuditOutboxIdempotencyRequired
         && AtomicStateDecisionAuditOutboxIdempotencyRequired
         && AtomicEvaluationPlanAssignmentsSupported
+        && AtomicEvaluationCompletionSupported
         && !ConnectionSecretsAllowedInContract;
 
     public bool IsPhysicalOracleReady => IsLogicalContractReady && OracleBinding.IsPhysicalBindingReady;
@@ -100,6 +110,8 @@ public interface IPersistenceEvidenceSource
     IReadOnlyCollection<DomainDecisionEnvelope> DomainDecisions { get; }
     IReadOnlyCollection<EvaluationPlanEnvelope> EvaluationPlans { get; }
     IReadOnlyCollection<EvaluationAssignmentEnvelope> EvaluationAssignments { get; }
+    IReadOnlyCollection<AssessmentSnapshotEnvelope> AssessmentSnapshots { get; }
+    IReadOnlyCollection<G04AssessmentEnvelope> G04Assessments { get; }
 }
 
 public interface IFaultInjectablePersistence
