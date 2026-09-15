@@ -1,7 +1,11 @@
+using EIMS.PilotAssembly.Binding;
 using EIMS.PilotAssembly.Core;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseIISIntegration();
+
+// The binding adapter is compiled into the Host, but production activation remains fail-closed
+// until durable P2 persistence and authoritative live P3 directory composition are supplied.
 builder.Services.AddSingleton<ICommandGateway, FailClosedCommandGateway>();
 
 var app = builder.Build();
@@ -40,15 +44,25 @@ PilotBindingSnapshot Snapshot()
         Flag("Pilot:Evidence:MonitoringValidated"));
 }
 
-app.MapGet("/health", () => Results.Ok(new
+app.MapGet("/health", () =>
 {
-    status = "Healthy",
-    assembly = PilotBaseline.Version,
-    productBaseline = PilotBaseline.ProductBaseline,
-    productSha256 = PilotBaseline.ProductSha256,
-    serverAuthorityBoundary = true,
-    domainCommandAuthorityBound = false
-}));
+    var snapshot = Snapshot();
+    return Results.Ok(new
+    {
+        status = "Healthy",
+        assembly = PilotBaseline.Version,
+        productBaseline = PilotBaseline.ProductBaseline,
+        productSha256 = PilotBaseline.ProductSha256,
+        serverAuthorityBoundary = true,
+        p1P5BindingAdapterAvailable = true,
+        p1P5BindingContract = P1P5BindingContract.Version,
+        recoveredMutationCommandCount = P1P5BindingContract.RecoveredMutationCommandCount,
+        domainCommandAuthorityBound = snapshot.P1AuthorityRuntimeBound,
+        activationState = snapshot.P1AuthorityRuntimeBound
+            ? "CONFIGURED_RUNTIME_BOUND"
+            : "FAIL_CLOSED_UNTIL_P2_P3_COMPOSED"
+    });
+});
 
 app.MapGet("/api/pilot/readiness", () =>
 {
@@ -73,11 +87,25 @@ app.MapPost("/api/authority/check", (HttpContext ctx) =>
     var networkName = IdentitySourcePolicy.GetAuthenticatedNetworkName(ctx.User);
     if (networkName is null)
         return Results.Json(new { code = "P5_WINDOWS_IDENTITY_REQUIRED" }, statusCode: 401);
+
+    var snapshot = Snapshot();
+    if (!snapshot.P1AuthorityRuntimeBound)
+    {
+        return Results.Json(new
+        {
+            code = "P5_AUTHORITY_RUNTIME_NOT_BOUND",
+            allowed = false,
+            bindingAdapterAvailable = true,
+            bindingContract = P1P5BindingContract.Version,
+            message = "P1-P5 adapter is compiled and contract-tested, but durable P2 and authoritative live P3 composition are not activated."
+        }, statusCode: 503);
+    }
+
     return Results.Json(new
     {
-        code = "P5_AUTHORITY_RUNTIME_NOT_BOUND",
+        code = "P5_AUTHORITY_CHECK_ENDPOINT_NOT_ACTIVATED",
         allowed = false,
-        message = "P1 authority source/runtime must be physically composed before authority checks can return ALLOW."
+        message = "RuntimeBound configuration must only be enabled together with the approved production composition root."
     }, statusCode: 503);
 });
 
