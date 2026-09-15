@@ -108,16 +108,17 @@ public sealed class P1RecoveryCommandGateway(
             if (body.RootElement.ValueKind != JsonValueKind.Object)
                 return Deny(400, "P5_COMMAND_BODY_OBJECT_REQUIRED", "Command body must be a JSON object.");
 
-            var assignmentId = String(body.RootElement, "assignmentId");
-            var requestedScope = String(body.RootElement, "requestedScope");
-            var resolved = await identityResolver.ResolveAsync(
-                new IdentityResolutionRequest(attempt.NetworkIdentity, assignmentId, requestedScope, DateTimeOffset.UtcNow),
-                cancellationToken);
-            if (!resolved.Allowed || resolved.Actor is null)
-                return Deny(resolved.HttpStatus, resolved.Code, resolved.Detail ?? "Authoritative Person/Assignment/Role/Scope resolution failed.");
-
             try
             {
+                var assignmentId = String(body.RootElement, "assignmentId");
+                var requestedScope = String(body.RootElement, "requestedScope");
+                var resolved = await identityResolver.ResolveAsync(
+                    new IdentityResolutionRequest(attempt.NetworkIdentity, assignmentId, requestedScope, DateTimeOffset.UtcNow),
+                    cancellationToken);
+                if (!resolved.Allowed || resolved.Actor is null)
+                    return Deny(resolved.HttpStatus, resolved.Code,
+                        resolved.Detail ?? "Authoritative Person/Assignment/Role/Scope resolution failed.");
+
                 AuthorityResult result;
                 if (KernelCommands.Contains(commandName))
                 {
