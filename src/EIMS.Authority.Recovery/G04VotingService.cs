@@ -54,12 +54,6 @@ public sealed class G04VotingService(
             return AuthorityResult.Deny(404, "P1_G04_ASSESSMENT_NOT_FOUND", command.CorrelationId);
         if (!string.Equals(assessment.State, "PENDING", StringComparison.OrdinalIgnoreCase))
             return AuthorityResult.Deny(409, "P1_G04_ASSESSMENT_NOT_PENDING", command.CorrelationId);
-        if (!G04RouteIntegrity.HasCompleteRoute(assessment))
-            return AuthorityResult.Deny(409, "P1_G04_VOTE_ROUTE_CONTEXT_MISSING", command.CorrelationId,
-                "G04 vote requires frozen server-side decision route metadata on the assessment.");
-        if (!G04RouteIntegrity.IsCommitteeRoute(assessment))
-            return AuthorityResult.Deny(409, "P1_G04_VOTE_ROUTE_NOT_COMMITTEE", command.CorrelationId,
-                "Committee voting is forbidden for an individual G04 decision route.");
 
         var idea = await store.GetAggregateAsync(assessment.IdeaId, cancellationToken);
         if (idea is null || !string.Equals(idea.AggregateType, "Idea", StringComparison.OrdinalIgnoreCase))
@@ -110,9 +104,6 @@ public sealed class G04VotingService(
             var profile = await governanceProvider.ResolveAsync(assessment, idea, cancellationToken);
             if (profile is null || !ValidProfile(profile))
                 return AuthorityResult.Deny(503, "P1_G04_GOVERNANCE_PROFILE_NOT_BOUND", command.CorrelationId);
-            if (!ProfileMatchesFrozenRoute(profile, assessment))
-                return AuthorityResult.Deny(409, "P1_G04_ROUTE_PROFILE_MISMATCH", command.CorrelationId,
-                    "Current governance provider output does not match the route/profile frozen in the G04 assessment.");
 
             var members = await membershipResolver.ResolveAsync(assessment, idea, profile, cancellationToken);
             var normalizedMembers = NormalizeMembers(members);
@@ -122,8 +113,8 @@ public sealed class G04VotingService(
             var now = DateTimeOffset.UtcNow;
             snapshot = new G04CommitteeSnapshotEnvelope(
                 $"G04CS-{Guid.NewGuid():N}", assessment.AssessmentId, idea.AggregateId, idea.Version, idea.Scope,
-                assessment.DecisionRoute!, assessment.GovernanceProfileId!, assessment.GovernanceProfileVersion!,
-                profile.QuorumRequired, assessment.DecisionMethod!, profile.ChairPersonId.Trim(),
+                "G04_COMMITTEE", profile.GovernanceProfileId.Trim(), profile.GovernanceProfileVersion.Trim(),
+                profile.QuorumRequired, profile.VoteRule.Trim().ToUpperInvariant(), profile.ChairPersonId.Trim(),
                 profile.ApprovalAuthority.Trim(), profile.ApprovalRef.Trim(), normalizedMembers, now, command.CorrelationId);
         }
         else if (!SnapshotContextMatches(snapshot, assessment, idea))
@@ -177,8 +168,6 @@ public sealed class G04VotingService(
             ["committeeVersion"] = nextCommitteeVersion.ToString(CultureInfo.InvariantCulture),
             ["voterPersonId"] = actor.PersonId,
             ["vote"] = vote,
-            ["decisionRoute"] = assessment.DecisionRoute!,
-            ["decisionMethod"] = assessment.DecisionMethod!,
             ["votingStageState"] = stateAfter.VotingStageState,
             ["effectiveVoteCount"] = stateAfter.EffectiveVoteCount.ToString(CultureInfo.InvariantCulture),
             ["approveCount"] = stateAfter.ApproveCount.ToString(CultureInfo.InvariantCulture),
@@ -232,11 +221,6 @@ public sealed class G04VotingService(
         return rule != "CHAIR_TIEBREAK" || !string.IsNullOrWhiteSpace(profile.ChairPersonId);
     }
 
-    private static bool ProfileMatchesFrozenRoute(G04GovernanceProfile profile, G04AssessmentEnvelope assessment) =>
-        string.Equals(profile.GovernanceProfileId.Trim(), assessment.GovernanceProfileId, StringComparison.Ordinal)
-        && string.Equals(profile.GovernanceProfileVersion.Trim(), assessment.GovernanceProfileVersion, StringComparison.Ordinal)
-        && string.Equals(profile.VoteRule.Trim(), assessment.DecisionMethod, StringComparison.OrdinalIgnoreCase);
-
     private static IReadOnlyCollection<G04CommitteeMemberEnvelope> NormalizeMembers(IReadOnlyCollection<G04CommitteeMemberEnvelope> members) =>
         Array.AsReadOnly(members
             .Where(x => x is not null)
@@ -267,10 +251,7 @@ public sealed class G04VotingService(
         && string.Equals(snapshot.IdeaId, idea.AggregateId, StringComparison.Ordinal)
         && snapshot.IdeaVersion == idea.Version
         && string.Equals(snapshot.Scope, idea.Scope, StringComparison.OrdinalIgnoreCase)
-        && string.Equals(snapshot.DecisionRoute, assessment.DecisionRoute, StringComparison.Ordinal)
-        && string.Equals(snapshot.GovernanceProfileId, assessment.GovernanceProfileId, StringComparison.Ordinal)
-        && string.Equals(snapshot.GovernanceProfileVersion, assessment.GovernanceProfileVersion, StringComparison.Ordinal)
-        && string.Equals(snapshot.VoteRule, assessment.DecisionMethod, StringComparison.OrdinalIgnoreCase)
+        && string.Equals(snapshot.DecisionRoute, "G04_COMMITTEE", StringComparison.Ordinal)
         && snapshot.QuorumRequired >= 1
         && snapshot.Members.Count >= snapshot.QuorumRequired;
 
