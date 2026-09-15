@@ -2,89 +2,79 @@
 
 **Status:** APPROVED_FOR_P1_IMPLEMENTATION  
 **Decision class:** POST_FREEZE_ARCHITECTURE_DECISION  
-**Frozen Product reference:** `EIMS_v6.360_WORKLIST_UX_ROLE_SELECTOR_CLEANUP.html`  
-**Frozen SHA-256:** `057a224fa55e6ee17d128c41c86f3410206d7246723c35872f57757329c4e98a`
+**Frozen Product:** `EIMS_v6.360_WORKLIST_UX_ROLE_SELECTOR_CLEANUP.html` — unchanged
 
-## 1. Purpose
+## Purpose
 
-This ACR stabilizes the production contract for `g04.final-decision`. It does not promote that command into runtime. The historical complete P0 server rule package is not available; therefore this decision combines frozen v6.360 executable evidence with explicit post-freeze architecture decisions and labels them accordingly.
+This ACR stabilizes the server contract for `g04.final-decision` before runtime promotion. It does not itself enable the command.
 
-The required recovered machine evidence is `recovery/g04-decision/G04_DECISION_PROFILE_RULE_REGISTRY_v1.0.json`, classified as `RECOVERED_FROM_FROZEN_V6_360_NOT_ORIGINAL_SERVER_SCHEMA`.
+The final authority is `IDEA_DECISION`, separate from `G04_COMMITTEE_MEMBER`. P3 authenticated PersonID, the exact authority Assignment and Idea Scope are server-derived and rechecked. A frozen committee member cannot act as final decider for the same assessment.
 
-## 2. Authority boundary
+## Exact final outcomes
 
-Only an authenticated P3 `AuthorityActor` with exactly one effective `IDEA_DECISION` assignment may execute the final decision. PersonID, authority AssignmentId, role and scope are server-derived. The client may not supply or override them.
+| Outcome | Idea state | Business Idea revision | Domain event |
+| --- | --- | ---: | --- |
+| `APPROVE` | `APPROVED` | unchanged | `IdeaApprovedForPortfolio.v1` |
+| `RETURN` | `RETURNED` | +1 | `IdeaReturnedFromG04.v1` |
+| `HOLD` | `HOLD` | unchanged | `IdeaHeldAtG04.v1` |
+| `REJECT` | `REJECTED` | unchanged | `IdeaRejectedAtG04.v1` |
 
-A person who is part of the frozen G04 committee for the same assessment may not act as final decision authority. Committee voting and the final G04 authority remain separate.
+The frozen executable uses Idea version as a business/content revision and increments it on RETURN. Production additionally maintains a **separate technical concurrency/state-mutation version** that increments by exactly one on every successful final-decision mutation. This preserves frozen business semantics without weakening optimistic concurrency.
 
-Evaluator/final-decider conflict is checked for `APPROVE`. Default policy is deny. A frozen governance policy may explicitly permit `ALLOW_WITH_AUDIT`; that exception must be captured in immutable decision evidence and audit. Client input cannot create the exception.
+## Required final-decision input
 
-## 3. Exact decision context
+- outcome: exactly `APPROVE`, `RETURN`, `HOLD`, or `REJECT`;
+- decision comment: trimmed minimum 15 characters;
+- reason code: one of `G04_READY`, `G04_SOLUTION_INCOMPLETE`, `G04_EVIDENCE_INCOMPLETE`, `G04_COST_INCOMPLETE`, `G04_RISK_UNRESOLVED`, `G04_TECH_FAIL`, `G04_ALIGNMENT`, `OTHER`;
+- `APPROVE` requires `G04_READY`;
+- `RETURN`, `HOLD`, and `REJECT` must not use `G04_READY`;
+- `HOLD` additionally requires review date.
 
-The target G04Assessment must be `PENDING` and linked to the exact current Idea version and exact current Evaluation Plan. Superseded/stale plans or assessments are rejected. Optimistic concurrency and an idempotency key are mandatory.
+Reason code and free-text rationale are authoritative decision evidence. Free-text rationale is not copied into integration events.
 
-Open G04 uses the current active scoring profile as the working source of truth. At final decision, the profile/rule evidence used for the decision becomes immutable. Historical decisions must never be reconstructed later from whatever profile is active at that future time.
+## APPROVE-only rule suite
 
-## 4. Outcomes
+Positive G04 gates block only `APPROVE`. Authorized `RETURN`, `HOLD`, and `REJECT` remain available when positive approval criteria fail.
 
-The only final outcomes are `APPROVE`, `RETURN`, `HOLD`, and `REJECT`. A trimmed decision explanation of at least 15 characters is required for every outcome. `HOLD` additionally requires a review date.
+For APPROVE, the server must evaluate the exact frozen/current decision context: profile snapshot, score threshold, data readiness, base Need, conditional technical requirement, configured hard conditions, required specialist outcomes, committee positive result when committee route applies, and SoD.
 
-| Outcome | Idea result | Version | Assessment | Event |
-|---|---|---:|---|---|
-| APPROVE | `APPROVED` | unchanged | `DECIDED` | `IdeaApprovedForPortfolio.v1` |
-| RETURN | `RETURNED` | +1 | `DECIDED` | `IdeaReturnedFromG04.v1` |
-| HOLD | `HOLD` | unchanged | `DECIDED` | `IdeaHeldAtG04.v1` |
-| REJECT | `REJECTED` | unchanged | `DECIDED` | `IdeaRejectedAtG04.v1` |
+### Specialist outcome vocabulary
 
-`IdeaApprovedForPortfolio.v1` is an existing frozen event identity. The RETURN/HOLD/REJECT event identities above are post-freeze stabilized identities for production implementation.
+New production authority uses exactly:
 
-## 5. Approval-only rule suite
+- `CONFIRMED`
+- `CONDITIONAL`
+- `NOT_CONFIRMED`
+- `MORE_EVIDENCE`
 
-The positive gate suite blocks only `APPROVE`. It does not prevent an authorized `RETURN`, `HOLD`, or `REJECT`; those outcomes still require exact authority/context, valid rationale, concurrency, idempotency and immutable evidence.
+For APPROVE, `CONFIRMED` and `CONDITIONAL` are acceptable; `NOT_CONFIRMED` and `MORE_EVIDENCE` block approval.
 
-For `APPROVE`, the server must prove all of the following:
+Legacy prototype values such as `PASS`, `CONDITIONAL_PASS`, `RETURN`, `FAIL`, `NO_GO`, `APPROVE`, and `APPROVED` are **read-compatibility aliases only**. They must be normalized before evaluation and must never be emitted by new runtime code.
 
-1. Exact frozen profile/rule evidence exists and is usable.
-2. Calculated gate score is at least the frozen profile `passThreshold`.
-3. Data readiness is at least the frozen profile `dataThreshold`.
-4. The base Need exists.
-5. Technical assessment is valid only when required by the current Evaluation Plan or by frozen profile hard keys `TECHNICAL_ASSESSMENT_VALID` / `HSE_AND_TECH_VALID`. There is no unconditional technical gate.
-6. Every profile hard condition maps to a known machine rule and passes. Unknown mapping fails closed.
-7. Required specialist assignments contain no blocking `FAIL`, `RETURN`, or `NO_GO`; HSE `FAIL`/`RETURN` is blocking.
-8. If route is `G04_COMMITTEE`, Wave 7 committee evidence must show `COMPLETED` and `ApprovalRuleSatisfied=true` against the exact frozen committee snapshot/version.
-9. Separation of Duties passes, or the evaluator conflict is covered by a frozen `ALLOW_WITH_AUDIT` exception. Committee-member/final-authority overlap is never accepted for the same assessment.
+## Committee-route finalization
 
-## 6. Recovered profile/rule model
+When `decisionRoute == G04_COMMITTEE`, the committee voting stage must be `COMPLETED` against the exact frozen committee snapshot/version **before any final outcome**.
 
-The recovered registry contains exactly two baseline profile contracts: `G04-GENERAL-V1.0` and `G04-HSE-V1.0`, their pass/data thresholds, nine scoring weights, the frozen score formula, the 12-item data-readiness calculation, six machine hard-rule keys, specialist blocking outcomes and the conditional technical requirement.
+For `APPROVE`, stage completion is not enough: the frozen committee result must also have `approvalRuleSatisfied=true`.
 
-The six known hard-rule keys are:
-`REQUIRED_EVALUATIONS_COMPLETE`, `BASE_NEED_G03_READY`, `TECHNICAL_ASSESSMENT_VALID`, `ACTIVE_STRATEGY_ALIGNED`, `HSE_ASSESSMENT_ACCEPTABLE`, `HSE_AND_TECH_VALID`.
+For `RETURN`, `HOLD`, or `REJECT`, a completed non-approving committee result is a valid basis for final resolution. This matches the frozen workflow where committee work ends first and the separate final authority then resolves the case.
 
-Unknown hard-condition text is a fail-closed condition for `APPROVE`.
+## Evidence freeze and history
 
-## 7. Decision evidence freeze
+The final decision freezes profile/rule evidence at the decision instant. Closed decisions may not be reconstructed from a later active profile. The append-only decision record stores authority, reason, business revision before/after, technical mutation version before/after, profile/rule snapshot references, specialist summary, committee-stage evidence where applicable, SoD result, timestamp and correlation.
 
-The final decision writes an append-only immutable decision record containing, at minimum: decision/assessment/Idea identifiers and versions; outcome and rationale; HOLD review date when relevant; authenticated PersonID/network identity/authority AssignmentId; profile/rule identifiers and profile-snapshot hash; gate/data scores; machine rule results; specialist outcome summary; committee snapshot/version/approval result when applicable; SoD result/exception; timestamp and correlation ID.
+RETURN supersedes old active Evaluation Plans and old pending G04 assessments for the prior Idea revision and makes prior technical/structured evaluation evidence stale for the new revision.
 
-The historical decision record is never overwritten.
+## Transaction and events
 
-## 8. RETURN invalidation
+One logical transaction covers:
 
-`RETURN` increments the Idea version exactly once. That version change supersedes old active Evaluation Plans and old PENDING G04 assessments and marks old technical/structured evaluation evidence stale. The new Idea version must obtain a fresh evaluation context before another final G04 approval attempt.
+`Idea state/business revision + technical state-mutation version + G04Assessment closure + immutable final-decision evidence + RETURN supersession metadata when applicable + Audit + outcome Outbox + Idempotency`.
 
-## 9. Atomicity and events
+Portfolio eligibility is not part of this transaction. `IdeaApprovedForPortfolio.v1` is the post-commit boundary for idempotent `PortfolioEligibilityService` execution. A downstream Portfolio failure must not roll back an already committed G04 decision.
 
-One logical transaction contains:
+Integration events contain identifiers, status/version and decision-evidence references only. They exclude decision comment, evaluator answers, full Idea dossier, full profile snapshot, full committee membership snapshot and vote notes.
 
-`Idea state/version + G04Assessment final closure + immutable final-decision evidence + RETURN supersession metadata (when applicable) + Audit + outcome Outbox + Idempotency`.
+## Safety boundaries
 
-Integration event payloads are minimized. They may contain identifiers, versions, statuses and decision-evidence references. They must not duplicate free-text rationale, evaluator answers, full Idea dossier, full profile snapshot, full committee membership snapshot or vote notes.
-
-## 10. Portfolio boundary
-
-The final G04 transaction never creates a `PortfolioIntakeCandidate`. `APPROVE` commits first and emits `IdeaApprovedForPortfolio.v1`. An idempotent downstream `PortfolioEligibilityService` consumes that event after commit. A downstream eligibility failure may be retried or surfaced as a visible eligibility failure, but it must not roll back an already committed G04 governance decision.
-
-## 11. Non-effects
-
-This ACR does not modify v6.360, does not itself enable `g04.final-decision`, does not enable P5, does not physically bind Oracle or Windows Domain, and makes no Network Pilot READY claim.
+This ACR does not promote `g04.final-decision`, does not bind P5, does not choose physical Oracle details, does not claim live Windows Domain or Network Pilot readiness, and does not modify v6.360.
