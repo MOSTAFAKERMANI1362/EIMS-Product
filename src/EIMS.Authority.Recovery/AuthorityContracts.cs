@@ -26,7 +26,8 @@ public sealed record AggregateSnapshot(
     string? OwnerRole = null,
     string? Scope = null,
     IReadOnlyDictionary<string, string>? RuleFacts = null,
-    string? WorkRoutingRole = null);
+    string? WorkRoutingRole = null,
+    long? StateMutationVersion = null);
 
 public sealed record CommandEventBinding(
     string Kind,
@@ -141,7 +142,12 @@ public sealed record EvaluationAssignmentIntent(
 public sealed record EvaluationPlanIntent(
     string State,
     int Version,
-    IReadOnlyCollection<EvaluationAssignmentIntent> Assignments);
+    IReadOnlyCollection<EvaluationAssignmentIntent> Assignments,
+    string? DecisionRoute = null,
+    string? DecisionRouteKind = null,
+    string? DecisionMethod = null,
+    string? GovernanceProfileId = null,
+    string? GovernanceProfileVersion = null);
 
 public sealed record DomainDecisionEnvelope(
     string DecisionId,
@@ -164,7 +170,12 @@ public sealed record EvaluationPlanEnvelope(
     string State,
     DateTimeOffset CreatedAt,
     string CorrelationId,
-    DateTimeOffset? ReadyAt = null);
+    DateTimeOffset? ReadyAt = null,
+    string? DecisionRoute = null,
+    string? DecisionRouteKind = null,
+    string? DecisionMethod = null,
+    string? GovernanceProfileId = null,
+    string? GovernanceProfileVersion = null);
 
 public sealed record EvaluationAssignmentEnvelope(
     string AssignmentId,
@@ -212,7 +223,13 @@ public sealed record G04AssessmentEnvelope(
     string State,
     string RequiredAssignmentSnapshotSha256,
     DateTimeOffset CreatedAt,
-    string CorrelationId);
+    string CorrelationId,
+    string? DecisionRoute = null,
+    string? DecisionRouteKind = null,
+    string? DecisionMethod = null,
+    string? GovernanceProfileId = null,
+    string? GovernanceProfileVersion = null,
+    int DecisionVersion = 0);
 
 public sealed record EvaluationCompletionCommand(
     string IdeaId,
