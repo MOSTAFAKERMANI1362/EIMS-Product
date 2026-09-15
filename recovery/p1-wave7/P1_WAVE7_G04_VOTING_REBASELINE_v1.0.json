@@ -1,0 +1,90 @@
+{
+  "schema": "EIMS-P1-RECOVERY-WAVE7-G04-VOTING-REBASELINE-1.0",
+  "status": "APPROVED_REBASELINE_FOR_P1_G04_VOTING_BINDING",
+  "decisionClass": "RECOVERY_REBASELINE_ACCEPTANCE",
+  "sourceDecision": {
+    "acrId": "ACR-P0-006",
+    "file": "architecture/decisions/ACR-P0-006_G04_COMMITTEE_VOTING_v1.0.json",
+    "historicalOriginalCompleteMachineContractRecovered": false,
+    "postFreezeDecisionUsed": true
+  },
+  "frozenProduct": {
+    "file": "EIMS_v6.360_WORKLIST_UX_ROLE_SELECTOR_CLEANUP.html",
+    "sha256": "057a224fa55e6ee17d128c41c86f3410206d7246723c35872f57757329c4e98a",
+    "modifiedByThisWave": false
+  },
+  "commandCatalog": {
+    "knownCommandIdentityCount": 21,
+    "runtimeBoundMutationCount": 5,
+    "newlyBoundCommand": "g04.vote",
+    "priorBoundCommands": [
+      "needs.submit-g03",
+      "needs.g03-decision",
+      "ideas.submit-g04",
+      "evaluation-assignments.complete"
+    ],
+    "stillFailClosed": [
+      "g04.final-decision",
+      "portfolio.assign-accept",
+      "executions.prepare",
+      "executions.progress",
+      "executions.submit-completion",
+      "executions.completion-review",
+      "benefits.accept",
+      "benefits.measure",
+      "benefits.verify",
+      "benefits.attribution",
+      "benefits.realize",
+      "knowledge.validate",
+      "knowledge.publish",
+      "rewards.decide"
+    ]
+  },
+  "runtimeBoundary": {
+    "authoritySource": "P3_AUTHORITY_ACTOR",
+    "targetState": "PENDING_G04_ASSESSMENT",
+    "decisionRoute": "G04_COMMITTEE",
+    "firstValidCompositionFreezesSnapshot": true,
+    "governanceAndMembershipServerDerived": true,
+    "clientMayAlterSnapshot": false,
+    "voteValues": ["APPROVE", "REJECT"],
+    "voteNoteMinLength": 10,
+    "appendOnlyVoteRevision": true,
+    "oneLatestEffectiveVotePerFrozenPerson": true,
+    "committeeVersionOptimisticConcurrency": true,
+    "votingRules": ["MAJORITY", "CONSENSUS", "CHAIR_TIEBREAK"],
+    "committeeStageCompletionSeparateFromFinalIdeaDecision": true
+  },
+  "events": [
+    {
+      "eventType": "G04CommitteeVoteRecorded.v1",
+      "emission": "EVERY_ACCEPTED_VOTE_OR_REVISION"
+    },
+    {
+      "eventType": "G04CommitteeVotingCompleted.v1",
+      "emission": "OPEN_TO_COMPLETED_ONLY"
+    }
+  ],
+  "persistence": {
+    "contract": "EIMS-P2-G04-VOTING-RECOVERY",
+    "singleLogicalTransaction": [
+      "FrozenCommitteeSnapshotWhenFirstComposed",
+      "VoteRevision",
+      "EffectiveVoteProjection",
+      "CommitteeVersionAndStageSummary",
+      "Audit",
+      "Outbox",
+      "Idempotency"
+    ],
+    "physicalOracleBound": false
+  },
+  "runtimeSafety": {
+    "g04FinalDecisionPromoted": false,
+    "portfolioEligibilityTriggered": false,
+    "p5CommandGatewayBound": false,
+    "physicalOracleReadyClaimed": false,
+    "liveWindowsDomainReadyClaimed": false,
+    "networkPilotReadyClaimed": false,
+    "v6360Unchanged": true
+  }
+}

@@ -1,0 +1,40 @@
+name: P1 Wave 7 G04 Voting
+
+on:
+  pull_request:
+    paths:
+      - 'src/EIMS.Authority.Recovery/**'
+      - 'src/EIMS.Persistence.Recovery/**'
+      - 'tests/EIMS.P1.Wave7.G04Voting.ContractTests/**'
+      - 'recovery/p1-wave7/**'
+      - 'architecture/decisions/ACR-P0-006_G04_COMMITTEE_VOTING_v1.0.json'
+      - '.github/workflows/p1-wave7-g04-voting.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'src/EIMS.Authority.Recovery/**'
+      - 'src/EIMS.Persistence.Recovery/**'
+      - 'tests/EIMS.P1.Wave7.G04Voting.ContractTests/**'
+      - 'recovery/p1-wave7/**'
+      - '.github/workflows/p1-wave7-g04-voting.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify-wave7-g04-voting:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10.0.302
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.302'
+
+      - name: Build Wave 7 G04 voting tests
+        run: dotnet build .\tests\EIMS.P1.Wave7.G04Voting.ContractTests\EIMS.P1.Wave7.G04Voting.ContractTests.csproj -c Release
+
+      - name: Run Wave 7 G04 voting tests
+        run: dotnet run --project .\tests\EIMS.P1.Wave7.G04Voting.ContractTests\EIMS.P1.Wave7.G04Voting.ContractTests.csproj -c Release --no-build -- .\architecture\decisions\ACR-P0-006_G04_COMMITTEE_VOTING_v1.0.json .\recovery\p1-wave7\P1_WAVE7_G04_VOTING_REBASELINE_v1.0.json
