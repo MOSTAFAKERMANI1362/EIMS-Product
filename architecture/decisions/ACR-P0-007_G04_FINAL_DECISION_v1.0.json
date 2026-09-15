@@ -21,7 +21,7 @@
     },
     {
       "artifact": "P1 Recovery Wave 7",
-      "purpose": "G04 committee vote runtime and positive committee-result evidence"
+      "purpose": "G04 committee vote runtime and authoritative committee-stage result evidence"
     }
   ],
   "command": {
@@ -52,19 +52,33 @@
     "assessmentStateRequired": "PENDING",
     "exactAssessmentIdRequired": true,
     "exactIdeaIdRequired": true,
-    "assessmentIdeaVersionMustEqualCurrentIdeaVersion": true,
+    "assessmentIdeaRevisionMustEqualCurrentIdeaRevision": true,
     "exactEvaluationPlanRequired": true,
-    "planIdeaVersionMustEqualCurrentIdeaVersion": true,
+    "planIdeaRevisionMustEqualCurrentIdeaRevision": true,
     "staleOrSupersededPlanDenied": true,
     "staleOrSupersededAssessmentDenied": true,
     "optimisticConcurrencyRequired": true,
+    "expectedStateMutationVersionRequired": true,
     "idempotencyRequired": true
+  },
+  "versionSemantics": {
+    "businessIdeaRevisionSeparatedFromTechnicalConcurrencyVersion": true,
+    "technicalStateMutationVersionIncrementExactlyBy": 1,
+    "technicalAssessmentDecisionVersionIncrementExactlyBy": 1,
+    "businessIdeaRevisionIncrementPolicy": {
+      "APPROVE": 0,
+      "RETURN": 1,
+      "HOLD": 0,
+      "REJECT": 0
+    },
+    "rationale": "Frozen v6.360 increments Idea business revision only on RETURN. Production still increments a separate technical concurrency/state-mutation version on every successful final-decision mutation."
   },
   "outcomes": [
     {
       "value": "APPROVE",
       "ideaStateAfter": "APPROVED",
-      "ideaVersionIncrement": false,
+      "businessIdeaRevisionIncrement": 0,
+      "technicalStateMutationVersionIncrement": 1,
       "assessmentStateAfter": "DECIDED",
       "eventType": "IdeaApprovedForPortfolio.v1",
       "eventIdentityStatus": "FROZEN_EXISTING",
@@ -73,7 +87,8 @@
     {
       "value": "RETURN",
       "ideaStateAfter": "RETURNED",
-      "ideaVersionIncrement": true,
+      "businessIdeaRevisionIncrement": 1,
+      "technicalStateMutationVersionIncrement": 1,
       "assessmentStateAfter": "DECIDED",
       "eventType": "IdeaReturnedFromG04.v1",
       "eventIdentityStatus": "POST_FREEZE_STABILIZED",
@@ -82,7 +97,8 @@
     {
       "value": "HOLD",
       "ideaStateAfter": "HOLD",
-      "ideaVersionIncrement": false,
+      "businessIdeaRevisionIncrement": 0,
+      "technicalStateMutationVersionIncrement": 1,
       "assessmentStateAfter": "DECIDED",
       "eventType": "IdeaHeldAtG04.v1",
       "eventIdentityStatus": "POST_FREEZE_STABILIZED",
@@ -92,7 +108,8 @@
     {
       "value": "REJECT",
       "ideaStateAfter": "REJECTED",
-      "ideaVersionIncrement": false,
+      "businessIdeaRevisionIncrement": 0,
+      "technicalStateMutationVersionIncrement": 1,
       "assessmentStateAfter": "DECIDED",
       "eventType": "IdeaRejectedAtG04.v1",
       "eventIdentityStatus": "POST_FREEZE_STABILIZED",
@@ -102,6 +119,23 @@
   "decisionInput": {
     "commentRequired": true,
     "commentMinLength": 15,
+    "reasonCodeRequired": true,
+    "allowedReasonCodes": [
+      "G04_READY",
+      "G04_SOLUTION_INCOMPLETE",
+      "G04_EVIDENCE_INCOMPLETE",
+      "G04_COST_INCOMPLETE",
+      "G04_RISK_UNRESOLVED",
+      "G04_TECH_FAIL",
+      "G04_ALIGNMENT",
+      "OTHER"
+    ],
+    "reasonCompatibility": {
+      "APPROVE": "REQUIRES_G04_READY",
+      "RETURN": "MUST_NOT_USE_G04_READY",
+      "HOLD": "MUST_NOT_USE_G04_READY",
+      "REJECT": "MUST_NOT_USE_G04_READY"
+    },
     "holdReviewDateRequired": true,
     "clientMayChooseEventIdentity": false,
     "clientMayChooseRuleProfileOrFrozenEvidence": false
@@ -143,12 +177,12 @@
       {
         "id": "SPECIALIST_OUTCOMES",
         "required": true,
-        "rule": "Required assignments cannot contain FAIL/RETURN/NO_GO; HSE FAIL/RETURN is blocking."
+        "rule": "Required specialist outcomes are evaluated with the authoritative current vocabulary CONFIRMED/CONDITIONAL/NOT_CONFIRMED/MORE_EVIDENCE. NOT_CONFIRMED and MORE_EVIDENCE block APPROVE. Legacy PASS/FAIL-style values are read compatibility only and are normalized before evaluation."
       },
       {
         "id": "COMMITTEE_POSITIVE_RESULT",
-        "requiredWhen": "decisionRoute == G04_COMMITTEE",
-        "rule": "Wave 7 committee state must be COMPLETED and ApprovalRuleSatisfied=true against the exact frozen committee snapshot/version."
+        "requiredWhen": "decisionRoute == G04_COMMITTEE AND outcome == APPROVE",
+        "rule": "Wave 7 committee stage must be COMPLETED and ApprovalRuleSatisfied=true against the exact frozen committee snapshot/version."
       },
       {
         "id": "SEPARATION_OF_DUTIES",
@@ -169,7 +203,7 @@
       "hardConditionMappingVersion",
       "gateScore",
       "dataReadiness",
-      "ideaVersion",
+      "ideaRevision",
       "evaluationPlanId",
       "evaluationPlanVersion",
       "assessmentId",
@@ -179,12 +213,16 @@
   },
   "committeeEvidenceForFinalDecision": {
     "requiredWhenRoute": "G04_COMMITTEE",
-    "requiredForApprove": [
+    "requiredForEveryOutcome": [
       "committeeSnapshotId",
       "committeeVersion",
-      "votingStageState=COMPLETED",
+      "votingStageState=COMPLETED"
+    ],
+    "additionalRequiredForApprove": [
       "approvalRuleSatisfied=true"
     ],
+    "negativeOutcomeAfterCompletedNonApprovingVoteAllowed": true,
+    "committeeStageMustCompleteBeforeAnyFinalOutcome": true,
     "fullMemberSnapshotCopiedIntoIntegrationEvent": false,
     "voteNotesCopiedIntoIntegrationEvent": false
   },
@@ -194,9 +232,12 @@
       "decisionId",
       "assessmentId",
       "ideaId",
-      "ideaVersionBefore",
-      "ideaVersionAfter",
+      "ideaRevisionBefore",
+      "ideaRevisionAfter",
+      "technicalStateMutationVersionBefore",
+      "technicalStateMutationVersionAfter",
       "outcome",
+      "reasonCode",
       "decisionComment",
       "reviewDateWhenHold",
       "personId",
@@ -214,6 +255,7 @@
       "specialistOutcomeSummary",
       "committeeSnapshotIdWhenApplicable",
       "committeeVersionWhenApplicable",
+      "committeeStageStateWhenApplicable",
       "committeeApprovalResultWhenApplicable",
       "sodResult",
       "sodExceptionPolicyWhenApplicable",
@@ -224,17 +266,18 @@
   },
   "returnInvalidation": {
     "trigger": "RETURN",
-    "ideaVersionMustIncrementExactlyBy": 1,
+    "businessIdeaRevisionMustIncrementExactlyBy": 1,
     "oldActiveEvaluationPlans": "SUPERSEDED",
     "oldPendingG04Assessments": "SUPERSEDED",
     "oldTechnicalAssessment": "STALE",
     "oldStructuredIdeaEvaluation": "STALE",
-    "supersessionReason": "Idea version changed",
-    "newVersionRequiresFreshEvaluationContext": true
+    "supersessionReason": "Idea business revision changed",
+    "newRevisionRequiresFreshEvaluationContext": true
   },
   "transactionBoundary": {
     "singleLogicalTransaction": [
-      "IdeaStateAndVersion",
+      "IdeaStateAndBusinessRevision",
+      "IdeaTechnicalStateMutationVersion",
       "G04AssessmentDecisionAndClosure",
       "ImmutableFinalDecisionEvidence",
       "ReturnVersionSupersessionMetadataWhenApplicable",
