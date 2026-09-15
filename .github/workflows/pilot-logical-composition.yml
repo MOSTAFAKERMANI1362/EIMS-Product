@@ -7,8 +7,12 @@ on:
       - 'src/EIMS.Identity.Rbac/**'
       - 'src/EIMS.Authority.Recovery/**'
       - 'src/EIMS.Persistence.Recovery/**'
+      - 'src/EIMS.PilotAssembly.Binding/**'
+      - 'src/EIMS.PilotAssembly.Core/**'
+      - 'src/EIMS.PilotAssembly.Host/**'
       - 'recovery/p1-wave4/**'
       - 'tests/EIMS.PilotLogicalComposition.ContractTests/**'
+      - 'tests/EIMS.P1P5.RuntimeBinding.ContractTests/**'
       - '.github/workflows/pilot-logical-composition.yml'
   push:
     branches: [ main ]
@@ -17,8 +21,12 @@ on:
       - 'src/EIMS.Identity.Rbac/**'
       - 'src/EIMS.Authority.Recovery/**'
       - 'src/EIMS.Persistence.Recovery/**'
+      - 'src/EIMS.PilotAssembly.Binding/**'
+      - 'src/EIMS.PilotAssembly.Core/**'
+      - 'src/EIMS.PilotAssembly.Host/**'
       - 'recovery/p1-wave4/**'
       - 'tests/EIMS.PilotLogicalComposition.ContractTests/**'
+      - 'tests/EIMS.P1P5.RuntimeBinding.ContractTests/**'
       - '.github/workflows/pilot-logical-composition.yml'
 
 permissions:
