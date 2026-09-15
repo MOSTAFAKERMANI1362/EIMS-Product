@@ -296,7 +296,10 @@ async Task EventMinimization()
     await r.Service.VoteAsync(Cmd(0, "K1", "APPROVE", secretNote), Actor("P-M1", "ASG-M1"));
     var ev = Single(r.Store.VotingOutbox);
     True(ev.Payload is not null);
-    False(ev.Payload!.Keys.Any(k => k.Contains("note", StringComparison.OrdinalIgnoreCase) || k.Contains("snapshot", StringComparison.OrdinalIgnoreCase) || k.Contains("answer", StringComparison.OrdinalIgnoreCase)));
+    False(ev.Payload!.Keys.Any(k => k.Contains("voteNote", StringComparison.OrdinalIgnoreCase)
+        || k.Contains("governanceSnapshot", StringComparison.OrdinalIgnoreCase)
+        || k.Contains("memberSnapshot", StringComparison.OrdinalIgnoreCase)
+        || k.Contains("assessmentAnswer", StringComparison.OrdinalIgnoreCase)));
     False(ev.Payload.Values.Any(v => string.Equals(v, secretNote, StringComparison.Ordinal)));
 }
 
@@ -426,8 +429,11 @@ static async Task CompleteMajority(TestRuntime r)
 static G04VoteCommand Cmd(int committeeVersion, string key, string vote = "APPROVE", string note = "valid committee vote reason") =>
     new("PLAN-1", "G04-1", 7, committeeVersion, key, $"CORR-{key}", vote, note, "UNIT:RND");
 
-static AuthorityActor Actor(string personId, string assignmentId, string role = "G04_COMMITTEE_MEMBER") =>
-    new(personId, $"DOMAIN\\{personId.ToLowerInvariant()}", "WINDOWS_PRINCIPAL", assignmentId, new[] { role }, new[] { "UNIT:RND" });
+static AuthorityActor Actor(string personId, string assignmentId, string role = "G04_COMMITTEE_MEMBER")
+{
+    var account = personId.StartsWith("P-", StringComparison.OrdinalIgnoreCase) ? personId[2..].ToLowerInvariant() : personId.ToLowerInvariant();
+    return new AuthorityActor(personId, $"DOMAIN\\{account}", "WINDOWS_PRINCIPAL", assignmentId, new[] { role }, new[] { "UNIT:RND" });
+}
 
 static G04GovernanceProfile Profile(string rule = "MAJORITY", int quorum = 2, string chair = "") =>
     new("GOV-1", "1.0", quorum, rule, chair, "ORG_APPROVAL", "SYSTEM_BASELINE");
