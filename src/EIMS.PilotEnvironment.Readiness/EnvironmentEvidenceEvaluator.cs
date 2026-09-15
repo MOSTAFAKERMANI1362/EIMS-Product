@@ -40,6 +40,14 @@ public static class EnvironmentEvidenceEvaluator
         "nationalid", "national_id", "salary", "bankaccount", "bank_account"
     };
 
+    // These are boolean evidence assertions about the absence of sensitive material;
+    // they are not containers for the sensitive values themselves. Keep the allowlist exact
+    // so that names such as dbPassword or deploymentSecret still fail closed.
+    private static readonly HashSet<string> SafeAssertionKeys = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "noSecretsCommitted"
+    };
+
     public static EnvironmentEvidenceReport Evaluate(string json)
     {
         using var document = JsonDocument.Parse(json);
@@ -200,9 +208,12 @@ public static class EnvironmentEvidenceEvaluator
         {
             foreach (var property in element.EnumerateObject())
             {
-                var key = property.Name.Replace("-", "", StringComparison.Ordinal).Replace(" ", "", StringComparison.Ordinal);
-                if (ProhibitedKeyFragments.Any(fragment => key.Contains(fragment, StringComparison.OrdinalIgnoreCase)))
-                    findings.Add($"{path}.{property.Name}");
+                if (!SafeAssertionKeys.Contains(property.Name))
+                {
+                    var key = property.Name.Replace("-", "", StringComparison.Ordinal).Replace(" ", "", StringComparison.Ordinal);
+                    if (ProhibitedKeyFragments.Any(fragment => key.Contains(fragment, StringComparison.OrdinalIgnoreCase)))
+                        findings.Add($"{path}.{property.Name}");
+                }
                 FindSensitiveKeys(property.Value, $"{path}.{property.Name}", findings);
             }
         }
