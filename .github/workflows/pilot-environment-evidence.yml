@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'pilot/scripts/Collect-EimsPilotEnvironmentEvidence.ps1'
+      - 'pilot/scripts/Collect-EimsEnvironmentEvidenceV11.ps1'
       - 'pilot/scripts/Run-EIMS-Lab-Evidence.cmd'
       - 'pilot/scripts/Run-EIMS-Pilot-Evidence.cmd'
       - 'pilot/PILOT_ENVIRONMENT_EVIDENCE_README.md'
@@ -13,6 +14,7 @@ on:
     branches: [ main ]
     paths:
       - 'pilot/scripts/Collect-EimsPilotEnvironmentEvidence.ps1'
+      - 'pilot/scripts/Collect-EimsEnvironmentEvidenceV11.ps1'
       - 'pilot/scripts/Run-EIMS-Lab-Evidence.cmd'
       - 'pilot/scripts/Run-EIMS-Pilot-Evidence.cmd'
       - 'pilot/PILOT_ENVIRONMENT_EVIDENCE_README.md'
