@@ -1,0 +1,128 @@
+{
+  "schema": "EIMS-ACR-G04-ROUTE-INTEGRITY-ADDENDUM-1.0",
+  "acrId": "ACR-P0-007",
+  "addendumId": "ACR-P0-007-ROUTE-INTEGRITY",
+  "status": "APPROVED_FOR_P1_IMPLEMENTATION",
+  "decisionClass": "POST_FREEZE_ARCHITECTURE_DECISION_HARDENING",
+  "sourceProduct": {
+    "file": "EIMS_v6.360_WORKLIST_UX_ROLE_SELECTOR_CLEANUP.html",
+    "sha256": "057a224fa55e6ee17d128c41c86f3410206d7246723c35872f57757329c4e98a",
+    "modifiedByThisDecision": false
+  },
+  "problem": {
+    "currentRecoveredEvaluationPlanEnvelopeCarriesDecisionRoute": false,
+    "currentRecoveredG04AssessmentEnvelopeCarriesDecisionRoute": false,
+    "wave7VotingCanThereforeNotProveCommitteeRouteFromAssessmentAlone": true,
+    "productionRisk": "A PENDING G04 assessment must never be assumed to be committee-routed merely because g04.vote was invoked."
+  },
+  "frozenEvidence": {
+    "decisionRouteVisibleInFinalDecisionContext": true,
+    "routeSeparatesCommitteeFromIndividualDecision": true,
+    "committeeVoteAppliesOnlyWhenDecisionRouteIsG04Committee": true,
+    "decisionMethodVisibleAlongsideRoute": true,
+    "committeeMethodDerivedFromFrozenVoteRuleAndQuorum": true,
+    "individualMethod": "INDIVIDUAL_GOVERNANCE_DECISION",
+    "baselineRouteIds": ["G04_COMMITTEE", "UNIT_RND_DECISION"]
+  },
+  "authoritativeRouteContract": {
+    "source": "SERVER_COMPUTED_AT_EVALUATION_PLAN_CREATION_AND_FROZEN_IN_G04_ASSESSMENT",
+    "clientMaySetOrOverride": false,
+    "missingRouteAction": "FAIL_CLOSED",
+    "unknownRouteAction": "FAIL_CLOSED",
+    "planMustCarry": [
+      "decisionRoute",
+      "decisionRouteKind",
+      "decisionMethod",
+      "governanceProfileId",
+      "governanceProfileVersion"
+    ],
+    "assessmentMustCarry": [
+      "decisionRoute",
+      "decisionRouteKind",
+      "decisionMethod",
+      "governanceProfileId",
+      "governanceProfileVersion"
+    ],
+    "assessmentValuesMustExactlyMatchPlanSnapshot": true,
+    "routeKinds": ["COMMITTEE", "INDIVIDUAL"],
+    "committeeRoute": {
+      "routeId": "G04_COMMITTEE",
+      "routeKind": "COMMITTEE",
+      "committeeSnapshotRequiredBeforeFirstVoteCommit": true,
+      "votingCommandAllowed": true,
+      "finalApproveRequiresCompletedPositiveCommitteeResult": true
+    },
+    "individualRoute": {
+      "baselineExampleRouteId": "UNIT_RND_DECISION",
+      "routeKind": "INDIVIDUAL",
+      "routeIdMayBeConfigurationDriven": true,
+      "committeeSnapshotRequired": false,
+      "votingCommandAllowed": false,
+      "finalDecisionStillRequiresIDEA_DECISION": true
+    }
+  },
+  "decisionMethodCoherence": {
+    "committee": {
+      "allowed": ["MAJORITY", "CONSENSUS", "CHAIR_TIEBREAK"],
+      "mustMatchFrozenCommitteeVoteRule": true
+    },
+    "individual": {
+      "value": "INDIVIDUAL_GOVERNANCE_DECISION",
+      "committeeVoteRuleForbidden": true
+    },
+    "governanceProfileReferenceRequired": true,
+    "configurationDriftAfterAssessmentCreationMayAlterRoute": false
+  },
+  "wave7Hardening": {
+    "g04VoteMustReadRouteFromAuthoritativeAssessmentContext": true,
+    "g04VoteAllowedOnlyForRouteKind": "COMMITTEE",
+    "g04VoteAllowedOnlyForRouteId": "G04_COMMITTEE",
+    "individualAssessmentVoteResult": "DENY",
+    "individualAssessmentVoteErrorCode": "P1_G04_VOTE_ROUTE_NOT_COMMITTEE",
+    "clientSuppliedRouteIgnored": true,
+    "existingCommitteeSnapshotCannotConvertIndividualAssessmentToCommittee": true
+  },
+  "finalDecisionRouteRules": {
+    "g04FinalDecisionUsesFrozenAssessmentRoute": true,
+    "committeeRoute": {
+      "allFinalOutcomesRequireVotingStageCompleted": true,
+      "approveAdditionallyRequiresApprovalRuleSatisfied": true
+    },
+    "individualRoute": {
+      "committeeStateMustNotBeRequired": true,
+      "committeeApprovalMustNotBeSynthesized": true
+    },
+    "routeMismatchBetweenPlanAndAssessment": "DENY",
+    "routeMismatchBetweenCommitteeSnapshotAndAssessment": "DENY"
+  },
+  "persistenceMigration": {
+    "extendEvaluationPlanEnvelope": true,
+    "extendG04AssessmentEnvelope": true,
+    "newFieldsAreServerControlled": true,
+    "historicalRecoveryArtifactsRewritten": false,
+    "newRuntimeObjectsRequireRouteMetadata": true,
+    "legacyTestFixturesWithoutRouteMayUseExplicitTestMigrationOnly": true,
+    "productionDefaultForMissingRoute": "FAIL_CLOSED"
+  },
+  "runtimePromotionGate": {
+    "g04FinalDecisionPromotionAllowedByAddendumAlone": false,
+    "requiredBeforeWave8Merge": [
+      "EvaluationPlanEnvelope route extension",
+      "G04AssessmentEnvelope route extension",
+      "assessment-creation route persistence",
+      "Wave7 g04.vote committee-route enforcement",
+      "individual-route negative voting tests",
+      "route mismatch tests",
+      "final-decision route-specific tests",
+      "regression and Security Baseline"
+    ]
+  },
+  "nonEffects": [
+    "Does not modify frozen v6.360",
+    "Does not change ACR-P0-006 vote arithmetic",
+    "Does not promote g04.final-decision",
+    "Does not promote Portfolio eligibility",
+    "Does not bind P5",
+    "Does not claim Oracle, Domain, or Network Pilot readiness"
+  ]
+}
