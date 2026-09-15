@@ -11,6 +11,8 @@ public sealed class TransactionalAuthorityStore : IAuthorityStore, IPersistenceE
     private readonly List<AuditEnvelope> _audits = new();
     private readonly List<OutboxEnvelope> _outbox = new();
     private readonly List<DomainDecisionEnvelope> _decisions = new();
+    private readonly List<EvaluationPlanEnvelope> _evaluationPlans = new();
+    private readonly List<EvaluationAssignmentEnvelope> _evaluationAssignments = new();
 
     public TransactionalAuthorityStore(
         PersistenceContractDescriptor? contract = null,
@@ -45,6 +47,16 @@ public sealed class TransactionalAuthorityStore : IAuthorityStore, IPersistenceE
     public IReadOnlyCollection<DomainDecisionEnvelope> DomainDecisions
     {
         get { lock (_sync) return Array.AsReadOnly(_decisions.ToArray()); }
+    }
+
+    public IReadOnlyCollection<EvaluationPlanEnvelope> EvaluationPlans
+    {
+        get { lock (_sync) return Array.AsReadOnly(_evaluationPlans.ToArray()); }
+    }
+
+    public IReadOnlyCollection<EvaluationAssignmentEnvelope> EvaluationAssignments
+    {
+        get { lock (_sync) return Array.AsReadOnly(_evaluationAssignments.ToArray()); }
     }
 
     public ValueTask<AggregateSnapshot?> GetAggregateAsync(
@@ -133,11 +145,24 @@ public sealed class TransactionalAuthorityStore : IAuthorityStore, IPersistenceE
                 || decisions.Any(d => _decisions.Any(existing => string.Equals(existing.DecisionId, d.DecisionId, StringComparison.Ordinal))))
                 return ValueTask.FromResult(AuthorityResult.Deny(409, "P2_DUPLICATE_DECISION_ID", request.Command.CorrelationId));
 
+            var evaluationPlan = commit.EvaluationPlan;
+            var evaluationAssignments = (commit.EvaluationAssignments ?? Array.Empty<EvaluationAssignmentEnvelope>()).ToArray();
+            if (evaluationPlan is not null
+                && (_evaluationPlans.Any(x => string.Equals(x.PlanId, evaluationPlan.PlanId, StringComparison.Ordinal))
+                    || _evaluationPlans.Any(x => string.Equals(x.IdeaId, evaluationPlan.IdeaId, StringComparison.OrdinalIgnoreCase)
+                        && x.IdeaVersion == evaluationPlan.IdeaVersion)))
+                return ValueTask.FromResult(AuthorityResult.Deny(409, "P2_DUPLICATE_EVALUATION_PLAN", request.Command.CorrelationId));
+
+            if (evaluationAssignments.GroupBy(x => x.AssignmentId, StringComparer.Ordinal).Any(g => g.Count() > 1)
+                || evaluationAssignments.Any(a => _evaluationAssignments.Any(existing => string.Equals(existing.AssignmentId, a.AssignmentId, StringComparison.Ordinal))))
+                return ValueTask.FromResult(AuthorityResult.Deny(409, "P2_DUPLICATE_EVALUATION_ASSIGNMENT_ID", request.Command.CorrelationId));
+
             var audit = SnapshotAudit(commit.Audit);
             if (_audits.Any(x => string.Equals(x.AuditId, audit.AuditId, StringComparison.Ordinal)))
                 return ValueTask.FromResult(AuthorityResult.Deny(409, "P2_DUPLICATE_AUDIT_ID", request.Command.CorrelationId));
 
-            if (_outbox.Any(x => string.Equals(x.MessageId, commit.Outbox.MessageId, StringComparison.Ordinal)))
+            var outbox = SnapshotOutbox(commit.Outbox);
+            if (_outbox.Any(x => string.Equals(x.MessageId, outbox.MessageId, StringComparison.Ordinal)))
                 return ValueTask.FromResult(AuthorityResult.Deny(409, "P2_DUPLICATE_OUTBOX_ID", request.Command.CorrelationId));
 
             var result = new AuthorityResult(
@@ -148,7 +173,7 @@ public sealed class TransactionalAuthorityStore : IAuthorityStore, IPersistenceE
                 IdempotentReplay: false,
                 NewVersion: commit.After.Version,
                 CorrelationId: request.Command.CorrelationId,
-                EmittedEvents: Array.AsReadOnly(new[] { commit.Outbox.EventName }));
+                EmittedEvents: Array.AsReadOnly(new[] { outbox.EventName }));
 
             var idempotency = new IdempotencyRecord(
                 request.Command.CommandName,
@@ -159,6 +184,8 @@ public sealed class TransactionalAuthorityStore : IAuthorityStore, IPersistenceE
 
             var oldAggregate = current;
             var oldDecisionCount = _decisions.Count;
+            var oldPlanCount = _evaluationPlans.Count;
+            var oldAssignmentCount = _evaluationAssignments.Count;
             var oldAuditCount = _audits.Count;
             var oldOutboxCount = _outbox.Count;
 
@@ -170,10 +197,17 @@ public sealed class TransactionalAuthorityStore : IAuthorityStore, IPersistenceE
                 _decisions.AddRange(decisions);
                 ThrowIf(PersistenceFaultPoint.AfterDecisionStaged);
 
+                if (evaluationPlan is not null)
+                    _evaluationPlans.Add(evaluationPlan);
+                ThrowIf(PersistenceFaultPoint.AfterEvaluationPlanStaged);
+
+                _evaluationAssignments.AddRange(evaluationAssignments);
+                ThrowIf(PersistenceFaultPoint.AfterEvaluationAssignmentsStaged);
+
                 _audits.Add(audit);
                 ThrowIf(PersistenceFaultPoint.AfterAuditStaged);
 
-                _outbox.Add(commit.Outbox);
+                _outbox.Add(outbox);
                 ThrowIf(PersistenceFaultPoint.AfterOutboxStaged);
 
                 _idempotency.Add(idempotencyKey, idempotency);
@@ -188,6 +222,12 @@ public sealed class TransactionalAuthorityStore : IAuthorityStore, IPersistenceE
 
                 while (_decisions.Count > oldDecisionCount)
                     _decisions.RemoveAt(_decisions.Count - 1);
+
+                while (_evaluationPlans.Count > oldPlanCount)
+                    _evaluationPlans.RemoveAt(_evaluationPlans.Count - 1);
+
+                while (_evaluationAssignments.Count > oldAssignmentCount)
+                    _evaluationAssignments.RemoveAt(_evaluationAssignments.Count - 1);
 
                 while (_audits.Count > oldAuditCount)
                     _audits.RemoveAt(_audits.Count - 1);
@@ -249,6 +289,48 @@ public sealed class TransactionalAuthorityStore : IAuthorityStore, IPersistenceE
                 return "P2_DECISION_TIMESTAMP_MISMATCH";
         }
 
+        var assignments = commit.EvaluationAssignments ?? Array.Empty<EvaluationAssignmentEnvelope>();
+        if (commit.EvaluationPlan is null)
+            return assignments.Count == 0 ? null : "P2_EVALUATION_ASSIGNMENTS_WITHOUT_PLAN";
+
+        var plan = commit.EvaluationPlan;
+        if (string.IsNullOrWhiteSpace(plan.PlanId)
+            || string.IsNullOrWhiteSpace(plan.State)
+            || plan.PlanVersion <= 0)
+            return "P2_EVALUATION_PLAN_SHAPE_INVALID";
+
+        if (!string.Equals(plan.IdeaId, commit.After.AggregateId, StringComparison.Ordinal)
+            || plan.IdeaVersion != commit.After.Version)
+            return "P2_EVALUATION_PLAN_IDEA_VERSION_MISMATCH";
+
+        if (!string.Equals(plan.CorrelationId, request.Command.CorrelationId, StringComparison.Ordinal)
+            || plan.CreatedAt != commit.Audit.Timestamp)
+            return "P2_EVALUATION_PLAN_EVIDENCE_MISMATCH";
+
+        if (assignments.Count == 0)
+            return "P2_EVALUATION_ASSIGNMENTS_REQUIRED";
+
+        foreach (var assignment in assignments)
+        {
+            if (string.IsNullOrWhiteSpace(assignment.AssignmentId)
+                || string.IsNullOrWhiteSpace(assignment.Role)
+                || string.IsNullOrWhiteSpace(assignment.Scope)
+                || string.IsNullOrWhiteSpace(assignment.State))
+                return "P2_EVALUATION_ASSIGNMENT_SHAPE_INVALID";
+
+            if (!string.Equals(assignment.PlanId, plan.PlanId, StringComparison.Ordinal)
+                || !string.Equals(assignment.IdeaId, plan.IdeaId, StringComparison.Ordinal)
+                || assignment.IdeaVersion != plan.IdeaVersion)
+                return "P2_EVALUATION_ASSIGNMENT_LINK_MISMATCH";
+
+            if (!string.Equals(assignment.Scope, commit.After.Scope, StringComparison.OrdinalIgnoreCase))
+                return "P2_EVALUATION_ASSIGNMENT_SCOPE_MISMATCH";
+
+            if (!string.Equals(assignment.CorrelationId, request.Command.CorrelationId, StringComparison.Ordinal)
+                || assignment.CreatedAt != commit.Audit.Timestamp)
+                return "P2_EVALUATION_ASSIGNMENT_EVIDENCE_MISMATCH";
+        }
+
         return null;
     }
 
@@ -257,6 +339,9 @@ public sealed class TransactionalAuthorityStore : IAuthorityStore, IPersistenceE
 
     private static AuditEnvelope SnapshotAudit(AuditEnvelope audit) =>
         audit with { Roles = Array.AsReadOnly(audit.Roles.ToArray()) };
+
+    private static OutboxEnvelope SnapshotOutbox(OutboxEnvelope outbox) =>
+        outbox with { Payload = SnapshotFacts(outbox.Payload) };
 
     private static DomainDecisionEnvelope SnapshotDecision(DomainDecisionEnvelope decision) =>
         decision with { Facts = SnapshotFacts(decision.Facts) };
