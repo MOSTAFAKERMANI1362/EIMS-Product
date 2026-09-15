@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -7,7 +8,9 @@ namespace EIMS.Authority.Recovery;
 public sealed record MutationPlan(
     AggregateSnapshot After,
     string EventName,
-    IReadOnlyCollection<DecisionIntent>? DecisionIntents = null);
+    IReadOnlyCollection<DecisionIntent>? DecisionIntents = null,
+    EvaluationPlanIntent? EvaluationPlanIntent = null,
+    IReadOnlyCollection<string>? ServerTimestampFactKeys = null);
 
 public interface ICommandMutationPlanner
 {
@@ -132,6 +135,62 @@ public sealed class AuthorityKernel(
             return AuthorityResult.Deny(500, "P1_MUTATION_EVENT_INVALID", command.CorrelationId);
 
         var now = DateTimeOffset.UtcNow;
+        var after = ApplyServerTimestampFacts(plan.After, plan.ServerTimestampFactKeys, now);
+
+        EvaluationPlanEnvelope? evaluationPlan = null;
+        IReadOnlyCollection<EvaluationAssignmentEnvelope>? evaluationAssignments = null;
+        IReadOnlyDictionary<string, string>? outboxPayload = null;
+
+        if (plan.EvaluationPlanIntent is not null)
+        {
+            var intent = plan.EvaluationPlanIntent;
+            if (intent.Version <= 0
+                || string.IsNullOrWhiteSpace(intent.State)
+                || intent.Assignments.Count == 0
+                || intent.Assignments.Any(x => string.IsNullOrWhiteSpace(x.Role)
+                    || string.IsNullOrWhiteSpace(x.Scope)
+                    || string.IsNullOrWhiteSpace(x.State))
+                || intent.Assignments.Any(x => !string.Equals(x.Scope.Trim(), authoritativeScope, StringComparison.OrdinalIgnoreCase))
+                || intent.Assignments.GroupBy(x => x.Role, StringComparer.OrdinalIgnoreCase).Any(g => g.Count() > 1))
+                return AuthorityResult.Deny(500, "P1_EVALUATION_PLAN_INTENT_INVALID", command.CorrelationId);
+
+            var planId = $"EPLAN-{Guid.NewGuid():N}";
+            evaluationPlan = new EvaluationPlanEnvelope(
+                planId,
+                after.AggregateId,
+                after.Version,
+                intent.Version,
+                intent.State.Trim(),
+                now,
+                command.CorrelationId);
+
+            var assignments = intent.Assignments
+                .Select(x => new EvaluationAssignmentEnvelope(
+                    $"EASG-{Guid.NewGuid():N}",
+                    planId,
+                    after.AggregateId,
+                    after.Version,
+                    x.Role.Trim(),
+                    authoritativeScope,
+                    x.Required,
+                    x.State.Trim(),
+                    now,
+                    command.CorrelationId))
+                .ToArray();
+            evaluationAssignments = Array.AsReadOnly(assignments);
+
+            var requiredAssignments = assignments.Where(x => x.Required).OrderBy(x => x.Role, StringComparer.Ordinal).ToArray();
+            outboxPayload = new ReadOnlyDictionary<string, string>(new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["ideaId"] = after.AggregateId,
+                ["ideaVersion"] = after.Version.ToString(CultureInfo.InvariantCulture),
+                ["evaluationPlanId"] = planId,
+                ["evaluationPlanVersion"] = intent.Version.ToString(CultureInfo.InvariantCulture),
+                ["requiredAssignmentIds"] = string.Join("|", requiredAssignments.Select(x => x.AssignmentId)),
+                ["requiredAssignmentRoles"] = string.Join("|", requiredAssignments.Select(x => x.Role))
+            });
+        }
+
         var audit = new AuditEnvelope(
             $"AUD-{Guid.NewGuid():N}",
             actor.PersonId,
@@ -140,7 +199,7 @@ public sealed class AuthorityKernel(
             actor.Roles,
             actor.AssignmentId,
             aggregate.AggregateId,
-            plan.After.Version,
+            after.Version,
             policy.RuleSet,
             now,
             command.CorrelationId,
@@ -149,16 +208,17 @@ public sealed class AuthorityKernel(
             $"MSG-{Guid.NewGuid():N}",
             plan.EventName,
             aggregate.AggregateId,
-            plan.After.Version,
+            after.Version,
             command.CorrelationId,
-            now);
+            now,
+            outboxPayload);
         var decisions = (plan.DecisionIntents ?? Array.Empty<DecisionIntent>())
             .Select(intent => new DomainDecisionEnvelope(
                 $"DEC-{Guid.NewGuid():N}",
                 intent.DecisionType,
                 intent.Outcome,
                 aggregate.AggregateId,
-                plan.After.Version,
+                after.Version,
                 actor.PersonId,
                 actor.AssignmentId,
                 now,
@@ -169,7 +229,7 @@ public sealed class AuthorityKernel(
 
         return await store.CommitAsync(
             new MutationRequest(command, actor, aggregate, policy, fingerprint),
-            new MutationCommit(plan.After, audit, outbox, decisions),
+            new MutationCommit(after, audit, outbox, decisions, evaluationPlan, evaluationAssignments),
             cancellationToken);
     }
 
@@ -177,6 +237,28 @@ public sealed class AuthorityKernel(
     {
         var material = $"{command.CommandName}\n{command.AggregateId}\n{command.ExpectedVersion}\n{command.RawBody}";
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(material))).ToLowerInvariant();
+    }
+
+    private static AggregateSnapshot ApplyServerTimestampFacts(
+        AggregateSnapshot aggregate,
+        IReadOnlyCollection<string>? keys,
+        DateTimeOffset timestamp)
+    {
+        if (keys is null || keys.Count == 0)
+            return aggregate;
+
+        var facts = aggregate.RuleFacts is null
+            ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            : new Dictionary<string, string>(aggregate.RuleFacts, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var key in keys)
+        {
+            if (string.IsNullOrWhiteSpace(key))
+                throw new InvalidOperationException("Server timestamp fact key cannot be empty.");
+            facts[key.Trim()] = timestamp.ToString("O", CultureInfo.InvariantCulture);
+        }
+
+        return aggregate with { RuleFacts = new ReadOnlyDictionary<string, string>(facts) };
     }
 
     private static IReadOnlyDictionary<string, string>? SnapshotFacts(IReadOnlyDictionary<string, string>? facts)

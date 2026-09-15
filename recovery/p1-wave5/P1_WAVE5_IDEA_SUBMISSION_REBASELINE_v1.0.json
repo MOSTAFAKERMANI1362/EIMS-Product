@@ -1,0 +1,103 @@
+{
+  "schema": "EIMS-P1-RECOVERY-WAVE5-IDEA-SUBMISSION-REBASELINE-1.0",
+  "status": "APPROVED_REBASELINE_FOR_P1_IDEA_SUBMISSION_BINDING",
+  "decisionClass": "RECOVERY_REBASELINE_ACCEPTANCE",
+  "sourceDecision": {
+    "acrId": "ACR-P0-004",
+    "decisionClass": "POST_FREEZE_ARCHITECTURE_DECISION",
+    "historicalOriginalTransitionCatalogRecovered": false,
+    "historicalOriginalEventIdentityRecovered": false
+  },
+  "frozenProduct": {
+    "file": "EIMS_v6.360_WORKLIST_UX_ROLE_SELECTOR_CLEANUP.html",
+    "sha256": "057a224fa55e6ee17d128c41c86f3410206d7246723c35872f57757329c4e98a",
+    "modifiedByThisRebaseline": false
+  },
+  "acceptedCommand": {
+    "command": "ideas.submit-g04",
+    "aggregate": "Idea",
+    "requiredRole": "IDEA_OWNER",
+    "allowedStates": ["DRAFT", "RETURNED"],
+    "targetState": "UNDER_REVIEW",
+    "versionIncrement": 1,
+    "ruleSet": "P1-IDEA-SUBMIT-G04-REBASELINE-1.0",
+    "eventType": "IdeaSubmittedForEvaluation.v1",
+    "eventBindingKind": "STATIC",
+    "stateContractRecovered": true,
+    "ruleContractRecovered": true,
+    "eventContractRecovered": true,
+    "mutationContractRecovered": true
+  },
+  "authoritativeFacts": {
+    "required": [
+      "passportCompletionPercent",
+      "strategyLinkActive",
+      "primaryObjectiveReady",
+      "requiresTechnicalEvaluation",
+      "requiresHseEvaluation",
+      "requiresFinancialEvaluation",
+      "requiresItEvaluation"
+    ],
+    "requestBodyMayOverridePersistedFacts": false,
+    "passportCompletionPercentGte": 70,
+    "activeStrategyLinkRequired": true,
+    "primaryObjectiveReadyRequired": true
+  },
+  "evaluationPlan": {
+    "createOneActivePlan": true,
+    "initialState": "ACTIVE",
+    "initialVersion": 1,
+    "bindToResultingIdeaVersion": true,
+    "mandatoryRoles": ["IDEA_EVALUATOR", "UNIT_OWNER_REVIEWER"],
+    "profileDrivenRoleCandidates": ["TECHNICAL_ASSESSOR", "HSE_ASSESSOR", "FINANCIAL_ASSESSOR", "IT_ASSESSOR"],
+    "serverGeneratedPlanId": true,
+    "serverGeneratedAssignmentIds": true,
+    "assignmentScopeMustEqualIdeaScope": true,
+    "assignmentInitialState": "PENDING",
+    "noAggregateRoleGrantFromRouting": true
+  },
+  "eventPayload": {
+    "requiredFields": [
+      "ideaId",
+      "ideaVersion",
+      "evaluationPlanId",
+      "evaluationPlanVersion",
+      "requiredAssignmentIds",
+      "requiredAssignmentRoles"
+    ],
+    "forbiddenFields": [
+      "ideaPassport",
+      "ideaDossier",
+      "attachments",
+      "evaluationAnswers",
+      "financialDetails",
+      "strategyDocumentBody"
+    ],
+    "dataMinimized": true
+  },
+  "atomicPersistence": {
+    "components": [
+      "IdeaStateAndVersion",
+      "DynamicEvaluationPlan",
+      "EvaluationAssignments",
+      "Audit",
+      "Outbox",
+      "Idempotency"
+    ],
+    "singleTransaction": true,
+    "rollbackAfterPlanStagingRequired": true,
+    "rollbackAfterAssignmentStagingRequired": true
+  },
+  "runtimeSafety": {
+    "historicalWave4CatalogPreserved": true,
+    "wave5UsesCumulativeCatalogIdentity": "RecoveredApiCommandCatalogWave5",
+    "g03RuntimeRegressionMustRemainGreen": true,
+    "g04VotingStillFailClosed": true,
+    "g04FinalDecisionStillFailClosed": true,
+    "p5CommandGatewayBound": false,
+    "physicalOracleReadyClaimed": false,
+    "liveWindowsDomainReadyClaimed": false,
+    "networkPilotReadyClaimed": false,
+    "v6360Unchanged": true
+  }
+}

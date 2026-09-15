@@ -132,6 +132,17 @@ public sealed record DecisionIntent(
     string? Note = null,
     IReadOnlyDictionary<string, string>? Facts = null);
 
+public sealed record EvaluationAssignmentIntent(
+    string Role,
+    string Scope,
+    bool Required,
+    string State = "PENDING");
+
+public sealed record EvaluationPlanIntent(
+    string State,
+    int Version,
+    IReadOnlyCollection<EvaluationAssignmentIntent> Assignments);
+
 public sealed record DomainDecisionEnvelope(
     string DecisionId,
     string DecisionType,
@@ -145,6 +156,27 @@ public sealed record DomainDecisionEnvelope(
     string? Note = null,
     IReadOnlyDictionary<string, string>? Facts = null);
 
+public sealed record EvaluationPlanEnvelope(
+    string PlanId,
+    string IdeaId,
+    long IdeaVersion,
+    int PlanVersion,
+    string State,
+    DateTimeOffset CreatedAt,
+    string CorrelationId);
+
+public sealed record EvaluationAssignmentEnvelope(
+    string AssignmentId,
+    string PlanId,
+    string IdeaId,
+    long IdeaVersion,
+    string Role,
+    string Scope,
+    bool Required,
+    string State,
+    DateTimeOffset CreatedAt,
+    string CorrelationId);
+
 public sealed record MutationRequest(
     AuthorityCommand Command,
     AuthorityActor Actor,
@@ -156,7 +188,9 @@ public sealed record MutationCommit(
     AggregateSnapshot After,
     AuditEnvelope Audit,
     OutboxEnvelope Outbox,
-    IReadOnlyCollection<DomainDecisionEnvelope>? Decisions = null);
+    IReadOnlyCollection<DomainDecisionEnvelope>? Decisions = null,
+    EvaluationPlanEnvelope? EvaluationPlan = null,
+    IReadOnlyCollection<EvaluationAssignmentEnvelope>? EvaluationAssignments = null);
 
 public sealed record AuditEnvelope(
     string AuditId,
@@ -178,7 +212,8 @@ public sealed record OutboxEnvelope(
     string AggregateId,
     long AggregateVersion,
     string CorrelationId,
-    DateTimeOffset OccurredAt);
+    DateTimeOffset OccurredAt,
+    IReadOnlyDictionary<string, string>? Payload = null);
 
 public sealed record IdempotencyRecord(
     string CommandName,
