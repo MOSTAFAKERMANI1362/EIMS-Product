@@ -1,0 +1,39 @@
+name: OP-05 Vertical Slice Preflight
+
+on:
+  pull_request:
+    paths:
+      - 'pilot/vertical-slice/op-05-test-matrix.v1.1.json'
+      - 'pilot/vertical-slice/OP-05_PREFLIGHT_HARDENING_v1.1.md'
+      - 'tools/EIMS.OP05.PreflightVerifier/**'
+      - '.github/workflows/op05-preflight.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'pilot/vertical-slice/op-05-test-matrix.v1.1.json'
+      - 'pilot/vertical-slice/OP-05_PREFLIGHT_HARDENING_v1.1.md'
+      - 'tools/EIMS.OP05.PreflightVerifier/**'
+      - '.github/workflows/op05-preflight.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10.0.302
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.302'
+
+      - name: Build verifier
+        shell: pwsh
+        run: dotnet build .\tools\EIMS.OP05.PreflightVerifier\EIMS.OP05.PreflightVerifier.csproj -c Release
+
+      - name: Verify OP-05 v1.1 test matrix
+        shell: pwsh
+        run: dotnet run --project .\tools\EIMS.OP05.PreflightVerifier\EIMS.OP05.PreflightVerifier.csproj -c Release --no-build -- .\pilot\vertical-slice\op-05-test-matrix.v1.1.json
