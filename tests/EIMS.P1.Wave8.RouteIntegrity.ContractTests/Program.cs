@@ -233,6 +233,16 @@ static IReadOnlyCollection<G04CommitteeMemberEnvelope> Members() => new[]
 static G04VoteCommand VoteCommand() =>
     new("PLAN-1", "G04-1", 7, 0, "K-VOTE", "CORR-VOTE", "APPROVE", "valid committee approval note", "UNIT:RND");
 
+static string S(JsonElement e, string p) => e.GetProperty(p).GetString() ?? throw new Exception($"Missing string {p}");
+static bool B(JsonElement e, string p) => e.GetProperty(p).GetBoolean();
+static void True(bool v) { if (!v) throw new Exception("Expected true"); }
+static void False(bool v) { if (v) throw new Exception("Expected false"); }
+static void Eq<T>(T expected, T actual) where T : notnull
+{
+    if (!EqualityComparer<T>.Default.Equals(expected, actual))
+        throw new Exception($"Expected '{expected}', actual '{actual}'");
+}
+
 sealed class StaticProfileProvider(G04GovernanceProfile profile) : IG04GovernanceProfileProvider
 {
     public ValueTask<G04GovernanceProfile?> ResolveAsync(G04AssessmentEnvelope assessment, AggregateSnapshot idea, CancellationToken cancellationToken = default)
@@ -309,14 +319,4 @@ sealed class WorkflowStore(AggregateSnapshot idea, EvaluationPlanEnvelope plan, 
         return ValueTask.FromResult(new AuthorityResult(200, "P1_EVALUATION_COMPLETED", true, true, false,
             commit.PlanAfter.PlanVersion, request.Command.CorrelationId, commit.OutboxEvents.Select(x => x.EventName).ToArray()));
     }
-}
-
-static string S(JsonElement e, string p) => e.GetProperty(p).GetString() ?? throw new Exception($"Missing string {p}");
-static bool B(JsonElement e, string p) => e.GetProperty(p).GetBoolean();
-static void True(bool v) { if (!v) throw new Exception("Expected true"); }
-static void False(bool v) { if (v) throw new Exception("Expected false"); }
-static void Eq<T>(T expected, T actual) where T : notnull
-{
-    if (!EqualityComparer<T>.Default.Equals(expected, actual))
-        throw new Exception($"Expected '{expected}', actual '{actual}'");
 }
