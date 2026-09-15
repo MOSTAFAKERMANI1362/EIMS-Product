@@ -22,6 +22,11 @@
     {
       "artifact": "P1 Recovery Wave 7",
       "purpose": "G04 committee vote runtime and authoritative committee-stage result evidence"
+    },
+    {
+      "artifact": "ACR-P0-007-ROUTE-INTEGRITY",
+      "path": "architecture/decisions/ACR-P0-007_ROUTE_INTEGRITY_ADDENDUM_v1.0.json",
+      "purpose": "Authoritative Plan/Assessment decision-route persistence and committee-vs-individual route enforcement"
     }
   ],
   "command": {
@@ -55,6 +60,9 @@
     "assessmentIdeaRevisionMustEqualCurrentIdeaRevision": true,
     "exactEvaluationPlanRequired": true,
     "planIdeaRevisionMustEqualCurrentIdeaRevision": true,
+    "authoritativeDecisionRouteRequired": true,
+    "decisionRouteMustMatchPlanAndAssessment": true,
+    "decisionRouteMissingOrUnknownFailsClosed": true,
     "staleOrSupersededPlanDenied": true,
     "staleOrSupersededAssessmentDenied": true,
     "optimisticConcurrencyRequired": true,
@@ -138,7 +146,8 @@
     },
     "holdReviewDateRequired": true,
     "clientMayChooseEventIdentity": false,
-    "clientMayChooseRuleProfileOrFrozenEvidence": false
+    "clientMayChooseRuleProfileOrFrozenEvidence": false,
+    "clientMayChooseDecisionRouteOrMethod": false
   },
   "approvalOnlyRuleSuite": {
     "appliesOnlyWhenOutcome": "APPROVE",
@@ -167,12 +176,14 @@
     "additionalRequiredForApprove": ["approvalRuleSatisfied=true"],
     "negativeOutcomeAfterCompletedNonApprovingVoteAllowed": true,
     "committeeStageMustCompleteBeforeAnyFinalOutcome": true,
+    "individualRouteCommitteeEvidenceRequired": false,
+    "individualRouteCommitteeEvidenceMustNotBeSynthesized": true,
     "fullMemberSnapshotCopiedIntoIntegrationEvent": false,
     "voteNotesCopiedIntoIntegrationEvent": false
   },
   "immutableDecisionEvidence": {
     "appendOnly": true,
-    "fields": ["decisionId","assessmentId","ideaId","ideaRevisionBefore","ideaRevisionAfter","technicalStateMutationVersionBefore","technicalStateMutationVersionAfter","outcome","reasonCode","decisionComment","reviewDateWhenHold","personId","authorityAssignmentId","networkIdentity","identitySource","profileId","profileVersion","profileSnapshotHash","ruleSet","hardConditionMappingVersion","gateScore","dataReadiness","ruleCheckResults","specialistOutcomeSummary","committeeSnapshotIdWhenApplicable","committeeVersionWhenApplicable","committeeStageStateWhenApplicable","committeeApprovalResultWhenApplicable","sodResult","sodExceptionPolicyWhenApplicable","timestamp","correlationId"],
+    "fields": ["decisionId","assessmentId","ideaId","ideaRevisionBefore","ideaRevisionAfter","technicalStateMutationVersionBefore","technicalStateMutationVersionAfter","outcome","reasonCode","decisionComment","reviewDateWhenHold","personId","authorityAssignmentId","networkIdentity","identitySource","decisionRoute","decisionRouteKind","decisionMethod","governanceProfileId","governanceProfileVersion","profileId","profileVersion","profileSnapshotHash","ruleSet","hardConditionMappingVersion","gateScore","dataReadiness","ruleCheckResults","specialistOutcomeSummary","committeeSnapshotIdWhenApplicable","committeeVersionWhenApplicable","committeeStageStateWhenApplicable","committeeApprovalResultWhenApplicable","sodResult","sodExceptionPolicyWhenApplicable","timestamp","correlationId"],
     "historicalDecisionMayBeOverwritten": false
   },
   "returnInvalidation": {
@@ -201,6 +212,12 @@
     "execution": "POST_COMMIT_IDEMPOTENT_DOWNSTREAM",
     "candidateCreationInsideFinalDecision": false,
     "failureHandling": "RETRY_OR_VISIBLE_ELIGIBILITY_FAILURE_WITHOUT_ROLLING_BACK_G04_DECISION"
+  },
+  "routeIntegrity": {
+    "machineContract": "architecture/decisions/ACR-P0-007_ROUTE_INTEGRITY_ADDENDUM_v1.0.json",
+    "planAndAssessmentRoutePersistenceRequired": true,
+    "wave7VoteRouteHardeningRequiredBeforeWave8": true,
+    "missingOrMismatchedRouteFailsClosed": true
   },
   "runtimeSafety": {
     "runtimePromotionInThisAcr": false,
