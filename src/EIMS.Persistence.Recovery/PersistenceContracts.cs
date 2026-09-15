@@ -10,7 +10,9 @@ public enum PersistenceFaultPoint
     AfterOutboxStaged = 3,
     AfterIdempotencyStaged = 4,
     BeforeCommitPublish = 5,
-    AfterDecisionStaged = 6
+    AfterDecisionStaged = 6,
+    AfterEvaluationPlanStaged = 7,
+    AfterEvaluationAssignmentsStaged = 8
 }
 
 public sealed class PersistenceAtomicityException(string message) : Exception(message);
@@ -59,10 +61,12 @@ public sealed record PersistenceContractDescriptor(
     bool ConnectionSecretsAllowedInContract,
     OracleBindingEvidence OracleBinding)
 {
-    // Wave 4 extends the logical transaction with immutable domain decision history
-    // without changing the historical constructor shape used by prior recovery evidence.
+    // Wave 4 extends the logical transaction with immutable domain decision history.
+    // Wave 5 extends the same transaction boundary with Idea Evaluation Plan + Assignments.
+    // Historical constructor shape remains unchanged for prior recovery evidence.
     public bool AppendOnlyDecisionHistoryRequired => true;
     public bool AtomicStateDecisionAuditOutboxIdempotencyRequired => AtomicStateAuditOutboxIdempotencyRequired;
+    public bool AtomicEvaluationPlanAssignmentsSupported => true;
 
     public bool IsLogicalContractReady =>
         OptimisticConcurrencyRequired
@@ -71,6 +75,7 @@ public sealed record PersistenceContractDescriptor(
         && AppendOnlyDecisionHistoryRequired
         && AtomicStateAuditOutboxIdempotencyRequired
         && AtomicStateDecisionAuditOutboxIdempotencyRequired
+        && AtomicEvaluationPlanAssignmentsSupported
         && !ConnectionSecretsAllowedInContract;
 
     public bool IsPhysicalOracleReady => IsLogicalContractReady && OracleBinding.IsPhysicalBindingReady;
@@ -93,6 +98,8 @@ public interface IPersistenceEvidenceSource
     IReadOnlyCollection<OutboxEnvelope> Outbox { get; }
     IReadOnlyCollection<IdempotencyRecord> IdempotencyRecords { get; }
     IReadOnlyCollection<DomainDecisionEnvelope> DomainDecisions { get; }
+    IReadOnlyCollection<EvaluationPlanEnvelope> EvaluationPlans { get; }
+    IReadOnlyCollection<EvaluationAssignmentEnvelope> EvaluationAssignments { get; }
 }
 
 public interface IFaultInjectablePersistence
