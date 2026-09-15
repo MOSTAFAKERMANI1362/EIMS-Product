@@ -32,6 +32,25 @@ The frozen executable uses Idea version as a business/content revision and incre
 
 Reason code and free-text rationale are authoritative decision evidence. Free-text rationale is not copied into integration events.
 
+## Authoritative decision route — route integrity hardening
+
+A recovery gap was identified after Wave 7: the current recovered `EvaluationPlanEnvelope` and `G04AssessmentEnvelope` do not persist the authoritative G04 decision route. The frozen executable, however, explicitly distinguishes the committee route from the individual-decision route and shows both the decision route and decision method in final-decision context.
+
+Production must therefore persist server-derived route context in both the Evaluation Plan and the G04 Assessment. New runtime objects require:
+
+- `decisionRoute`;
+- `decisionRouteKind` = `COMMITTEE` or `INDIVIDUAL`;
+- `decisionMethod`;
+- `governanceProfileId` and `governanceProfileVersion`.
+
+The route is computed by the server when the Evaluation Plan is created and is copied/frozen into the G04 Assessment when readiness is reached. Assessment values must exactly match the Plan snapshot. Missing, unknown, stale, or mismatched route context fails closed.
+
+`G04_COMMITTEE` is the committee route. The individual route identifier may be configuration-driven; `UNIT_RND_DECISION` is the frozen baseline example and is not a universal customer hard-code. Committee decision method must agree with the frozen vote rule (`MAJORITY`, `CONSENSUS`, or `CHAIR_TIEBREAK`). Individual decision method is `INDIVIDUAL_GOVERNANCE_DECISION`.
+
+This closes a concrete runtime safety gap: `g04.vote` may execute **only** when the authoritative Assessment route is `G04_COMMITTEE`. An individual-route Assessment must reject committee voting, even if a stale or malicious committee snapshot exists. Client-supplied route/method/governance values are never authority.
+
+The route hardening is machine-defined in `ACR-P0-007_ROUTE_INTEGRITY_ADDENDUM_v1.0.json`. Historical recovery artifacts remain unchanged; only new production/recovery runtime objects are required to carry the route fields.
+
 ## APPROVE-only rule suite
 
 Positive G04 gates block only `APPROVE`. Authorized `RETURN`, `HOLD`, and `REJECT` remain available when positive approval criteria fail.
@@ -59,9 +78,11 @@ For `APPROVE`, stage completion is not enough: the frozen committee result must 
 
 For `RETURN`, `HOLD`, or `REJECT`, a completed non-approving committee result is a valid basis for final resolution. This matches the frozen workflow where committee work ends first and the separate final authority then resolves the case.
 
+For an `INDIVIDUAL` route, committee state is not required and must not be synthesized merely to satisfy the final-decision service.
+
 ## Evidence freeze and history
 
-The final decision freezes profile/rule evidence at the decision instant. Closed decisions may not be reconstructed from a later active profile. The append-only decision record stores authority, reason, business revision before/after, technical mutation version before/after, profile/rule snapshot references, specialist summary, committee-stage evidence where applicable, SoD result, timestamp and correlation.
+The final decision freezes profile/rule evidence at the decision instant. Closed decisions may not be reconstructed from a later active profile. The append-only decision record stores authority, reason, business revision before/after, technical mutation version before/after, profile/rule snapshot references, specialist summary, authoritative route/method/governance reference, committee-stage evidence where applicable, SoD result, timestamp and correlation.
 
 RETURN supersedes old active Evaluation Plans and old pending G04 assessments for the prior Idea revision and makes prior technical/structured evaluation evidence stale for the new revision.
 
