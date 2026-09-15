@@ -24,8 +24,8 @@ public sealed class RecoveredWave5MutationPlanner : ICommandMutationPlanner
 
     private static MutationPlan? PlanIdeaSubmission(AggregateSnapshot aggregate, CommandPolicy policy)
     {
-        var eventName = policy.ResolveEventName();
-        if (!string.Equals(eventName, "IdeaSubmittedForEvaluation.v1", StringComparison.Ordinal))
+        const string eventType = "IdeaSubmittedForEvaluation.v1";
+        if (!string.Equals(policy.ResolveEventName(), eventType, StringComparison.Ordinal))
             return null;
 
         if (string.IsNullOrWhiteSpace(aggregate.Scope) || aggregate.RuleFacts is null)
@@ -57,7 +57,7 @@ public sealed class RecoveredWave5MutationPlanner : ICommandMutationPlanner
 
         return new MutationPlan(
             after,
-            eventName,
+            eventType,
             DecisionIntents: null,
             EvaluationPlanIntent: new EvaluationPlanIntent("ACTIVE", 1, assignments.AsReadOnly()),
             ServerTimestampFactKeys: new[] { "g04SubmittedAtUtc" });
