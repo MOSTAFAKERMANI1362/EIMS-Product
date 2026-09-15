@@ -179,18 +179,15 @@ public sealed class AuthorityKernel(
                 .ToArray();
             evaluationAssignments = Array.AsReadOnly(assignments);
 
-            var required = assignments
-                .Where(x => x.Required)
-                .Select(x => $"{x.AssignmentId}:{x.Role}")
-                .OrderBy(x => x, StringComparer.Ordinal)
-                .ToArray();
+            var requiredAssignments = assignments.Where(x => x.Required).OrderBy(x => x.Role, StringComparer.Ordinal).ToArray();
             outboxPayload = new ReadOnlyDictionary<string, string>(new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 ["ideaId"] = after.AggregateId,
                 ["ideaVersion"] = after.Version.ToString(CultureInfo.InvariantCulture),
                 ["evaluationPlanId"] = planId,
                 ["evaluationPlanVersion"] = intent.Version.ToString(CultureInfo.InvariantCulture),
-                ["requiredAssignments"] = string.Join("|", required)
+                ["requiredAssignmentIds"] = string.Join("|", requiredAssignments.Select(x => x.AssignmentId)),
+                ["requiredAssignmentRoles"] = string.Join("|", requiredAssignments.Select(x => x.Role))
             });
         }
 
