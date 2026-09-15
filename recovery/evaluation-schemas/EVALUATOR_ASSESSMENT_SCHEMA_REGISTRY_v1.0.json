@@ -1,0 +1,235 @@
+{
+  "schema": "EIMS-EVALUATOR-ASSESSMENT-SCHEMA-REGISTRY-1.0",
+  "artifactIdentity": "EVALUATOR_ASSESSMENT_SCHEMA_REGISTRY_v1.0",
+  "recoveryStatus": "RECOVERED_FROM_FROZEN_V6_360_NOT_ORIGINAL_SERVER_SCHEMA",
+  "sourceSemantics": "UI_AND_VALIDATION_CONTRACT_RECOVERY",
+  "sourceProduct": {
+    "file": "EIMS_v6.360_WORKLIST_UX_ROLE_SELECTOR_CLEANUP.html",
+    "sha256": "057a224fa55e6ee17d128c41c86f3410206d7246723c35872f57757329c4e98a",
+    "modifiedByThisRecovery": false
+  },
+  "provenance": {
+    "historicalOriginalServerAssessmentSchemaAvailable": false,
+    "mustNotBeRepresentedAsOriginalServerSchema": true,
+    "noNewQuestionsInvented": true,
+    "noConstraintStrengtheningBeyondFrozenEvidence": true,
+    "notes": [
+      "Question keys, option values, score ranges and validated minimum lengths are recovered from frozen v6.360 UI/runtime behavior.",
+      "Prototype identity/unit fields are not promoted as production assessment inputs; ACR-P0-005 makes evaluator identity, authority assignment, role and scope server-derived.",
+      "Workflow assignment completion is distinct from positive assessment outcome; frozen evaluator history stores COMPLETED status and outcome separately."
+    ]
+  },
+  "serverBinding": {
+    "registryVersion": "1.0",
+    "schemaVersionMustBeBoundToEvaluationAssignment": true,
+    "schemaSelectedByServerFromEvaluationRole": true,
+    "clientMaySelectArbitrarySchemaVersion": false,
+    "clientMaySubstituteDifferentRoleSchema": false,
+    "evaluatorPersonIdServerDerived": true,
+    "authorityAssignmentIdServerDerived": true,
+    "evaluationRoleServerDerivedFromMission": true,
+    "evaluationScopeServerDerivedFromMissionAndAuthority": true,
+    "missingRoleSchemaAction": "FAIL_CLOSED"
+  },
+  "workflowSemantics": {
+    "successfulValidatedSubmissionCompletesMission": true,
+    "workflowCompletionIndependentOfPositiveOutcome": true,
+    "assessmentOutcomePreservedSeparately": true,
+    "negativeOutcomeMayStillBeCompletedEvaluation": true,
+    "historicalCompletedStatusAndOutcomeAreSeparate": true
+  },
+  "sharedGenericSpecialistContract": {
+    "appliesToRoles": [
+      "UNIT_OWNER_REVIEWER",
+      "HSE_ASSESSOR",
+      "FINANCIAL_ASSESSOR",
+      "IT_ASSESSOR"
+    ],
+    "perQuestion": {
+      "answerRequired": true,
+      "answerOptions": [
+        {"value":"CONFIRMED","label":"تأیید شد"},
+        {"value":"CONDITIONAL","label":"مشروط / نیازمند اقدام"},
+        {"value":"NOT_CONFIRMED","label":"تأیید نشد"},
+        {"value":"MORE_EVIDENCE","label":"اطلاعات یا شاهد کافی نیست"}
+      ],
+      "noteRequired": true,
+      "noteMinLength": 3
+    },
+    "overall": {
+      "outcomeRequired": true,
+      "outcomeOptions": [
+        {"value":"PASS","label":"قابل قبول"},
+        {"value":"CONDITIONAL_PASS","label":"قابل قبول مشروط"},
+        {"value":"RETURN","label":"نیازمند اصلاح/شاهد بیشتر"},
+        {"value":"FAIL","label":"غیرقابل قبول"}
+      ],
+      "scoreRequired": true,
+      "scoreMin": 1,
+      "scoreMax": 5,
+      "evidenceRefRequired": true,
+      "evidenceRefMinLength": 3,
+      "commentRequired": true,
+      "commentMinLength": 20
+    },
+    "evidencePolicy": {
+      "existingEimsReferenceAccepted": true,
+      "existingNeedIdeaPassportReportAttachmentReferenceAccepted": true,
+      "newUploadUniversallyRequired": false,
+      "newEvidenceNeededOnlyForUnsupportedNewClaims": true
+    }
+  },
+  "roleSchemas": [
+    {
+      "role": "IDEA_EVALUATOR",
+      "titleFa": "ارزیاب ساختاریافته ایده",
+      "schemaId": "IDEA_EVALUATOR.v1",
+      "schemaVersion": "1.0",
+      "sourceBaseline": "v6.360",
+      "kind": "WEIGHTED_STRUCTURED_EVALUATION",
+      "criteria": [
+        {"key":"quality","labelFa":"اثر بر کیفیت/ارزش","weightPercent":20,"scoreRequired":true,"scoreMin":1,"scoreMax":5,"noteRequired":false},
+        {"key":"cost","labelFa":"اثر اقتصادی","weightPercent":20,"scoreRequired":true,"scoreMin":1,"scoreMax":5,"noteRequired":false},
+        {"key":"technical","labelFa":"امکان‌پذیری فنی","weightPercent":15,"scoreRequired":true,"scoreMin":1,"scoreMax":5,"noteRequired":false},
+        {"key":"productionRisk","labelFa":"ریسک توقف تولید","weightPercent":15,"scoreRequired":true,"scoreMin":1,"scoreMax":5,"noteRequired":false,"scoreDirectionNoteFa":"در معیار ریسک توقف تولید، امتیاز ۵ یعنی ریسک توقف بسیار کم و کنترل‌شده."},
+        {"key":"timeReturn","labelFa":"زمان اجرا/بازگشت","weightPercent":10,"scoreRequired":true,"scoreMin":1,"scoreMax":5,"noteRequired":false},
+        {"key":"strategy","labelFa":"هم‌راستایی راهبردی","weightPercent":20,"scoreRequired":true,"scoreMin":1,"scoreMax":5,"noteRequired":false}
+      ],
+      "weightedScore": {
+        "derived": true,
+        "clientAuthoritative": false,
+        "decisionSupportOnly": true,
+        "formula": "sum(score*weightPercent)/sum(weightPercent)"
+      },
+      "recommendation": {
+        "required": true,
+        "options": [
+          {"value":"GO","label":"ادامه بررسی"},
+          {"value":"REVISE","label":"بازنگری"},
+          {"value":"NO_GO","label":"عدم ادامه"},
+          {"value":"PILOT","label":"اجرای آزمایشی"},
+          {"value":"TECH_REVIEW","label":"بررسی فنی بیشتر"}
+        ]
+      },
+      "evaluatorNote": {"required":true,"minLength":10},
+      "prototypeFieldNotes": {"criterionNotesStoredButNotUniversallyRequired":true}
+    },
+    {
+      "role": "TECHNICAL_ASSESSOR",
+      "titleFa": "ارزیاب فنی مستقل",
+      "schemaId": "TECHNICAL_ASSESSOR.v1",
+      "schemaVersion": "1.0",
+      "sourceBaseline": "v6.360",
+      "kind": "TECHNICAL_ASSESSMENT",
+      "criteria": [
+        {"key":"maturity","labelFa":"بلوغ و اثبات فناوری","scoreRequired":true,"scoreMin":1,"scoreMax":5,"noteRequired":false},
+        {"key":"integration","labelFa":"پیچیدگی یکپارچه‌سازی","scoreRequired":true,"scoreMin":1,"scoreMax":5,"noteRequired":false},
+        {"key":"infrastructure","labelFa":"تناسب با زیرساخت موجود","scoreRequired":true,"scoreMin":1,"scoreMax":5,"noteRequired":false},
+        {"key":"maintainability","labelFa":"نگهداشت‌پذیری و قطعات یدکی","scoreRequired":true,"scoreMin":1,"scoreMax":5,"noteRequired":false},
+        {"key":"testability","labelFa":"قابلیت آزمون و معیار پذیرش","scoreRequired":true,"scoreMin":1,"scoreMax":5,"noteRequired":false},
+        {"key":"vendor","labelFa":"وابستگی به تأمین‌کننده","scoreRequired":true,"scoreMin":1,"scoreMax":5,"noteRequired":false},
+        {"key":"skills","labelFa":"مهارت و دانش داخلی","scoreRequired":true,"scoreMin":1,"scoreMax":5,"noteRequired":false},
+        {"key":"standards","labelFa":"انطباق با استانداردها و HSE","scoreRequired":true,"scoreMin":1,"scoreMax":5,"noteRequired":false}
+      ],
+      "decision": {
+        "required": true,
+        "options": [
+          {"value":"PASS","label":"قابل اجرا"},
+          {"value":"CONDITIONAL_PASS","label":"قابل اجرا با شروط"},
+          {"value":"FAIL","label":"غیرقابل اجرا در شرایط فعلی"},
+          {"value":"MORE_EVIDENCE","label":"نیازمند شاهد/آزمون بیشتر"}
+        ]
+      },
+      "pilotRecommendation": {
+        "required": true,
+        "sourceControlAlwaysYieldsEnumValue": true,
+        "options": [
+          {"value":"YES","label":"بله"},
+          {"value":"NO","label":"خیر"},
+          {"value":"CONDITIONAL","label":"مشروط"}
+        ]
+      },
+      "evidenceRef": {"required":true,"minLength":1},
+      "summary": {"required":true,"minLength":1},
+      "conditions": {"required":false,"conditionalRequiredWhen":{"field":"decision","equals":"CONDITIONAL_PASS"},"minLengthWhenRequired":1},
+      "prototypeAuthorityFieldsExcluded": [
+        {"prototypeField":"taAssessor612","productionInputAllowed":false,"productionSource":"P3_AUTHENTICATED_PERSON_AND_AUTHORITY_ASSIGNMENT"},
+        {"prototypeField":"taUnit612","productionInputAllowed":false,"productionSource":"EVALUATION_ASSIGNMENT_SCOPE_AND_ORG_CONTEXT"}
+      ],
+      "workflowOutcomeSeparation": {
+        "assignmentMayCompleteWithDecisionValues":["PASS","CONDITIONAL_PASS","FAIL","MORE_EVIDENCE"],
+        "positiveG04ReadinessOutcomeIsSeparateFromWorkflowCompletion":true,
+        "prototypeHistoricalValidityCheckUsedPassOrConditionalForG04":true
+      },
+      "prototypeFieldNotes": {"criterionNotesStoredButNotUniversallyRequired":true}
+    },
+    {
+      "role": "UNIT_OWNER_REVIEWER",
+      "titleFa": "نماینده واحد مالک نیاز",
+      "schemaId": "UNIT_OWNER_REVIEWER.v1",
+      "schemaVersion": "1.0",
+      "sourceBaseline": "v6.360",
+      "kind": "GENERIC_SPECIALIST_CHECKLIST",
+      "usesSharedGenericSpecialistContract": true,
+      "questions": [
+        {"key":"needFit","textFa":"آیا راهکار مستقیماً شکاف نیاز و وضعیت مطلوب واحد را پوشش می‌دهد؟"},
+        {"key":"operationFit","textFa":"آیا محدودیت‌های بهره‌برداری، توقف، فضا و دسترسی در نظر گرفته شده‌اند؟"},
+        {"key":"resources","textFa":"آیا منابع انسانی، زمان، آموزش و مسئول بهره‌برداری قابل تأمین‌اند؟"},
+        {"key":"ownership","textFa":"آیا واحد مسئولیت مشارکت در پایلوت، پذیرش و بهره‌برداری را می‌پذیرد؟"}
+      ]
+    },
+    {
+      "role": "HSE_ASSESSOR",
+      "titleFa": "ارزیاب HSE",
+      "schemaId": "HSE_ASSESSOR.v1",
+      "schemaVersion": "1.0",
+      "sourceBaseline": "v6.360",
+      "kind": "GENERIC_SPECIALIST_CHECKLIST",
+      "usesSharedGenericSpecialistContract": true,
+      "questions": [
+        {"key":"hazards","textFa":"آیا خطرات ایمنی، بهداشت و محیط‌زیست راهکار شناسایی شده‌اند؟"},
+        {"key":"legal","textFa":"آیا الزامات قانونی، استانداردها و مجوزهای لازم مشخص و رعایت شده‌اند؟"},
+        {"key":"controls","textFa":"آیا کنترل‌های پیشگیرانه، اضطراری و معیار پذیرش HSE کافی‌اند؟"},
+        {"key":"residualRisk","textFa":"آیا ریسک باقیمانده پس از کنترل‌ها قابل قبول و مستند است؟"}
+      ]
+    },
+    {
+      "role": "FINANCIAL_ASSESSOR",
+      "titleFa": "ارزیاب مالی / کنترل پروژه",
+      "schemaId": "FINANCIAL_ASSESSOR.v1",
+      "schemaVersion": "1.0",
+      "sourceBaseline": "v6.360",
+      "kind": "GENERIC_SPECIALIST_CHECKLIST",
+      "usesSharedGenericSpecialistContract": true,
+      "questions": [
+        {"key":"costBasis","textFa":"آیا CAPEX/OPEX و مبنای برآورد هزینه مستند و قابل اتکاست؟"},
+        {"key":"lifeCycle","textFa":"آیا هزینه چرخه عمر، نگهداشت، مجوز، آموزش و توقف لحاظ شده است؟"},
+        {"key":"benefitBasis","textFa":"آیا منفعت مالی یا غیرمالی و روش جلوگیری از دوباره‌شماری روشن است؟"},
+        {"key":"funding","textFa":"آیا منبع بودجه، دوره بازگشت و فرض‌های مالی مشخص شده‌اند؟"}
+      ]
+    },
+    {
+      "role": "IT_ASSESSOR",
+      "titleFa": "ارزیاب IT / امنیت / اتوماسیون",
+      "schemaId": "IT_ASSESSOR.v1",
+      "schemaVersion": "1.0",
+      "sourceBaseline": "v6.360",
+      "kind": "GENERIC_SPECIALIST_CHECKLIST",
+      "usesSharedGenericSpecialistContract": true,
+      "questions": [
+        {"key":"architecture","textFa":"آیا معماری مقصد، مالک سامانه و نحوه پشتیبانی روشن است؟"},
+        {"key":"security","textFa":"آیا امنیت، سطح محرمانگی، دسترسی و نگهداری داده بررسی شده است؟"},
+        {"key":"integration","textFa":"آیا اتصال به Oracle، SAP آینده یا سامانه تخصصی و مالک Interface مشخص است؟"},
+        {"key":"continuity","textFa":"آیا مجوز، پشتیبان‌گیری، تداوم خدمت، خروج از فروشنده و انتقال دانش دیده شده است؟"}
+      ]
+    }
+  ],
+  "nonEffects": [
+    "Does not modify frozen v6.360",
+    "Does not promote evaluation-assignments.complete into P1 runtime",
+    "Does not grant evaluator roles or scopes",
+    "Does not trust prototype assessor/unit text fields as production authority",
+    "Does not bind P5",
+    "Does not claim live Oracle, Windows Domain or Network Pilot readiness"
+  ]
+}
