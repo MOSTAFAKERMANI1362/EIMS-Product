@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../EIMS.PilotAssembly.Core/EIMS.PilotAssembly.Core.csproj" />
+    <ProjectReference Include="../EIMS.Authority.Recovery/EIMS.Authority.Recovery.csproj" />
+    <ProjectReference Include="../EIMS.Identity.Rbac/EIMS.Identity.Rbac.csproj" />
+  </ItemGroup>
+</Project>
