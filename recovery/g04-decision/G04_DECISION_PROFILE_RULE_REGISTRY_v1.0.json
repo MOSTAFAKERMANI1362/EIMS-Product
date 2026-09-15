@@ -15,8 +15,9 @@
     "notes": [
       "The registry recovers G04 scoring profiles, data-readiness checks, hard-condition machine mapping and approval-only guard semantics from frozen executable behavior.",
       "The frozen executable evolved from an earlier unconditional technical gate; v6.360 explicitly makes technical assessment conditional on the current Evaluation Plan or frozen profile hard-condition keys.",
-      "Open assessments use the active profile as the live source of truth until final decision; the final decision freezes the profile/rule/Idea-version evidence for history.",
-      "Closed historical G04 decisions must never be reconstructed from a later active profile."
+      "Open assessments use the active profile as the live source of truth until final decision; the final decision freezes the profile/rule/Idea-revision evidence for history.",
+      "Closed historical G04 decisions must never be reconstructed from a later active profile.",
+      "Frozen v6.360 contains legacy PASS/FAIL-style compatibility labels alongside the current evaluator answer vocabulary. Production authority standardizes new specialist outcomes to CONFIRMED/CONDITIONAL/NOT_CONFIRMED/MORE_EVIDENCE; legacy values are read-compatibility aliases only."
     ]
   },
   "scoringModel": {
@@ -102,13 +103,29 @@
       ]
     }
   ],
+  "specialistOutcomeVocabulary": {
+    "authoritativeCurrentOutcomes": ["CONFIRMED", "CONDITIONAL", "NOT_CONFIRMED", "MORE_EVIDENCE"],
+    "acceptedForApprove": ["CONFIRMED", "CONDITIONAL"],
+    "blockingForApprove": ["NOT_CONFIRMED", "MORE_EVIDENCE"],
+    "legacyReadCompatibilityOnly": ["PASS", "CONDITIONAL_PASS", "RETURN", "FAIL", "NO_GO", "APPROVE", "APPROVED"],
+    "newRuntimeMayEmitLegacyOutcome": false,
+    "legacyNormalization": {
+      "PASS": "CONFIRMED",
+      "CONDITIONAL_PASS": "CONDITIONAL",
+      "APPROVE": "CONFIRMED",
+      "APPROVED": "CONFIRMED",
+      "RETURN": "MORE_EVIDENCE",
+      "FAIL": "NOT_CONFIRMED",
+      "NO_GO": "NOT_CONFIRMED"
+    }
+  },
   "hardRuleRegistry": [
     {
       "key": "REQUIRED_EVALUATIONS_COMPLETE",
       "labelFa": "ارزیابی‌های تخصصی الزامی مطابق طرح ارزیابی کامل باشند",
       "evaluation": {
         "currentPlanRequired": true,
-        "planIdeaVersionMustEqualCurrentIdeaVersion": true,
+        "planIdeaRevisionMustEqualCurrentIdeaRevision": true,
         "atLeastOneRequiredAssignment": true,
         "allRequiredAssignmentsStatus": "COMPLETED"
       }
@@ -125,8 +142,9 @@
       "key": "TECHNICAL_ASSESSMENT_VALID",
       "labelFa": "ارزیابی فنی مستقل معتبر",
       "evaluation": {
-        "currentIdeaVersionRequired": true,
-        "technicalAssessmentMustBeNonStale": true
+        "currentIdeaRevisionRequired": true,
+        "technicalAssessmentMustBeNonStale": true,
+        "acceptedCurrentOutcomes": ["CONFIRMED", "CONDITIONAL"]
       }
     },
     {
@@ -147,7 +165,8 @@
       "evaluation": {
         "currentPlanHseAssignmentRequired": true,
         "assignmentStatus": "COMPLETED",
-        "acceptedOutcomes": ["PASS", "CONDITIONAL_PASS", "APPROVE", "APPROVED", "CONFIRMED"]
+        "acceptedCurrentOutcomes": ["CONFIRMED", "CONDITIONAL"],
+        "blockingCurrentOutcomes": ["NOT_CONFIRMED", "MORE_EVIDENCE"]
       }
     },
     {
@@ -173,9 +192,10 @@
     ]
   },
   "specialistApprovalPolicy": {
-    "requiredAssignmentBlockingOutcomes": ["FAIL", "RETURN", "NO_GO"],
-    "hseAlwaysBlockingOutcomes": ["FAIL", "RETURN"],
-    "blockingAppliesToOutcome": "APPROVE_ONLY"
+    "authoritativeBlockingOutcomes": ["NOT_CONFIRMED", "MORE_EVIDENCE"],
+    "authoritativeAcceptedOutcomes": ["CONFIRMED", "CONDITIONAL"],
+    "blockingAppliesToOutcome": "APPROVE_ONLY",
+    "legacyValuesMustNormalizeBeforeEvaluation": true
   },
   "technicalRequirementPolicy": {
     "unconditionalTechnicalGate": false,
@@ -211,7 +231,7 @@
       "hardConditionMappingVersion",
       "calculatedGateScore",
       "dataReadiness",
-      "ideaVersion",
+      "ideaRevision",
       "frozenAt"
     ],
     "closedDecisionMayInferCurrentActiveProfile": false,
@@ -219,17 +239,39 @@
   },
   "decisionInputPolicy": {
     "allowedOutcomes": ["APPROVE", "RETURN", "HOLD", "REJECT"],
+    "allowedReasonCodes": [
+      "G04_READY",
+      "G04_SOLUTION_INCOMPLETE",
+      "G04_EVIDENCE_INCOMPLETE",
+      "G04_COST_INCOMPLETE",
+      "G04_RISK_UNRESOLVED",
+      "G04_TECH_FAIL",
+      "G04_ALIGNMENT",
+      "OTHER"
+    ],
+    "approveReasonCode": "G04_READY",
+    "negativeOutcomesMayUseApproveReasonCode": false,
     "commentRequired": true,
     "commentMinLength": 15,
     "holdReviewDateRequired": true
   },
+  "committeeFinalizationPolicy": {
+    "committeeRouteRequiresStageCompleteForEveryFinalOutcome": true,
+    "approveAdditionallyRequiresApprovalRuleSatisfied": true,
+    "negativeOutcomeAllowedAfterCompletedNonApprovingCommitteeResult": true
+  },
   "returnVersionInvalidation": {
-    "returnIncrementsIdeaVersion": true,
+    "returnIncrementsBusinessIdeaRevision": true,
     "oldEvaluationPlans": "SUPERSEDED",
     "oldPendingG04Assessments": "SUPERSEDED",
     "oldTechnicalAssessment": "STALE",
     "oldStructuredIdeaEvaluation": "STALE",
-    "reason": "Idea version changed"
+    "reason": "Idea business revision changed"
+  },
+  "technicalConcurrencyPolicy": {
+    "separateFromBusinessIdeaRevision": true,
+    "everySuccessfulFinalDecisionIncrementsStateMutationVersion": true,
+    "incrementExactlyBy": 1
   },
   "nonEffects": [
     "Does not modify frozen v6.360",
