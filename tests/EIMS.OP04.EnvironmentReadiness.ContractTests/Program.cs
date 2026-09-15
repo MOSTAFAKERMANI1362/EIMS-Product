@@ -18,89 +18,75 @@ var tests = new List<(string Name, Action Run)>
 var passed = 0;
 foreach (var (name, run) in tests)
 {
-    try
-    {
-        run();
-        passed++;
-        Console.WriteLine($"PASS {name}");
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"FAIL {name}: {ex.Message}");
-    }
+    try { run(); passed++; Console.WriteLine($"PASS {name}"); }
+    catch (Exception ex) { Console.WriteLine($"FAIL {name}: {ex.Message}"); }
 }
-
 Console.WriteLine($"RESULT {passed}/{tests.Count} PASS");
 return passed == tests.Count ? 0 : 1;
 
 void CompletePilotPasses()
 {
-    var report = EnvironmentEvidenceEvaluator.Evaluate(CompleteEvidence("PILOT_ENVIRONMENT_EVIDENCE"));
-    True(report.SchemaSupported);
-    True(report.EvidenceClassSupported);
-    False(report.SensitiveKeysDetected);
-    Eq(9, report.TotalGateCount);
-    Eq(9, report.PassedGateCount);
-    True(report.PilotActivationReady);
+    var r = EnvironmentEvidenceEvaluator.Evaluate(CompleteEvidence("PILOT_ENVIRONMENT_EVIDENCE"));
+    True(r.SchemaSupported); True(r.EvidenceClassSupported); False(r.SensitiveKeysDetected);
+    Eq(9, r.TotalGateCount); Eq(9, r.PassedGateCount); True(r.PilotActivationReady);
 }
 
 void CompleteLabDoesNotActivate()
 {
-    var report = EnvironmentEvidenceEvaluator.Evaluate(CompleteEvidence("LAB_EVIDENCE"));
-    Eq(9, report.PassedGateCount);
-    True(report.EvidenceClassSupported);
-    False(report.PilotActivationReady);
+    var r = EnvironmentEvidenceEvaluator.Evaluate(CompleteEvidence("LAB_EVIDENCE"));
+    Eq(9, r.PassedGateCount); True(r.EvidenceClassSupported); False(r.PilotActivationReady);
 }
 
 void MissingOracleBlocks()
 {
-    var json = CompleteEvidence("PILOT_ENVIRONMENT_EVIDENCE").Replace("\"liveConnectionValidated\":true", "\"liveConnectionValidated\":false", StringComparison.Ordinal);
-    var report = EnvironmentEvidenceEvaluator.Evaluate(json);
-    False(report.PilotActivationReady);
-    var gate = Gate(report, "ORACLE_P2");
-    False(gate.Passed);
-    True(gate.MissingOrInvalid.Contains("oracle.liveConnectionValidated"));
+    var json = CompleteEvidence("PILOT_ENVIRONMENT_EVIDENCE")
+        .Replace("\"liveConnectionValidated\":true", "\"liveConnectionValidated\":false", StringComparison.Ordinal);
+    var r = EnvironmentEvidenceEvaluator.Evaluate(json);
+    False(r.PilotActivationReady); False(Gate(r, "ORACLE_P2").Passed);
+    True(Gate(r, "ORACLE_P2").MissingOrInvalid.Contains("oracle.liveConnectionValidated"));
 }
 
 void TrustedClientHeadersBlock()
 {
-    var json = CompleteEvidence("PILOT_ENVIRONMENT_EVIDENCE").Replace("\"clientIdentityHeadersTrusted\":false", "\"clientIdentityHeadersTrusted\":true", StringComparison.Ordinal);
-    var report = EnvironmentEvidenceEvaluator.Evaluate(json);
-    False(report.PilotActivationReady);
-    False(Gate(report, "WINDOWS_IDENTITY_P3").Passed);
+    var json = CompleteEvidence("PILOT_ENVIRONMENT_EVIDENCE")
+        .Replace("\"clientIdentityHeadersTrusted\":false", "\"clientIdentityHeadersTrusted\":true", StringComparison.Ordinal);
+    var r = EnvironmentEvidenceEvaluator.Evaluate(json);
+    False(r.PilotActivationReady); False(Gate(r, "WINDOWS_IDENTITY_P3").Passed);
 }
 
 void MissingRestoreBlocks()
 {
-    var json = CompleteEvidence("PILOT_ENVIRONMENT_EVIDENCE").Replace("\"backupRestoreValidated\":true", "\"backupRestoreValidated\":false", StringComparison.Ordinal);
-    var report = EnvironmentEvidenceEvaluator.Evaluate(json);
-    False(report.PilotActivationReady);
-    False(Gate(report, "OPERATIONS").Passed);
+    var json = CompleteEvidence("PILOT_ENVIRONMENT_EVIDENCE")
+        .Replace("\"backupRestoreValidated\":true", "\"backupRestoreValidated\":false", StringComparison.Ordinal);
+    var r = EnvironmentEvidenceEvaluator.Evaluate(json);
+    False(r.PilotActivationReady); False(Gate(r, "OPERATIONS").Passed);
 }
 
 void SecurityReviewBlocks()
 {
-    var json = CompleteEvidence("PILOT_ENVIRONMENT_EVIDENCE").Replace("\"reviewedByRole\":\"SECURITY\"", "\"reviewedByRole\":\"\"", StringComparison.Ordinal);
-    var report = EnvironmentEvidenceEvaluator.Evaluate(json);
-    False(report.PilotActivationReady);
-    False(Gate(report, "SECURITY_EVIDENCE").Passed);
+    var json = CompleteEvidence("PILOT_ENVIRONMENT_EVIDENCE")
+        .Replace("\"reviewedByRole\":\"SECURITY\"", "\"reviewedByRole\":\"\"", StringComparison.Ordinal);
+    var r = EnvironmentEvidenceEvaluator.Evaluate(json);
+    False(r.PilotActivationReady); False(Gate(r, "SECURITY_EVIDENCE").Passed);
 }
 
 void SensitivePropertyBlocks()
 {
-    var json = CompleteEvidence("PILOT_ENVIRONMENT_EVIDENCE").TrimEnd('}', ' ', '\r', '\n') + ",\"dbPassword\":\"must-never-be-here\"}";
-    var report = EnvironmentEvidenceEvaluator.Evaluate(json);
-    True(report.SensitiveKeysDetected);
-    True(report.SensitiveKeyPaths.Any(x => x.EndsWith(".dbPassword", StringComparison.Ordinal)));
-    False(report.PilotActivationReady);
+    var source = CompleteEvidence("PILOT_ENVIRONMENT_EVIDENCE");
+    var insertAt = source.LastIndexOf('}');
+    var json = source.Insert(insertAt, ",\"dbPassword\":\"must-never-be-here\"");
+    var r = EnvironmentEvidenceEvaluator.Evaluate(json);
+    True(r.SensitiveKeysDetected);
+    True(r.SensitiveKeyPaths.Any(x => x.EndsWith(".dbPassword", StringComparison.Ordinal)));
+    False(r.PilotActivationReady);
 }
 
 void UnknownSchemaBlocks()
 {
-    var json = CompleteEvidence("PILOT_ENVIRONMENT_EVIDENCE").Replace("\"schemaVersion\":\"1.1\"", "\"schemaVersion\":\"99\"", StringComparison.Ordinal);
-    var report = EnvironmentEvidenceEvaluator.Evaluate(json);
-    False(report.SchemaSupported);
-    False(report.PilotActivationReady);
+    var json = CompleteEvidence("PILOT_ENVIRONMENT_EVIDENCE")
+        .Replace("\"schemaVersion\":\"1.1\"", "\"schemaVersion\":\"99\"", StringComparison.Ordinal);
+    var r = EnvironmentEvidenceEvaluator.Evaluate(json);
+    False(r.SchemaSupported); False(r.PilotActivationReady);
 }
 
 void LegacyUnclassifiedBlocks()
@@ -108,10 +94,8 @@ void LegacyUnclassifiedBlocks()
     var json = CompleteEvidence("PILOT_ENVIRONMENT_EVIDENCE")
         .Replace("\"schemaVersion\":\"1.1\",", "\"schemaVersion\":\"1.0\",", StringComparison.Ordinal)
         .Replace("\"evidenceClass\":\"PILOT_ENVIRONMENT_EVIDENCE\",", string.Empty, StringComparison.Ordinal);
-    var report = EnvironmentEvidenceEvaluator.Evaluate(json);
-    True(report.SchemaSupported);
-    False(report.EvidenceClassSupported);
-    False(report.PilotActivationReady);
+    var r = EnvironmentEvidenceEvaluator.Evaluate(json);
+    True(r.SchemaSupported); False(r.EvidenceClassSupported); False(r.PilotActivationReady);
 }
 
 void MalformedJsonThrows()
@@ -122,52 +106,23 @@ void MalformedJsonThrows()
     True(threw);
 }
 
-EvidenceGate Gate(EnvironmentEvidenceReport report, string id) =>
-    report.Gates.Single(x => string.Equals(x.Id, id, StringComparison.Ordinal));
+EvidenceGate Gate(EnvironmentEvidenceReport r, string id) => r.Gates.Single(x => x.Id == id);
 
 string CompleteEvidence(string evidenceClass) => $$"""
-{
-  "schemaVersion":"1.1",
-  "evidenceClass":"{{evidenceClass}}",
-  "referenceCustomer":"Mes Shahid Bahonar",
-  "windows":{
-    "serverName":"EIMS-PILOT-01","osVersion":"Windows Server","vmProvisioned":true,"domainJoined":true,
-    "domainName":"EXAMPLE","iisInstalled":true,"windowsAuthenticationInstalled":true,
-    "dotnetRuntimeVersion":"10.0","collectedAt":"2026-09-15T12:00:00Z","collectedByRole":"IT"
-  },
-  "oracle":{
-    "version":"VERIFIED","providerName":"VERIFIED","providerVersion":"VERIFIED","connectionMode":"VERIFIED",
-    "serviceAccountName":"EIMS_SVC","schemaOwner":"EIMS_OWNER","liveConnectionValidated":true,"evidenceRef":"EV-ORA-1"
-  },
-  "p1Authority":{
-    "physicalPackageAvailable":true,"packageRef":"PKG-P1P5","buildPassed":true,"contractTestsPassed":true,"evidenceRef":"EV-P1-1"
-  },
-  "windowsIdentity":{
-    "identityFormat":"DOMAIN\\user","liveDomainIdentityValidated":true,"personIdMappingValidated":true,
-    "serverRoleScopeValidated":true,"clientIdentityHeadersTrusted":false,"evidenceRef":"EV-P3-1"
-  },
-  "hrOrg":{
-    "sourceSystem":"Oracle HR","exportOwnerRole":"HRIT","realExportPrepared":true,"p4SchemaValidated":true,
-    "reconciled":true,"approvalRef":"APR-HR-1","evidenceRef":"EV-P4-1"
-  },
-  "tls":{
-    "configured":true,"hostname":"eims.example.local","certificateSubject":"CN=eims.example.local",
-    "validTo":"2027-09-15","liveHandshakeValidated":true,"evidenceRef":"EV-TLS-1"
-  },
-  "runtime":{
-    "concurrencyValidated":true,"idempotencyValidated":true,"auditOutboxAtomicityValidated":true,"evidenceRef":"EV-RUN-1"
-  },
-  "operations":{
-    "backupMethod":"VERIFIED","backupRestoreValidated":true,"monitoringTarget":"VERIFIED","monitoringValidated":true,"evidenceRef":"EV-OPS-1"
-  },
-  "security":{
-    "noSecretsCommitted":true,"noPersonalDataCommitted":true,"reviewedByRole":"SECURITY","reviewDate":"2026-09-15"
-  }
-}
+{"schemaVersion":"1.1","evidenceClass":"{{evidenceClass}}","referenceCustomer":"Mes Shahid Bahonar",
+"windows":{"serverName":"EIMS-PILOT-01","osVersion":"Windows Server","vmProvisioned":true,"domainJoined":true,"domainName":"EXAMPLE","iisInstalled":true,"windowsAuthenticationInstalled":true,"dotnetRuntimeVersion":"10.0","collectedAt":"2026-09-15T12:00:00Z","collectedByRole":"IT"},
+"oracle":{"version":"VERIFIED","providerName":"VERIFIED","providerVersion":"VERIFIED","connectionMode":"VERIFIED","serviceAccountName":"EIMS_SVC","schemaOwner":"EIMS_OWNER","liveConnectionValidated":true,"evidenceRef":"EV-ORA-1"},
+"p1Authority":{"physicalPackageAvailable":true,"packageRef":"PKG-P1P5","buildPassed":true,"contractTestsPassed":true,"evidenceRef":"EV-P1-1"},
+"windowsIdentity":{"identityFormat":"DOMAIN\\user","liveDomainIdentityValidated":true,"personIdMappingValidated":true,"serverRoleScopeValidated":true,"clientIdentityHeadersTrusted":false,"evidenceRef":"EV-P3-1"},
+"hrOrg":{"sourceSystem":"Oracle HR","exportOwnerRole":"HRIT","realExportPrepared":true,"p4SchemaValidated":true,"reconciled":true,"approvalRef":"APR-HR-1","evidenceRef":"EV-P4-1"},
+"tls":{"configured":true,"hostname":"eims.example.local","certificateSubject":"CN=eims.example.local","validTo":"2027-09-15","liveHandshakeValidated":true,"evidenceRef":"EV-TLS-1"},
+"runtime":{"concurrencyValidated":true,"idempotencyValidated":true,"auditOutboxAtomicityValidated":true,"evidenceRef":"EV-RUN-1"},
+"operations":{"backupMethod":"VERIFIED","backupRestoreValidated":true,"monitoringTarget":"VERIFIED","monitoringValidated":true,"evidenceRef":"EV-OPS-1"},
+"security":{"noSecretsCommitted":true,"noPersonalDataCommitted":true,"reviewedByRole":"SECURITY","reviewDate":"2026-09-15"}}
 """;
 
-void True(bool value) { if (!value) throw new Exception("Expected true"); }
-void False(bool value) { if (value) throw new Exception("Expected false"); }
+void True(bool v) { if (!v) throw new Exception("Expected true"); }
+void False(bool v) { if (v) throw new Exception("Expected false"); }
 void Eq<T>(T expected, T actual) where T : notnull
 {
     if (!EqualityComparer<T>.Default.Equals(expected, actual))
