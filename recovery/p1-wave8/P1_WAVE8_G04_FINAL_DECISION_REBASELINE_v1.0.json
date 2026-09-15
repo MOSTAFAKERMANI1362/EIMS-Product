@@ -1,0 +1,100 @@
+{
+  "schema": "EIMS-P1-RECOVERY-WAVE8-G04-FINAL-DECISION-REBASELINE-1.0",
+  "status": "IMPLEMENTED_PENDING_CONTRACT_AND_REGRESSION_GATES",
+  "sourceDecision": {
+    "acrId": "ACR-P0-007",
+    "status": "APPROVED_FOR_P1_IMPLEMENTATION",
+    "decisionClass": "POST_FREEZE_ARCHITECTURE_DECISION"
+  },
+  "frozenProduct": {
+    "file": "EIMS_v6.360_WORKLIST_UX_ROLE_SELECTOR_CLEANUP.html",
+    "sha256": "057a224fa55e6ee17d128c41c86f3410206d7246723c35872f57757329c4e98a",
+    "modifiedByWave8": false
+  },
+  "command": {
+    "id": "g04.final-decision",
+    "requiredRole": "IDEA_DECISION",
+    "allowedOutcomes": ["APPROVE", "RETURN", "HOLD", "REJECT"],
+    "events": {
+      "APPROVE": "IdeaApprovedForPortfolio.v1",
+      "RETURN": "IdeaReturnedFromG04.v1",
+      "HOLD": "IdeaHeldAtG04.v1",
+      "REJECT": "IdeaRejectedAtG04.v1"
+    }
+  },
+  "authority": {
+    "exactSingleRole": "IDEA_DECISION",
+    "exactAssignmentRequired": true,
+    "scopeFromServerAggregate": true,
+    "committeeMemberCannotBeFinalAuthority": true,
+    "clientMayChooseRouteOrProfile": false
+  },
+  "versionSemantics": {
+    "businessIdeaRevisionSeparateFromTechnicalMutationVersion": true,
+    "technicalMutationVersionAlwaysIncrementsBy": 1,
+    "businessIdeaRevisionIncrement": {
+      "APPROVE": 0,
+      "RETURN": 1,
+      "HOLD": 0,
+      "REJECT": 0
+    }
+  },
+  "routeSemantics": {
+    "planAssessmentExactMatchRequired": true,
+    "committeeRouteRequiresCompletedVotingForEveryOutcome": true,
+    "committeeApproveRequiresApprovalRuleSatisfied": true,
+    "individualRouteRequiresNoCommitteeContext": true,
+    "missingOrMismatchedRouteFailsClosed": true
+  },
+  "approvalOnlyGates": [
+    "GATE_SCORE_THRESHOLD",
+    "DATA_READINESS_THRESHOLD",
+    "BASE_NEED_PRESENT",
+    "CONDITIONAL_TECHNICAL_VALIDITY",
+    "HARD_CONDITIONS",
+    "SPECIALIST_OUTCOMES",
+    "COMMITTEE_POSITIVE_RESULT_IF_APPLICABLE",
+    "SEPARATION_OF_DUTIES"
+  ],
+  "negativeOutcomePolicy": {
+    "positiveApprovalGatesDoNotBlock": true,
+    "committeeRouteStillRequiresVotingStageCompleted": true
+  },
+  "atomicTransaction": [
+    "IdeaStateAndVersions",
+    "PlanSupersessionOnReturn",
+    "G04AssessmentDecisionAndClosure",
+    "ImmutableFinalDecisionEvidence",
+    "AppendOnlyAudit",
+    "OutcomeOutboxEvent",
+    "IdempotencyRecord"
+  ],
+  "eventMinimization": {
+    "fullDecisionCommentForbidden": true,
+    "fullProfileSnapshotForbidden": true,
+    "fullCommitteeSnapshotForbidden": true,
+    "voteNotesForbidden": true,
+    "decisionEvidenceReferenceRequired": true
+  },
+  "portfolioBoundary": {
+    "portfolioCandidateCreatedInsideDecisionTransaction": false,
+    "approvalEvent": "IdeaApprovedForPortfolio.v1",
+    "portfolioEligibilityIsDownstreamPostCommit": true,
+    "portfolioFailureMayRollbackG04Decision": false
+  },
+  "persistence": {
+    "referenceStore": "G04FinalDecisionTransactionalStore",
+    "providerNeutral": true,
+    "physicalOracleBinding": "BLOCKED_ON_REAL_ENVIRONMENT_EVIDENCE"
+  },
+  "safety": {
+    "g04FinalDecisionPromotedOnBranch": true,
+    "mergedToMain": false,
+    "p5CommandGatewayBound": false,
+    "portfolioEligibilityTriggered": false,
+    "physicalOracleReadyClaimed": false,
+    "liveWindowsDomainReadyClaimed": false,
+    "networkPilotReadyClaimed": false,
+    "v6360Unchanged": true
+  }
+}

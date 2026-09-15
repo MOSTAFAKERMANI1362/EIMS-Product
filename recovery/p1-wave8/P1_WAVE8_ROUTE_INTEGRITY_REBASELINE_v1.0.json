@@ -1,0 +1,43 @@
+{
+  "schema": "EIMS-P1-RECOVERY-WAVE8-ROUTE-INTEGRITY-REBASELINE-1.0",
+  "status": "ROUTE_INTEGRITY_HARDENING_READY_FOR_CONTRACT_TEST",
+  "decisionClass": "RECOVERY_REBASELINE_ACCEPTANCE",
+  "sourceDecision": {
+    "acrId": "ACR-P0-007",
+    "addendumId": "ACR-P0-007-ROUTE-INTEGRITY",
+    "decisionClass": "POST_FREEZE_ARCHITECTURE_DECISION_HARDENING"
+  },
+  "frozenProduct": {
+    "file": "EIMS_v6.360_WORKLIST_UX_ROLE_SELECTOR_CLEANUP.html",
+    "sha256": "057a224fa55e6ee17d128c41c86f3410206d7246723c35872f57757329c4e98a",
+    "modifiedByThisRebaseline": false
+  },
+  "routePersistence": {
+    "evaluationPlanFields": ["decisionRoute", "decisionRouteKind", "decisionMethod", "governanceProfileId", "governanceProfileVersion"],
+    "g04AssessmentFields": ["decisionRoute", "decisionRouteKind", "decisionMethod", "governanceProfileId", "governanceProfileVersion"],
+    "serverComputedAtIdeaSubmission": true,
+    "copiedExactlyToAssessment": true,
+    "clientOverrideAllowed": false,
+    "missingOrPartialRouteFailsClosedInWave8": true
+  },
+  "votingHardening": {
+    "historicalWave7ServicePreserved": true,
+    "wave8ProductionCompositionService": "G04VotingServiceWave8",
+    "committeeRouteId": "G04_COMMITTEE",
+    "committeeRouteKind": "COMMITTEE",
+    "individualRouteKind": "INDIVIDUAL",
+    "individualVotingDenied": true,
+    "governanceProfileMustMatchFrozenAssessment": true,
+    "voteMethodMustMatchFrozenDecisionMethod": true,
+    "frozenSnapshotMustMatchAssessmentRoute": true
+  },
+  "runtimeSafety": {
+    "g04FinalDecisionPromoted": false,
+    "portfolioEligibilityTriggered": false,
+    "p5CommandGatewayBound": false,
+    "physicalOracleReadyClaimed": false,
+    "liveWindowsDomainReadyClaimed": false,
+    "networkPilotReadyClaimed": false,
+    "v6360Unchanged": true
+  }
+}

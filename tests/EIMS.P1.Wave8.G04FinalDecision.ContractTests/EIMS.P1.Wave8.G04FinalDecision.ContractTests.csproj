@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>EIMS.P1.Wave8.G04FinalDecision.ContractTests</AssemblyName>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Program.Fixed.cs" />
+    <ProjectReference Include="../../src/EIMS.Authority.Recovery/EIMS.Authority.Recovery.csproj" />
+    <ProjectReference Include="../../src/EIMS.Persistence.Recovery/EIMS.Persistence.Recovery.csproj" />
+  </ItemGroup>
+</Project>

@@ -45,20 +45,16 @@ public sealed class AuthorityKernel(
         if (!policy.StateContractRecovered)
             return AuthorityResult.Deny(503, "P1_STATE_CONTRACT_NOT_RECOVERED", command.CorrelationId,
                 "Recovered API role exists, but the authoritative state contract for this command is not physically available.");
-
         if (!policy.RuleContractRecovered)
             return AuthorityResult.Deny(503, "P1_RULE_CONTRACT_NOT_RECOVERED", command.CorrelationId);
-
         if (!policy.EventContractRecovered)
             return AuthorityResult.Deny(503, "P1_EVENT_CONTRACT_NOT_RECOVERED", command.CorrelationId,
                 "State and rule contracts are bound, but the authoritative Domain Event contract is not yet bound.");
-
         if (!policy.MutationContractRecovered)
             return AuthorityResult.Deny(503, "P1_MUTATION_CONTRACT_NOT_RECOVERED", command.CorrelationId,
                 "State, rule and event contracts are bound, but the authoritative mutation contract is not yet bound.");
 
-        var roleAllowed = policy.RequiredRoles.Any(required =>
-            actor.Roles.Contains(required, StringComparer.OrdinalIgnoreCase));
+        var roleAllowed = policy.RequiredRoles.Any(required => actor.Roles.Contains(required, StringComparer.OrdinalIgnoreCase));
         if (!roleAllowed)
             return AuthorityResult.Deny(403, "P1_ROLE_SCOPE_DENIED", command.CorrelationId);
 
@@ -69,7 +65,6 @@ public sealed class AuthorityKernel(
         var aggregate = await store.GetAggregateAsync(command.AggregateId, cancellationToken);
         if (aggregate is null)
             return AuthorityResult.Deny(404, "P1_AGGREGATE_NOT_FOUND", command.CorrelationId);
-
         if (string.IsNullOrWhiteSpace(aggregate.Scope))
             return AuthorityResult.Deny(503, "P1_AGGREGATE_SCOPE_REQUIRED", command.CorrelationId,
                 "Authoritative aggregate scope is required before a recovered mutation may execute.");
@@ -78,7 +73,6 @@ public sealed class AuthorityKernel(
         if (!actor.Scopes.Contains(authoritativeScope, StringComparer.OrdinalIgnoreCase))
             return AuthorityResult.Deny(403, "P1_ROLE_SCOPE_DENIED", command.CorrelationId,
                 "Authoritative aggregate scope is not assigned to actor.");
-
         if (!string.IsNullOrWhiteSpace(command.RequestedScope)
             && !string.Equals(command.RequestedScope.Trim(), authoritativeScope, StringComparison.OrdinalIgnoreCase))
             return AuthorityResult.Deny(403, "P1_ROLE_SCOPE_DENIED", command.CorrelationId,
@@ -91,19 +85,12 @@ public sealed class AuthorityKernel(
             if (!string.Equals(prior.Fingerprint, fingerprint, StringComparison.Ordinal))
                 return AuthorityResult.Deny(409, "P1_IDEMPOTENCY_CONFLICT", command.CorrelationId,
                     "Idempotency key was already used with a different command payload/version.");
-
-            return prior.Result with
-            {
-                IdempotentReplay = true,
-                StateMutated = false,
-                CorrelationId = command.CorrelationId
-            };
+            return prior.Result with { IdempotentReplay = true, StateMutated = false, CorrelationId = command.CorrelationId };
         }
 
         if (command.ExpectedVersion != aggregate.Version)
             return AuthorityResult.Deny(409, "P1_VERSION_CONFLICT", command.CorrelationId,
                 $"Expected {command.ExpectedVersion}; current {aggregate.Version}.");
-
         if (policy.AllowedStates.Count == 0
             || !policy.AllowedStates.Contains(aggregate.State, StringComparer.OrdinalIgnoreCase))
             return AuthorityResult.Deny(409, "P1_STATE_TRANSITION_DENIED", command.CorrelationId,
@@ -112,7 +99,6 @@ public sealed class AuthorityKernel(
         var sodResult = await sod.EvaluateAsync(command, actor, aggregate, policy, cancellationToken);
         if (!sodResult.Passed)
             return AuthorityResult.Deny(403, sodResult.Code, command.CorrelationId, sodResult.Detail);
-
         var ruleResult = await rules.EvaluateAsync(command, actor, aggregate, policy, cancellationToken);
         if (!ruleResult.Passed)
             return AuthorityResult.Deny(422, ruleResult.Code, command.CorrelationId, ruleResult.Detail);
@@ -120,17 +106,13 @@ public sealed class AuthorityKernel(
         var plan = await planner.PlanAsync(command, actor, aggregate, policy, cancellationToken);
         if (plan is null)
             return AuthorityResult.Deny(503, "P1_MUTATION_PLAN_NOT_BOUND", command.CorrelationId);
-
         if (plan.After.Version != aggregate.Version + 1)
             return AuthorityResult.Deny(500, "P1_MUTATION_VERSION_INVALID", command.CorrelationId);
-
         if (!string.Equals(plan.After.AggregateId, aggregate.AggregateId, StringComparison.Ordinal))
             return AuthorityResult.Deny(500, "P1_MUTATION_AGGREGATE_MISMATCH", command.CorrelationId);
-
         if (!string.Equals(plan.After.Scope, aggregate.Scope, StringComparison.OrdinalIgnoreCase))
             return AuthorityResult.Deny(500, "P1_MUTATION_SCOPE_INVALID", command.CorrelationId,
                 "Mutation planner attempted to alter the authoritative aggregate scope.");
-
         if (string.IsNullOrWhiteSpace(plan.EventName))
             return AuthorityResult.Deny(500, "P1_MUTATION_EVENT_INVALID", command.CorrelationId);
 
@@ -154,6 +136,14 @@ public sealed class AuthorityKernel(
                 || intent.Assignments.GroupBy(x => x.Role, StringComparer.OrdinalIgnoreCase).Any(g => g.Count() > 1))
                 return AuthorityResult.Deny(500, "P1_EVALUATION_PLAN_INTENT_INVALID", command.CorrelationId);
 
+            var routeFields = new[] { intent.DecisionRoute, intent.DecisionRouteKind, intent.DecisionMethod, intent.GovernanceProfileId, intent.GovernanceProfileVersion };
+            var anyRoute = routeFields.Any(x => !string.IsNullOrWhiteSpace(x));
+            var allRoute = routeFields.All(x => !string.IsNullOrWhiteSpace(x));
+            if (anyRoute && !allRoute)
+                return AuthorityResult.Deny(500, "P1_G04_ROUTE_CONTEXT_PARTIAL", command.CorrelationId);
+            if (allRoute && !new G04DecisionRouteMetadata(intent.DecisionRoute!, intent.DecisionRouteKind!, intent.DecisionMethod!, intent.GovernanceProfileId!, intent.GovernanceProfileVersion!).IsValid)
+                return AuthorityResult.Deny(500, "P1_G04_ROUTE_CONTEXT_INVALID", command.CorrelationId);
+
             var planId = $"EPLAN-{Guid.NewGuid():N}";
             evaluationPlan = new EvaluationPlanEnvelope(
                 planId,
@@ -162,25 +152,23 @@ public sealed class AuthorityKernel(
                 intent.Version,
                 intent.State.Trim(),
                 now,
-                command.CorrelationId);
+                command.CorrelationId,
+                ReadyAt: null,
+                DecisionRoute: intent.DecisionRoute?.Trim().ToUpperInvariant(),
+                DecisionRouteKind: intent.DecisionRouteKind?.Trim().ToUpperInvariant(),
+                DecisionMethod: intent.DecisionMethod?.Trim().ToUpperInvariant(),
+                GovernanceProfileId: intent.GovernanceProfileId?.Trim(),
+                GovernanceProfileVersion: intent.GovernanceProfileVersion?.Trim());
 
             var assignments = intent.Assignments
                 .Select(x => new EvaluationAssignmentEnvelope(
-                    $"EASG-{Guid.NewGuid():N}",
-                    planId,
-                    after.AggregateId,
-                    after.Version,
-                    x.Role.Trim(),
-                    authoritativeScope,
-                    x.Required,
-                    x.State.Trim(),
-                    now,
-                    command.CorrelationId))
+                    $"EASG-{Guid.NewGuid():N}", planId, after.AggregateId, after.Version,
+                    x.Role.Trim(), authoritativeScope, x.Required, x.State.Trim(), now, command.CorrelationId))
                 .ToArray();
             evaluationAssignments = Array.AsReadOnly(assignments);
 
             var requiredAssignments = assignments.Where(x => x.Required).OrderBy(x => x.Role, StringComparer.Ordinal).ToArray();
-            outboxPayload = new ReadOnlyDictionary<string, string>(new Dictionary<string, string>(StringComparer.Ordinal)
+            var payload = new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 ["ideaId"] = after.AggregateId,
                 ["ideaVersion"] = after.Version.ToString(CultureInfo.InvariantCulture),
@@ -188,43 +176,30 @@ public sealed class AuthorityKernel(
                 ["evaluationPlanVersion"] = intent.Version.ToString(CultureInfo.InvariantCulture),
                 ["requiredAssignmentIds"] = string.Join("|", requiredAssignments.Select(x => x.AssignmentId)),
                 ["requiredAssignmentRoles"] = string.Join("|", requiredAssignments.Select(x => x.Role))
-            });
+            };
+            if (allRoute)
+            {
+                payload["decisionRoute"] = evaluationPlan.DecisionRoute!;
+                payload["decisionRouteKind"] = evaluationPlan.DecisionRouteKind!;
+                payload["decisionMethod"] = evaluationPlan.DecisionMethod!;
+                payload["governanceProfileId"] = evaluationPlan.GovernanceProfileId!;
+                payload["governanceProfileVersion"] = evaluationPlan.GovernanceProfileVersion!;
+            }
+            outboxPayload = new ReadOnlyDictionary<string, string>(payload);
         }
 
         var audit = new AuditEnvelope(
-            $"AUD-{Guid.NewGuid():N}",
-            actor.PersonId,
-            actor.NetworkIdentity,
-            actor.IdentitySource,
-            actor.Roles,
-            actor.AssignmentId,
-            aggregate.AggregateId,
-            after.Version,
-            policy.RuleSet,
-            now,
-            command.CorrelationId,
-            command.CommandName);
+            $"AUD-{Guid.NewGuid():N}", actor.PersonId, actor.NetworkIdentity, actor.IdentitySource,
+            actor.Roles, actor.AssignmentId, aggregate.AggregateId, after.Version, policy.RuleSet,
+            now, command.CorrelationId, command.CommandName);
         var outbox = new OutboxEnvelope(
-            $"MSG-{Guid.NewGuid():N}",
-            plan.EventName,
-            aggregate.AggregateId,
-            after.Version,
-            command.CorrelationId,
-            now,
-            outboxPayload);
+            $"MSG-{Guid.NewGuid():N}", plan.EventName, aggregate.AggregateId, after.Version,
+            command.CorrelationId, now, outboxPayload);
         var decisions = (plan.DecisionIntents ?? Array.Empty<DecisionIntent>())
             .Select(intent => new DomainDecisionEnvelope(
-                $"DEC-{Guid.NewGuid():N}",
-                intent.DecisionType,
-                intent.Outcome,
-                aggregate.AggregateId,
-                after.Version,
-                actor.PersonId,
-                actor.AssignmentId,
-                now,
-                command.CorrelationId,
-                intent.Note,
-                SnapshotFacts(intent.Facts)))
+                $"DEC-{Guid.NewGuid():N}", intent.DecisionType, intent.Outcome, aggregate.AggregateId,
+                after.Version, actor.PersonId, actor.AssignmentId, now, command.CorrelationId,
+                intent.Note, SnapshotFacts(intent.Facts)))
             .ToArray();
 
         return await store.CommitAsync(
