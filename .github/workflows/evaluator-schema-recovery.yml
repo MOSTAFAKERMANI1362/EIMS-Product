@@ -1,0 +1,35 @@
+name: Evaluator Schema Recovery
+
+on:
+  pull_request:
+    paths:
+      - 'recovery/evaluation-schemas/**'
+      - 'tests/EIMS.EvaluatorSchemaRecovery.ContractTests/**'
+      - '.github/workflows/evaluator-schema-recovery.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'recovery/evaluation-schemas/**'
+      - 'tests/EIMS.EvaluatorSchemaRecovery.ContractTests/**'
+      - '.github/workflows/evaluator-schema-recovery.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify-registry:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10.0.302
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.302'
+
+      - name: Build evaluator schema recovery tests
+        run: dotnet build .\tests\EIMS.EvaluatorSchemaRecovery.ContractTests\EIMS.EvaluatorSchemaRecovery.ContractTests.csproj -c Release
+
+      - name: Run evaluator schema recovery tests
+        run: dotnet run --project .\tests\EIMS.EvaluatorSchemaRecovery.ContractTests\EIMS.EvaluatorSchemaRecovery.ContractTests.csproj -c Release --no-build -- .\recovery\evaluation-schemas\EVALUATOR_ASSESSMENT_SCHEMA_REGISTRY_v1.0.json
