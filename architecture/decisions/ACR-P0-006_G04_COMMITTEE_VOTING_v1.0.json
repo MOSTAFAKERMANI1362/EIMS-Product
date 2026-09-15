@@ -1,0 +1,189 @@
+{
+  "schema": "EIMS-ACR-G04-COMMITTEE-VOTING-1.0",
+  "acrId": "ACR-P0-006",
+  "title": "Stabilize G04 Committee Voting and Frozen Governance Snapshot",
+  "status": "APPROVED_FOR_P1_IMPLEMENTATION",
+  "decisionClass": "POST_FREEZE_ARCHITECTURE_DECISION",
+  "effectiveVersion": "1.0",
+  "frozenProduct": {
+    "file": "EIMS_v6.360_WORKLIST_UX_ROLE_SELECTOR_CLEANUP.html",
+    "sha256": "057a224fa55e6ee17d128c41c86f3410206d7246723c35872f57757329c4e98a",
+    "modifiedByThisDecision": false
+  },
+  "provenance": {
+    "historicalOriginalMachineContractStatus": "PARTIAL_RECOVERY_ONLY",
+    "mustNotBeRepresentedAsRecoveredOriginal": true,
+    "basis": [
+      "EIMS_v6.360_WORKLIST_UX_ROLE_SELECTOR_CLEANUP.html",
+      "recovery/p0/P0_MACHINE_CONTRACT_RECOVERY_v1.0.json",
+      "architecture/decisions/ACR-P0-005_EVALUATION_ASSIGNMENT_COMPLETION_v1.0.json",
+      "recovery/p1-wave6/P1_WAVE6_EVALUATION_COMPLETION_REBASELINE_v1.0.json"
+    ]
+  },
+  "command": {
+    "commandName": "g04.vote",
+    "targetType": "G04Assessment",
+    "requiredRole": "G04_COMMITTEE_MEMBER",
+    "allowedAssessmentState": "PENDING",
+    "requiredDecisionRoute": "G04_COMMITTEE",
+    "voteOptions": ["APPROVE", "REJECT"],
+    "voteNoteRequired": true,
+    "voteNoteMinLength": 10,
+    "expectedCommitteeVersionRequired": true,
+    "idempotencyRequired": true
+  },
+  "frozenSnapshot": {
+    "required": true,
+    "governanceFields": [
+      "governanceProfileId",
+      "governanceProfileVersion",
+      "quorumRequired",
+      "voteRule",
+      "chairPersonId",
+      "approvalAuthority",
+      "approvalRef"
+    ],
+    "membershipFields": [
+      "personId",
+      "displayName",
+      "sourceRoles",
+      "authorityAssignmentIds"
+    ],
+    "immutableAfterFirstValidComposition": true,
+    "membershipFreezeSource": "RESOLVED_ROLE_ASSIGNMENTS_AT_FIRST_VALID_COMPOSITION",
+    "quorumMinimum": 1,
+    "supportedVoteRules": ["MAJORITY", "CONSENSUS", "CHAIR_TIEBREAK"],
+    "chairRequiredWhenRuleIsChairTiebreak": true,
+    "clientMayAlterSnapshot": false
+  },
+  "frozenBaselineProfile": {
+    "id": "G04-GOV-V1.0",
+    "version": "1.0",
+    "status": "ACTIVE",
+    "decisionMode": "AUTO",
+    "evaluatorDecisionPolicy": "BLOCK",
+    "committeeEvalCount": 4,
+    "committeeCostThreshold": 0,
+    "borderlineMargin": 0,
+    "committeeConditions": {
+      "crossUnit": true,
+      "capex": true,
+      "highRisk": true,
+      "hse": true,
+      "digitalOrg": false
+    },
+    "quorumRequired": 2,
+    "voteRule": "MAJORITY",
+    "chairPersonId": "",
+    "fixedMemberIds": [],
+    "conditionalRoles": ["UNIT_OWNER_REVIEWER", "HSE_ASSESSOR", "FINANCIAL_ASSESSOR", "IT_ASSESSOR"],
+    "approvalAuthority": "مصوبه سازمانی مورد نیاز",
+    "approvalRef": "SYSTEM_BASELINE",
+    "isRecoverableDefaultNotUniversalCustomerHardCode": true
+  },
+  "authority": {
+    "personIdServerDerived": true,
+    "authorityAssignmentIdServerDerived": true,
+    "actorMustBeFrozenMember": true,
+    "actorAuthorityRoleMustIncludeG04CommitteeMember": true,
+    "actorScopeMustContainAssessmentScope": true,
+    "clientMaySelectAnotherMember": false,
+    "clientMaySetPersonId": false,
+    "clientMaySetAssignmentId": false,
+    "clientMaySetQuorum": false,
+    "clientMaySetVoteRule": false,
+    "clientMaySetChair": false,
+    "clientMaySetMembers": false,
+    "clientMaySetGovernanceProfile": false,
+    "clientMaySetEventIdentity": false
+  },
+  "effectiveVoteProjection": {
+    "oneEffectiveVotePerFrozenPerson": true,
+    "onlyFrozenMembersCount": true,
+    "voteHistoryAppendOnly": true,
+    "frozenUiReplacementSemanticsPreservedAsRevision": true,
+    "correctionBeforeStageComplete": "NEW_APPEND_ONLY_REVISION_SUPERSEDES_PRIOR_EFFECTIVE_REVISION",
+    "correctionAfterStageCompleteAllowed": false,
+    "historyOverwriteAllowed": false
+  },
+  "approvalRule": {
+    "requiresQuorumFirst": true,
+    "MAJORITY": "approveCount > rejectCount",
+    "CONSENSUS": "approveCount == effectiveVoteCount",
+    "CHAIR_TIEBREAK": "if approveCount == rejectCount then chair effective vote must be APPROVE else approveCount > rejectCount",
+    "onlyEffectiveFrozenMemberVotesCount": true
+  },
+  "stageCompletion": {
+    "stageCompleteWhenApprovalRuleSatisfied": true,
+    "stageCompleteWhenNoApprovalAndEveryFrozenMemberHasVoted": true,
+    "quorumMustBeReachedBeforeStageCanComplete": true,
+    "committeeActionEndsWhenStageComplete": true,
+    "g04AssessmentRemainsPendingForFinalDecision": true,
+    "committeeVoteIsNotFinalIdeaDecision": true,
+    "committeeVoteDoesNotTriggerPortfolioEligibility": true
+  },
+  "events": [
+    {
+      "eventType": "G04CommitteeVoteRecorded.v1",
+      "decisionClass": "POST_FREEZE_NEW_IDENTITY",
+      "emission": "EVERY_SUCCESSFUL_VOTE_OR_REVISION",
+      "payloadPolicy": "IDENTIFIERS_VERSIONS_VOTE_AND_STAGE_SUMMARY_ONLY"
+    },
+    {
+      "eventType": "G04CommitteeVotingCompleted.v1",
+      "decisionClass": "POST_FREEZE_NEW_IDENTITY",
+      "emission": "ONLY_ON_OPEN_TO_COMPLETE_STAGE_TRANSITION",
+      "payloadPolicy": "IDENTIFIERS_VERSIONS_AND_STAGE_SUMMARY_ONLY"
+    }
+  ],
+  "eventDataMinimization": {
+    "voteNoteExcluded": true,
+    "fullGovernanceSnapshotExcluded": true,
+    "fullMembershipSnapshotExcluded": true,
+    "ideaDossierExcluded": true,
+    "assessmentAnswersExcluded": true
+  },
+  "atomicPersistence": {
+    "requiredComponents": [
+      "VoteRevision",
+      "EffectiveVoteProjection",
+      "CommitteeVersionAndStageSummary",
+      "Audit",
+      "Outbox",
+      "Idempotency"
+    ],
+    "singleLogicalTransactionRequired": true,
+    "optimisticConcurrencyRequired": true,
+    "rollbackAllOnFailure": true
+  },
+  "runtimePromotionGate": {
+    "commandPromotionAllowedByThisAcrAlone": false,
+    "stillRequired": [
+      "serverGovernanceProfileProvider",
+      "serverCommitteeMembershipResolver",
+      "frozenSnapshotPersistence",
+      "committeeVoteStore",
+      "voteRuleEvaluator",
+      "appendOnlyVoteRevisionTests",
+      "P3IdentityRoleScopeTests",
+      "atomicPersistenceTests",
+      "cumulativeP0P1Gate",
+      "securityBaseline"
+    ]
+  },
+  "downstreamSeparation": {
+    "finalDecisionCommand": "g04.final-decision",
+    "finalDecisionRole": "IDEA_DECISION",
+    "finalDecisionPromotedByThisAcr": false,
+    "portfolioEligibilityTriggeredByVote": false,
+    "p5BoundByThisAcr": false
+  },
+  "nonEffects": [
+    "Does not modify v6.360",
+    "Does not promote g04.vote by itself",
+    "Does not promote g04.final-decision",
+    "Does not claim physical Oracle readiness",
+    "Does not claim live Windows Domain readiness",
+    "Does not claim Network Pilot readiness"
+  ]
+}
