@@ -1,0 +1,38 @@
+name: P1 Wave 8A Route Integrity
+
+on:
+  pull_request:
+    paths:
+      - 'architecture/decisions/ACR-P0-007_ROUTE_INTEGRITY_ADDENDUM_v1.0.json'
+      - 'recovery/p1-wave8/**'
+      - 'src/EIMS.Authority.Recovery/**'
+      - 'tests/EIMS.P1.Wave8.RouteIntegrity.ContractTests/**'
+      - '.github/workflows/p1-wave8-route-integrity.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'recovery/p1-wave8/**'
+      - 'src/EIMS.Authority.Recovery/**'
+      - 'tests/EIMS.P1.Wave8.RouteIntegrity.ContractTests/**'
+      - '.github/workflows/p1-wave8-route-integrity.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  route-integrity:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10.0.302
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.302'
+
+      - name: Build Wave 8A route-integrity tests
+        run: dotnet build .\tests\EIMS.P1.Wave8.RouteIntegrity.ContractTests\EIMS.P1.Wave8.RouteIntegrity.ContractTests.csproj -c Release
+
+      - name: Run Wave 8A route-integrity tests
+        run: dotnet run --project .\tests\EIMS.P1.Wave8.RouteIntegrity.ContractTests\EIMS.P1.Wave8.RouteIntegrity.ContractTests.csproj -c Release --no-build -- .\architecture\decisions\ACR-P0-007_ROUTE_INTEGRITY_ADDENDUM_v1.0.json .\recovery\p1-wave8\P1_WAVE8_ROUTE_INTEGRITY_REBASELINE_v1.0.json
