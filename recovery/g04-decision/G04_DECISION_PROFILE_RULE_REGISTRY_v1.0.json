@@ -1,0 +1,241 @@
+{
+  "schema": "EIMS-G04-DECISION-PROFILE-RULE-REGISTRY-1.0",
+  "artifactIdentity": "G04_DECISION_PROFILE_RULE_REGISTRY_v1.0",
+  "recoveryStatus": "RECOVERED_FROM_FROZEN_V6_360_NOT_ORIGINAL_SERVER_SCHEMA",
+  "sourceSemantics": "EXECUTABLE_UI_AND_VALIDATION_CONTRACT_RECOVERY",
+  "sourceProduct": {
+    "file": "EIMS_v6.360_WORKLIST_UX_ROLE_SELECTOR_CLEANUP.html",
+    "sha256": "057a224fa55e6ee17d128c41c86f3410206d7246723c35872f57757329c4e98a",
+    "modifiedByThisRecovery": false
+  },
+  "provenance": {
+    "historicalOriginalServerRuleRegistryAvailable": false,
+    "mustNotBeRepresentedAsOriginalServerSchema": true,
+    "noRuleStrengtheningBeyondFrozenEvidence": true,
+    "notes": [
+      "The registry recovers G04 scoring profiles, data-readiness checks, hard-condition machine mapping and approval-only guard semantics from frozen executable behavior.",
+      "The frozen executable evolved from an earlier unconditional technical gate; v6.360 explicitly makes technical assessment conditional on the current Evaluation Plan or frozen profile hard-condition keys.",
+      "Open assessments use the active profile as the live source of truth until final decision; the final decision freezes the profile/rule/Idea-version evidence for history.",
+      "Closed historical G04 decisions must never be reconstructed from a later active profile."
+    ]
+  },
+  "scoringModel": {
+    "scoreRange": {"min": 0, "max": 100},
+    "rounding": "ROUND_TO_INTEGER",
+    "formula": "clamp_0_100(round(sum(clamp_0_1(ideaMetric/baseMetric)*profileWeight)))",
+    "metricDefinitions": {
+      "strategy": {"labelFa": "هم‌راستایی راهبردی", "baseMetric": 15},
+      "needScore": {"labelFa": "اهمیت نیاز", "baseMetric": 15},
+      "benefitScore": {"labelFa": "منفعت مورد انتظار", "baseMetric": 20},
+      "tech": {"labelFa": "امکان‌پذیری فنی", "baseMetric": 10},
+      "econ": {"labelFa": "توجیه اقتصادی", "baseMetric": 10},
+      "effort": {"labelFa": "سهولت اجرا", "baseMetric": 10},
+      "riskScore": {"labelFa": "کنترل ریسک", "baseMetric": 10},
+      "urgency": {"labelFa": "فوریت", "baseMetric": 5},
+      "innovation": {"labelFa": "نوآوری", "baseMetric": 5}
+    }
+  },
+  "dataReadiness": {
+    "formula": "round(nonBlankChecks/12*100)",
+    "checks": [
+      "idea.title",
+      "idea.solution",
+      "idea.needId",
+      "idea.owner",
+      "passport.nature",
+      "passport.action",
+      "passport.scope",
+      "passport.costType",
+      "passport.asIs",
+      "passport.toBe",
+      "passport.strategySetId_or_NO_ACTIVE_STRATEGY",
+      "passport.primaryObjectiveCode_or_NO_ACTIVE_STRATEGY"
+    ],
+    "approvalRequiresDataThreshold": true
+  },
+  "profiles": [
+    {
+      "id": "G04-GENERAL-V1.0",
+      "domain": "GENERAL",
+      "version": "1.0",
+      "passThreshold": 65,
+      "dataThreshold": 80,
+      "weights": {
+        "strategy": 15,
+        "needScore": 15,
+        "benefitScore": 20,
+        "tech": 10,
+        "econ": 10,
+        "effort": 10,
+        "riskScore": 10,
+        "urgency": 5,
+        "innovation": 5
+      },
+      "hardConditions": [
+        {"textFa": "ارزیابی‌های تخصصی الزامی مطابق طرح ارزیابی کامل باشند", "machineKey": "REQUIRED_EVALUATIONS_COMPLETE"},
+        {"textFa": "ارتباط با نسخه فعال راهبرد", "machineKey": "ACTIVE_STRATEGY_ALIGNED"},
+        {"textFa": "نیاز مبنای تأییدشده", "machineKey": "BASE_NEED_G03_READY"}
+      ]
+    },
+    {
+      "id": "G04-HSE-V1.0",
+      "domain": "HSE",
+      "version": "1.0",
+      "passThreshold": 60,
+      "dataThreshold": 90,
+      "weights": {
+        "strategy": 10,
+        "needScore": 15,
+        "benefitScore": 5,
+        "tech": 15,
+        "econ": 0,
+        "effort": 5,
+        "riskScore": 30,
+        "urgency": 15,
+        "innovation": 5
+      },
+      "hardConditions": [
+        {"textFa": "ریسک مرگ یا آسیب شدید باید کنترل شود", "machineKey": "HSE_ASSESSMENT_ACCEPTABLE"},
+        {"textFa": "الزام قانونی یا استاندارد اجباری نقض نشود", "machineKey": "HSE_ASSESSMENT_ACCEPTABLE"},
+        {"textFa": "ارزیابی HSE و فنی مستقل معتبر", "machineKey": "HSE_AND_TECH_VALID"},
+        {"textFa": "راه‌حل نباید ریسک جدید غیرقابل‌قبول ایجاد کند", "machineKey": "HSE_ASSESSMENT_ACCEPTABLE"}
+      ]
+    }
+  ],
+  "hardRuleRegistry": [
+    {
+      "key": "REQUIRED_EVALUATIONS_COMPLETE",
+      "labelFa": "ارزیابی‌های تخصصی الزامی مطابق طرح ارزیابی کامل باشند",
+      "evaluation": {
+        "currentPlanRequired": true,
+        "planIdeaVersionMustEqualCurrentIdeaVersion": true,
+        "atLeastOneRequiredAssignment": true,
+        "allRequiredAssignmentsStatus": "COMPLETED"
+      }
+    },
+    {
+      "key": "BASE_NEED_G03_READY",
+      "labelFa": "نیاز مبنای معتبر و آماده ایده‌پردازی",
+      "evaluation": {
+        "baseNeedRequired": true,
+        "requiredNeedStatus": "READY_FOR_IDEATION"
+      }
+    },
+    {
+      "key": "TECHNICAL_ASSESSMENT_VALID",
+      "labelFa": "ارزیابی فنی مستقل معتبر",
+      "evaluation": {
+        "currentIdeaVersionRequired": true,
+        "technicalAssessmentMustBeNonStale": true
+      }
+    },
+    {
+      "key": "ACTIVE_STRATEGY_ALIGNED",
+      "labelFa": "ارتباط با نسخه فعال راهبرد",
+      "evaluation": {
+        "whenNoActiveStrategySet": "NON_BLOCKING",
+        "whenActiveStrategySet": {
+          "passportStrategySetIdMustEqualActive": true,
+          "primaryObjectiveRequired": true,
+          "alignmentLevelRequired": true
+        }
+      }
+    },
+    {
+      "key": "HSE_ASSESSMENT_ACCEPTABLE",
+      "labelFa": "ارزیابی HSE قابل قبول/مشروط",
+      "evaluation": {
+        "currentPlanHseAssignmentRequired": true,
+        "assignmentStatus": "COMPLETED",
+        "acceptedOutcomes": ["PASS", "CONDITIONAL_PASS", "APPROVE", "APPROVED", "CONFIRMED"]
+      }
+    },
+    {
+      "key": "HSE_AND_TECH_VALID",
+      "labelFa": "ارزیابی HSE و فنی مستقل معتبر",
+      "evaluation": {
+        "hseRule": "HSE_ASSESSMENT_ACCEPTABLE",
+        "technicalRule": "TECHNICAL_ASSESSMENT_VALID",
+        "operator": "AND"
+      }
+    }
+  ],
+  "hardConditionMapping": {
+    "version": "6161",
+    "unknownTextAction": "FAIL_CLOSED",
+    "textPatternsRecovered": [
+      {"semantic": "specialist evaluations + evaluation plan + complete", "machineKey": "REQUIRED_EVALUATIONS_COMPLETE"},
+      {"semantic": "base Need + approved/valid/ready", "machineKey": "BASE_NEED_G03_READY"},
+      {"semantic": "strategy", "machineKey": "ACTIVE_STRATEGY_ALIGNED"},
+      {"semantic": "HSE evaluation + technical", "machineKey": "HSE_AND_TECH_VALID"},
+      {"semantic": "technical evaluation", "machineKey": "TECHNICAL_ASSESSMENT_VALID"},
+      {"semantic": "HSE/death/severe injury/legal/standard/new risk", "machineKey": "HSE_ASSESSMENT_ACCEPTABLE"}
+    ]
+  },
+  "specialistApprovalPolicy": {
+    "requiredAssignmentBlockingOutcomes": ["FAIL", "RETURN", "NO_GO"],
+    "hseAlwaysBlockingOutcomes": ["FAIL", "RETURN"],
+    "blockingAppliesToOutcome": "APPROVE_ONLY"
+  },
+  "technicalRequirementPolicy": {
+    "unconditionalTechnicalGate": false,
+    "technicalRequiredWhen": [
+      "CURRENT_EVALUATION_PLAN_HAS_REQUIRED_TECHNICAL_ASSESSOR",
+      "FROZEN_PROFILE_HAS_TECHNICAL_ASSESSMENT_VALID",
+      "FROZEN_PROFILE_HAS_HSE_AND_TECH_VALID"
+    ],
+    "technicalRequirementSourceValues": ["EVALUATION_PLAN", "PROFILE_HARD_CONDITION", "NOT_REQUIRED"]
+  },
+  "approvalGatePolicy": {
+    "appliesOnlyToFinalOutcome": "APPROVE",
+    "requires": [
+      "FROZEN_PROFILE_PRESENT",
+      "GATE_SCORE_AT_LEAST_PASS_THRESHOLD",
+      "DATA_READINESS_AT_LEAST_DATA_THRESHOLD",
+      "BASE_NEED_PRESENT",
+      "CONDITIONAL_TECHNICAL_REQUIREMENT_SATISFIED",
+      "ALL_PROFILE_HARD_CONDITIONS_MACHINE_MAPPED_AND_PASS",
+      "SPECIALIST_OUTCOMES_NOT_BLOCKING",
+      "COMMITTEE_POSITIVE_RESULT_IF_ROUTE_G04_COMMITTEE",
+      "SEPARATION_OF_DUTIES_PASS_OR_ALLOWED_AUDITED_EXCEPTION"
+    ],
+    "negativeOutcomesNotBlockedByPositiveApprovalGates": ["RETURN", "HOLD", "REJECT"]
+  },
+  "decisionProfileFreeze": {
+    "openAssessmentUsesActiveProfileUntilFinalDecision": true,
+    "finalDecisionMustFreeze": [
+      "profileId",
+      "profileVersion",
+      "profileSnapshot",
+      "ruleSet",
+      "hardConditionMappingVersion",
+      "calculatedGateScore",
+      "dataReadiness",
+      "ideaVersion",
+      "frozenAt"
+    ],
+    "closedDecisionMayInferCurrentActiveProfile": false,
+    "missingHistoricalSnapshotIntegrityState": "MISSING_LEGACY_PROFILE_OR_GOVERNANCE_SNAPSHOT"
+  },
+  "decisionInputPolicy": {
+    "allowedOutcomes": ["APPROVE", "RETURN", "HOLD", "REJECT"],
+    "commentRequired": true,
+    "commentMinLength": 15,
+    "holdReviewDateRequired": true
+  },
+  "returnVersionInvalidation": {
+    "returnIncrementsIdeaVersion": true,
+    "oldEvaluationPlans": "SUPERSEDED",
+    "oldPendingG04Assessments": "SUPERSEDED",
+    "oldTechnicalAssessment": "STALE",
+    "oldStructuredIdeaEvaluation": "STALE",
+    "reason": "Idea version changed"
+  },
+  "nonEffects": [
+    "Does not modify frozen v6.360",
+    "Does not promote g04.final-decision into runtime",
+    "Does not create PortfolioIntakeCandidate",
+    "Does not bind P5",
+    "Does not claim physical Oracle, live Windows Domain or Network Pilot readiness"
+  ]
+}
