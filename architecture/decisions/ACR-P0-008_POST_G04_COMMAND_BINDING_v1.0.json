@@ -1,0 +1,321 @@
+{
+  "schema": "EIMS-ARCHITECTURE-CHANGE-RECORD-1.0",
+  "acrId": "ACR-P0-008",
+  "title": "Post-G04 Portfolio-to-Knowledge Command and Event Binding",
+  "version": "1.0",
+  "status": "APPROVED_FOR_P1_IMPLEMENTATION",
+  "decisionClass": "POST_FREEZE_ARCHITECTURE_DECISION",
+  "scope": "Machine command/event identity and server-authority binding only; no business workflow redesign",
+  "sourceProduct": {
+    "name": "EIMS_v6.360_WORKLIST_UX_ROLE_SELECTOR_CLEANUP.html",
+    "sha256": "057a224fa55e6ee17d128c41c86f3410206d7246723c35872f57757329c4e98a",
+    "modifiedByThisDecision": false
+  },
+  "sourceContracts": [
+    "EIMS_P0_API_Contract_Draft_v1.0.yaml",
+    "EIMS_P0_Gaps_TBD_v1.0.md",
+    "P0_PORTFOLIO_KNOWLEDGE_RECOVERED_CONTRACT_v1.0.json"
+  ],
+  "supersedesGroupedCommandBindings": [
+    {
+      "legacyCommand": "portfolio.assign-accept",
+      "decision": "DO_NOT_IMPLEMENT_AS_SINGLE_MUTATION",
+      "reason": "Frozen semantics require candidate assignment, membership decision, recommendation creation, approval, baseline binding and handoff to remain distinct."
+    },
+    {
+      "legacyCommand": "executions.prepare",
+      "decision": "DO_NOT_IMPLEMENT_AS_SINGLE_MUTATION",
+      "reason": "Frozen semantics separately record Charter approval and Plan Baseline approval before Execution start."
+    }
+  ],
+  "globalAuthorityRules": {
+    "identitySource": "P3_SERVER_RESOLVED_WINDOWS_IDENTITY",
+    "assignmentContextRequired": true,
+    "clientSuppliedRoleOrScopeTrusted": false,
+    "expectedVersionRequired": true,
+    "idempotencyKeyRequired": true,
+    "transactionBoundary": "STATE_DECISION_AUDIT_OUTBOX_IDEMPOTENCY_ATOMIC",
+    "failClosedOnMissingAuthorityOrState": true,
+    "digitalThreadPreserved": true
+  },
+  "systemTriggers": [
+    {
+      "code": "portfolio.evaluate-eligibility-from-approved-idea",
+      "trigger": "IdeaApprovedForPortfolio.v1",
+      "actor": "SYSTEM_SERVICE",
+      "userInvocable": false,
+      "ordinaryUiManualAction": false,
+      "preconditions": ["Idea.status=APPROVED", "hardReadinessGaps=0", "policyExcluded=false"],
+      "effectOnPass": "Create exactly one PortfolioIntakeCandidate bound to approved Idea version",
+      "events": ["PortfolioEligibilityEvaluated.v1", "PortfolioIntakeCandidateCreated.v1"],
+      "idempotencyFingerprint": "ideaId|approvedIdeaVersion"
+    }
+  ],
+  "commands": [
+    {
+      "code": "portfolio.assign-candidate",
+      "httpPath": "/commands/portfolio/{candidateId}/assign",
+      "authority": "PORTFOLIO_MANAGER",
+      "from": "UNASSIGNED_CANDIDATE",
+      "to": "PENDING_ASSIGNMENT",
+      "effect": "Create versioned Portfolio assignment only; membership is not created",
+      "events": ["PortfolioCandidateAssigned.v1"]
+    },
+    {
+      "code": "portfolio.membership-decision",
+      "httpPath": "/commands/portfolio/{candidateId}/membership-decision",
+      "authority": "PORTFOLIO_MANAGER",
+      "from": "PENDING",
+      "decisions": ["ACCEPTED", "REJECTED", "DEFERRED"],
+      "eventsByDecision": {
+        "ACCEPTED": "PortfolioMembershipAccepted.v1",
+        "REJECTED": "PortfolioMembershipRejected.v1",
+        "DEFERRED": "PortfolioMembershipDeferred.v1"
+      },
+      "constraints": ["Assignment does not imply membership", "Equivalent replay is idempotent", "Accepted primary membership may supersede other pending/deferred assignments"]
+    },
+    {
+      "code": "portfolio.generate-execution-recommendation",
+      "httpPath": "/commands/portfolio/{candidateId}/generate-execution-recommendation",
+      "authority": "PORTFOLIO_MANAGER",
+      "preconditions": ["membership.status=ACCEPTED"],
+      "to": "DRAFT_RECOMMENDATION",
+      "event": "ExecutionRecommendationGenerated.v1"
+    },
+    {
+      "code": "portfolio.approve-execution-recommendation",
+      "httpPath": "/commands/portfolio/recommendations/{recommendationId}/approve",
+      "authority": "PORTFOLIO_MANAGER",
+      "from": "DRAFT",
+      "to": "APPROVED",
+      "requiredEvidence": ["governanceDecisionRef"],
+      "event": "ExecutionRecommendationApproved.v1"
+    },
+    {
+      "code": "portfolio.bind-approved-baseline",
+      "httpPath": "/commands/portfolio/recommendations/{recommendationId}/bind-baseline",
+      "authority": "PORTFOLIO_MANAGER",
+      "preconditions": ["recommendation.status=APPROVED"],
+      "requiredEvidence": ["approvedBaselineRef"],
+      "effect": "Set baselineApproved=true without changing recommendation approval semantics",
+      "event": "PortfolioBaselineBoundToRecommendation.v1"
+    },
+    {
+      "code": "portfolio.request-execution-handoff",
+      "httpPath": "/commands/portfolio/recommendations/{recommendationId}/request-handoff",
+      "authority": "PORTFOLIO_MANAGER",
+      "preconditions": ["recommendation.status=APPROVED", "baselineApproved=true"],
+      "effect": "Create exactly one Execution in PLANNING and preserve Digital Thread",
+      "events": ["ExecutionHandoffRequested.v1", "ExecutionCreatedFromRecommendation.v1"]
+    },
+    {
+      "code": "executions.approve-charter",
+      "httpPath": "/commands/executions/{executionId}/approve-charter",
+      "authority": "EXECUTION_OWNER",
+      "from": "PLANNING",
+      "to": "PLANNING",
+      "event": "ExecutionCharterApproved.v1"
+    },
+    {
+      "code": "executions.approve-plan-baseline",
+      "httpPath": "/commands/executions/{executionId}/approve-plan-baseline",
+      "authority": "EXECUTION_OWNER",
+      "from": "PLANNING",
+      "to": "PLANNING",
+      "event": "ExecutionPlanBaselineApproved.v1"
+    },
+    {
+      "code": "executions.start",
+      "httpPath": "/commands/executions/{executionId}/start",
+      "authority": "EXECUTION_OWNER",
+      "from": "PLANNING",
+      "to": "ACTIVE",
+      "preconditions": ["charterApproved=true", "planApproved=true"],
+      "event": "ExecutionStarted.v1"
+    },
+    {
+      "code": "executions.progress",
+      "httpPath": "/commands/executions/{executionId}/progress",
+      "authority": "EXECUTION_OWNER",
+      "from": "ACTIVE",
+      "to": "ACTIVE",
+      "constraints": ["0<=progress<=100", "progress=100 does not imply completion"],
+      "event": "ExecutionProgressRecorded.v1"
+    },
+    {
+      "code": "executions.submit-completion",
+      "httpPath": "/commands/executions/{executionId}/submit-completion",
+      "authority": "EXECUTION_OWNER",
+      "from": "ACTIVE",
+      "to": "COMPLETION_REVIEW",
+      "preconditions": ["progress=100", "completionDossier present"],
+      "event": "ExecutionCompletionSubmitted.v1"
+    },
+    {
+      "code": "executions.completion-review",
+      "httpPath": "/commands/executions/{executionId}/completion-review",
+      "authority": "EXECUTION_COMPLETION_REVIEWER",
+      "from": "COMPLETION_REVIEW",
+      "decisions": ["APPROVE", "RETURN"],
+      "approveTo": "COMPLETED",
+      "returnTo": "ACTIVE",
+      "sod": ["Execution Owner cannot approve own Completion"],
+      "eventsByDecision": {"APPROVE": "ExecutionCompletionApproved.v1", "RETURN": "ExecutionCompletionReturned.v1"}
+    },
+    {
+      "code": "executions.request-benefit-handoff",
+      "httpPath": "/commands/executions/{executionId}/request-benefit-handoff",
+      "authority": "EXECUTION_OWNER",
+      "from": "COMPLETED",
+      "preconditions": ["completionApproval present"],
+      "effect": "Create exactly one Benefit in OBLIGATION_PENDING_ACCEPTANCE",
+      "events": ["BenefitHandoffRequested.v1", "BenefitObligationCreated.v1"]
+    },
+    {
+      "code": "executions.begin-closure",
+      "httpPath": "/commands/executions/{executionId}/begin-closure",
+      "authority": "EXECUTION_OWNER",
+      "from": "COMPLETED",
+      "to": "CLOSURE_IN_PROGRESS",
+      "preconditions": ["Benefit obligation exists", "Benefit owner accepted obligation"],
+      "event": "ExecutionClosureStarted.v1"
+    },
+    {
+      "code": "executions.close",
+      "httpPath": "/commands/executions/{executionId}/close",
+      "authority": "EXECUTION_OWNER",
+      "from": "CLOSURE_IN_PROGRESS",
+      "to": "CLOSED",
+      "event": "ExecutionClosed.v1"
+    },
+    {
+      "code": "benefits.accept",
+      "httpPath": "/commands/benefits/{benefitId}/accept",
+      "authority": "BENEFIT_OWNER",
+      "from": "OBLIGATION_PENDING_ACCEPTANCE",
+      "to": "BASELINE_REQUIRED",
+      "event": "BenefitObligationAccepted.v1"
+    },
+    {
+      "code": "benefits.set-baseline",
+      "httpPath": "/commands/benefits/{benefitId}/set-baseline",
+      "authority": "BENEFIT_OWNER",
+      "from": "BASELINE_REQUIRED",
+      "to": "PLAN_REQUIRED",
+      "constraints": ["baseline and target are valid and distinct"],
+      "event": "BenefitBaselineDefined.v1"
+    },
+    {
+      "code": "benefits.approve-measurement-plan",
+      "httpPath": "/commands/benefits/{benefitId}/approve-measurement-plan",
+      "authority": "BENEFIT_OWNER",
+      "from": "PLAN_REQUIRED",
+      "to": "MEASUREMENT_PENDING",
+      "event": "BenefitMeasurementPlanApproved.v1"
+    },
+    {
+      "code": "benefits.measure",
+      "httpPath": "/commands/benefits/{benefitId}/measure",
+      "authority": "BENEFIT_OWNER_OR_AUTHORIZED_DATA_PROVIDER",
+      "pilotDefaultAuthority": "BENEFIT_OWNER",
+      "from": "MEASUREMENT_PENDING",
+      "to": "MEASURED",
+      "event": "BenefitMeasured.v1",
+      "constraint": "AUTHORIZED_DATA_PROVIDER is not enabled unless an explicit server-side assignment policy exists"
+    },
+    {
+      "code": "benefits.verify",
+      "httpPath": "/commands/benefits/{benefitId}/verify",
+      "authority": "BENEFIT_VERIFIER",
+      "from": "MEASURED",
+      "to": "VERIFIED",
+      "sod": ["Verifier must be independent from Execution Owner for the same output"],
+      "event": "BenefitVerified.v1"
+    },
+    {
+      "code": "benefits.attribution",
+      "httpPath": "/commands/benefits/{benefitId}/attribution",
+      "authority": "BENEFIT_VERIFIER",
+      "from": "VERIFIED",
+      "to": "VALIDATED",
+      "event": "BenefitAttributionValidated.v1"
+    },
+    {
+      "code": "benefits.realize",
+      "httpPath": "/commands/benefits/{benefitId}/realize",
+      "authority": "BENEFIT_OWNER",
+      "from": "VALIDATED",
+      "to": "REALIZED",
+      "event": "BenefitRealized.v1"
+    },
+    {
+      "code": "benefits.close",
+      "httpPath": "/commands/benefits/{benefitId}/close",
+      "authority": "BENEFIT_OWNER",
+      "from": "REALIZED",
+      "to": "CLOSED",
+      "preconditions": ["realizationDossier present", "Knowledge exists", "Knowledge.status=PUBLISHED", "knowledge.publicationDossier present"],
+      "event": "BenefitClosed.v1"
+    },
+    {
+      "code": "knowledge.create-draft",
+      "httpPath": "/commands/knowledge/from-benefit/{benefitId}/create-draft",
+      "authority": "RESOLVED_KNOWLEDGE_AUTHOR_POLICY",
+      "preconditions": ["Benefit.status=REALIZED", "verificationDossier present", "attributionDossier present", "realizationDossier present"],
+      "to": "DRAFT",
+      "event": "KnowledgeDraftCreated.v1",
+      "authorPolicy": {
+        "default": "NEED_OWNER_OR_DOMAIN_EXPERT",
+        "alternatives": ["NEED_OWNER", "IDEA_OWNER", "DOMAIN_EXPERT"],
+        "resolution": "CONFIGURABLE_SERVER_SIDE",
+        "benefitOwnerAloneDoesNotGrantAuthorAuthority": true
+      }
+    },
+    {
+      "code": "knowledge.validate",
+      "httpPath": "/commands/knowledge/{knowledgeId}/validate",
+      "authority": "KNOWLEDGE_STEWARD",
+      "from": "DRAFT",
+      "decisions": ["APPROVE", "RETURN"],
+      "approveTo": "VALIDATED",
+      "returnTo": "DRAFT",
+      "eventsByDecision": {"APPROVE": "KnowledgeValidated.v1", "RETURN": "KnowledgeReturnedForCorrection.v1"},
+      "correctionOwner": "RESOLVED_KNOWLEDGE_AUTHOR_POLICY"
+    },
+    {
+      "code": "knowledge.publish",
+      "httpPath": "/commands/knowledge/{knowledgeId}/publish",
+      "authority": "KNOWLEDGE_PUBLISHER",
+      "from": "VALIDATED",
+      "decisions": ["PUBLISH", "RETURN"],
+      "publishTo": "PUBLISHED",
+      "returnTo": "DRAFT",
+      "eventsByDecision": {"PUBLISH": "KnowledgePublished.v1", "RETURN": "KnowledgeReturnedForCorrection.v1"},
+      "correctionOwner": "RESOLVED_KNOWLEDGE_AUTHOR_POLICY"
+    }
+  ],
+  "stateMachines": {
+    "execution": ["PLANNING", "ACTIVE", "COMPLETION_REVIEW", "COMPLETED", "CLOSURE_IN_PROGRESS", "CLOSED"],
+    "benefit": ["OBLIGATION_PENDING_ACCEPTANCE", "BASELINE_REQUIRED", "PLAN_REQUIRED", "MEASUREMENT_PENDING", "MEASURED", "VERIFIED", "VALIDATED", "REALIZED", "CLOSED"],
+    "knowledge": ["DRAFT", "VALIDATED", "PUBLISHED"]
+  },
+  "invariants": [
+    "CANDIDATE_ASSIGNMENT_MEMBERSHIP_RECOMMENDATION_HANDOFF_DISTINCT",
+    "ASSIGNMENT_DOES_NOT_CREATE_MEMBERSHIP",
+    "ACCEPTED_MEMBERSHIP_REQUIRED_FOR_RECOMMENDATION",
+    "APPROVED_RECOMMENDATION_AND_BASELINE_REQUIRED_BEFORE_HANDOFF",
+    "EXECUTION_100_PERCENT_DOES_NOT_EQUAL_COMPLETION",
+    "EXECUTION_COMPLETED_DOES_NOT_EQUAL_CLOSED",
+    "EXECUTION_COMPLETION_REVIEW_IS_INDEPENDENT",
+    "BENEFIT_MEASURE_VERIFY_ATTRIBUTION_REALIZE_DISTINCT",
+    "NON_FINANCIAL_BENEFIT_FIRST_CLASS",
+    "BENEFIT_CLOSE_REQUIRES_PUBLISHED_KNOWLEDGE",
+    "KNOWLEDGE_VALIDATION_AND_PUBLICATION_AUTHORITIES_DISTINCT",
+    "LEGACY_BENEFIT_OWNER_IS_NOT_PRIMARY_KNOWLEDGE_AUTHOR_AUTHORITY"
+  ],
+  "runtimeGate": {
+    "p1ImplementationAllowedAfterAcrCiPass": true,
+    "networkPilotFinalPassRequiresRealOp04PilotEvidence": true,
+    "op05FinalPassCannotUseTestOnlyShortcut": true
+  }
+}
