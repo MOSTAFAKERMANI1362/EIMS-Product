@@ -163,7 +163,8 @@ public sealed record EvaluationPlanEnvelope(
     int PlanVersion,
     string State,
     DateTimeOffset CreatedAt,
-    string CorrelationId);
+    string CorrelationId,
+    DateTimeOffset? ReadyAt = null);
 
 public sealed record EvaluationAssignmentEnvelope(
     string AssignmentId,
@@ -175,7 +176,89 @@ public sealed record EvaluationAssignmentEnvelope(
     bool Required,
     string State,
     DateTimeOffset CreatedAt,
+    string CorrelationId,
+    int AssignmentVersion = 1,
+    DateTimeOffset? CompletedAt = null,
+    string? CompletedByPersonId = null,
+    string? AuthorityAssignmentId = null,
+    string? AssessmentSchemaId = null,
+    string? AssessmentSchemaVersion = null,
+    string? AssessmentOutcome = null);
+
+public sealed record AssessmentSnapshotEnvelope(
+    string SnapshotId,
+    string EvaluationAssignmentId,
+    string PlanId,
+    string IdeaId,
+    long IdeaVersion,
+    string Role,
+    string Scope,
+    string SchemaId,
+    string SchemaVersion,
+    string Outcome,
+    string NormalizedAssessmentJson,
+    string ContentSha256,
+    string PersonId,
+    string AuthorityAssignmentId,
+    DateTimeOffset CreatedAt,
     string CorrelationId);
+
+public sealed record G04AssessmentEnvelope(
+    string AssessmentId,
+    string PlanId,
+    string IdeaId,
+    long IdeaVersion,
+    int PlanVersion,
+    string State,
+    string RequiredAssignmentSnapshotSha256,
+    DateTimeOffset CreatedAt,
+    string CorrelationId);
+
+public sealed record EvaluationCompletionCommand(
+    string IdeaId,
+    long ExpectedIdeaVersion,
+    string PlanId,
+    int ExpectedPlanVersion,
+    string EvaluationAssignmentId,
+    int ExpectedAssignmentVersion,
+    string IdempotencyKey,
+    string CorrelationId,
+    string RawAssessmentJson,
+    string? RequestedScope = null);
+
+public sealed record AssessmentValidationResult(
+    bool Passed,
+    string Code,
+    string SchemaId,
+    string SchemaVersion,
+    string? Outcome,
+    string? NormalizedAssessmentJson,
+    string? Detail = null)
+{
+    public static AssessmentValidationResult Fail(string code, string detail = "") =>
+        new(false, code, string.Empty, string.Empty, null, null, detail);
+}
+
+public interface IEvaluatorAssessmentValidator
+{
+    AssessmentValidationResult Validate(string role, string rawAssessmentJson);
+}
+
+public sealed record EvaluationCompletionRequest(
+    EvaluationCompletionCommand Command,
+    AuthorityActor Actor,
+    AggregateSnapshot Idea,
+    EvaluationPlanEnvelope Plan,
+    EvaluationAssignmentEnvelope Assignment,
+    string IdempotencyFingerprint);
+
+public sealed record EvaluationCompletionCommit(
+    EvaluationAssignmentEnvelope AssignmentAfter,
+    EvaluationPlanEnvelope PlanAfter,
+    AssessmentSnapshotEnvelope AssessmentSnapshot,
+    G04AssessmentEnvelope? G04Assessment,
+    AuditEnvelope Audit,
+    IReadOnlyCollection<OutboxEnvelope> OutboxEvents);
 
 public sealed record MutationRequest(
     AuthorityCommand Command,
@@ -233,6 +316,15 @@ public interface IAuthorityStore
     ValueTask<AggregateSnapshot?> GetAggregateAsync(string aggregateId, CancellationToken cancellationToken = default);
     ValueTask<IdempotencyRecord?> GetIdempotencyAsync(string commandName, string aggregateId, string idempotencyKey, CancellationToken cancellationToken = default);
     ValueTask<AuthorityResult> CommitAsync(MutationRequest request, MutationCommit commit, CancellationToken cancellationToken = default);
+}
+
+public interface IEvaluationWorkflowStore : IAuthorityStore
+{
+    ValueTask<EvaluationPlanEnvelope?> GetEvaluationPlanAsync(string planId, CancellationToken cancellationToken = default);
+    ValueTask<EvaluationAssignmentEnvelope?> GetEvaluationAssignmentAsync(string evaluationAssignmentId, CancellationToken cancellationToken = default);
+    ValueTask<IReadOnlyCollection<EvaluationAssignmentEnvelope>> GetEvaluationAssignmentsForPlanAsync(string planId, CancellationToken cancellationToken = default);
+    ValueTask<G04AssessmentEnvelope?> GetG04AssessmentForPlanAsync(string planId, CancellationToken cancellationToken = default);
+    ValueTask<AuthorityResult> CommitEvaluationCompletionAsync(EvaluationCompletionRequest request, EvaluationCompletionCommit commit, CancellationToken cancellationToken = default);
 }
 
 public interface IRuleEvaluator
