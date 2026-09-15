@@ -10,6 +10,9 @@ builder.Services.AddSingleton<ICommandGateway, FailClosedCommandGateway>();
 
 var app = builder.Build();
 
+bool RuntimeGatewayBound() =>
+    app.Services.GetRequiredService<ICommandGateway>() is not FailClosedCommandGateway;
+
 PilotBindingSnapshot Snapshot()
 {
     string? Get(string key) => app.Configuration[key];
@@ -18,8 +21,11 @@ PilotBindingSnapshot Snapshot()
     if (!string.IsNullOrWhiteSpace(p4Path) && !Path.IsPathRooted(p4Path))
         p4Path = Path.GetFullPath(Path.Combine(app.Environment.ContentRootPath, p4Path));
 
+    // A config flag alone can never promote P1 to READY. The active DI gateway must also be a real bound gateway.
+    var p1RuntimeBound = Flag("Pilot:P1Authority:RuntimeBound") && RuntimeGatewayBound();
+
     return new PilotBindingSnapshot(
-        Flag("Pilot:P1Authority:RuntimeBound"),
+        p1RuntimeBound,
         Flag("Pilot:P1Authority:ContractTestsPassed"),
         Get("Pilot:P1Authority:PackagePath"),
         Get("Pilot:Oracle:Version"),
@@ -57,9 +63,10 @@ app.MapGet("/health", () =>
         p1P5BindingAdapterAvailable = true,
         p1P5BindingContract = P1P5BindingContract.Version,
         recoveredMutationCommandCount = P1P5BindingContract.RecoveredMutationCommandCount,
+        runtimeGatewayBound = RuntimeGatewayBound(),
         domainCommandAuthorityBound = snapshot.P1AuthorityRuntimeBound,
         activationState = snapshot.P1AuthorityRuntimeBound
-            ? "CONFIGURED_RUNTIME_BOUND"
+            ? "RUNTIME_COMPOSITION_ACTIVE"
             : "FAIL_CLOSED_UNTIL_P2_P3_COMPOSED"
     });
 });
@@ -105,7 +112,7 @@ app.MapPost("/api/authority/check", (HttpContext ctx) =>
     {
         code = "P5_AUTHORITY_CHECK_ENDPOINT_NOT_ACTIVATED",
         allowed = false,
-        message = "RuntimeBound configuration must only be enabled together with the approved production composition root."
+        message = "Runtime composition is active, but this diagnostic endpoint has no standalone authority query contract. Use an assignment-bound command path."
     }, statusCode: 503);
 });
 
