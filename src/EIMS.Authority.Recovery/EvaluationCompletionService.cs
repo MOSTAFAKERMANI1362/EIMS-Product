@@ -113,7 +113,6 @@ public sealed class EvaluationCompletionService(
             AssessmentOutcome = validation.Outcome
         };
 
-        // Only completion of an activated REQUIRED mission may make the Plan ready.
         var finalRequiredCompletion = assignment.Required
             && planAssignments
                 .Where(x => x.Required && !string.Equals(x.AssignmentId, assignment.AssignmentId, StringComparison.Ordinal))
@@ -138,6 +137,14 @@ public sealed class EvaluationCompletionService(
             if (await store.GetG04AssessmentForPlanAsync(plan.PlanId, cancellationToken) is not null)
                 return AuthorityResult.Deny(409, "P1_G04_ASSESSMENT_ALREADY_EXISTS", command.CorrelationId);
 
+            var routeFields = new[] { planAfter.DecisionRoute, planAfter.DecisionRouteKind, planAfter.DecisionMethod, planAfter.GovernanceProfileId, planAfter.GovernanceProfileVersion };
+            var anyRoute = routeFields.Any(x => !string.IsNullOrWhiteSpace(x));
+            var allRoute = routeFields.All(x => !string.IsNullOrWhiteSpace(x));
+            if (anyRoute && !allRoute)
+                return AuthorityResult.Deny(500, "P1_G04_ROUTE_CONTEXT_PARTIAL", command.CorrelationId);
+            if (allRoute && !G04RouteIntegrity.HasCompleteRoute(planAfter))
+                return AuthorityResult.Deny(500, "P1_G04_ROUTE_CONTEXT_INVALID", command.CorrelationId);
+
             var readinessMaterial = string.Join("\n", planAssignments
                 .Select(x => string.Equals(x.AssignmentId, assignment.AssignmentId, StringComparison.Ordinal) ? assignmentAfter : x)
                 .Where(x => x.Required)
@@ -145,7 +152,13 @@ public sealed class EvaluationCompletionService(
                 .Select(x => $"{x.AssignmentId}|{x.Role}|{x.State}|{x.AssignmentVersion}"));
             g04Assessment = new G04AssessmentEnvelope(
                 $"G04A-{Guid.NewGuid():N}", plan.PlanId, idea.AggregateId, idea.Version, planAfter.PlanVersion,
-                "PENDING", Sha256(readinessMaterial), now, command.CorrelationId);
+                "PENDING", Sha256(readinessMaterial), now, command.CorrelationId,
+                DecisionRoute: planAfter.DecisionRoute,
+                DecisionRouteKind: planAfter.DecisionRouteKind,
+                DecisionMethod: planAfter.DecisionMethod,
+                GovernanceProfileId: planAfter.GovernanceProfileId,
+                GovernanceProfileVersion: planAfter.GovernanceProfileVersion,
+                DecisionVersion: 0);
         }
 
         var audit = new AuditEnvelope(
@@ -171,17 +184,26 @@ public sealed class EvaluationCompletionService(
 
         if (g04Assessment is not null)
         {
+            var payload = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["ideaId"] = idea.AggregateId,
+                ["ideaVersion"] = idea.Version.ToString(CultureInfo.InvariantCulture),
+                ["evaluationPlanId"] = plan.PlanId,
+                ["evaluationPlanVersion"] = planAfter.PlanVersion.ToString(CultureInfo.InvariantCulture),
+                ["g04AssessmentId"] = g04Assessment.AssessmentId,
+                ["g04AssessmentState"] = g04Assessment.State
+            };
+            if (G04RouteIntegrity.HasCompleteRoute(g04Assessment))
+            {
+                payload["decisionRoute"] = g04Assessment.DecisionRoute!;
+                payload["decisionRouteKind"] = g04Assessment.DecisionRouteKind!;
+                payload["decisionMethod"] = g04Assessment.DecisionMethod!;
+                payload["governanceProfileId"] = g04Assessment.GovernanceProfileId!;
+                payload["governanceProfileVersion"] = g04Assessment.GovernanceProfileVersion!;
+            }
             events.Add(new OutboxEnvelope(
                 $"MSG-{Guid.NewGuid():N}", "G04DecisionAssessmentCreated.v1", idea.AggregateId, idea.Version,
-                command.CorrelationId, now, new Dictionary<string, string>(StringComparer.Ordinal)
-                {
-                    ["ideaId"] = idea.AggregateId,
-                    ["ideaVersion"] = idea.Version.ToString(CultureInfo.InvariantCulture),
-                    ["evaluationPlanId"] = plan.PlanId,
-                    ["evaluationPlanVersion"] = planAfter.PlanVersion.ToString(CultureInfo.InvariantCulture),
-                    ["g04AssessmentId"] = g04Assessment.AssessmentId,
-                    ["g04AssessmentState"] = g04Assessment.State
-                }));
+                command.CorrelationId, now, payload));
         }
 
         return await store.CommitEvaluationCompletionAsync(
