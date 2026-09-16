@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>EIMS.P1.Wave9.Portfolio.ContractTests</AssemblyName>
+    <RootNamespace>EIMS.P1.Wave9.Portfolio.ContractTests</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/EIMS.Authority.Recovery/EIMS.Authority.Recovery.csproj" />
+    <ProjectReference Include="../../src/EIMS.Persistence.Recovery/EIMS.Persistence.Recovery.csproj" />
+  </ItemGroup>
+</Project>

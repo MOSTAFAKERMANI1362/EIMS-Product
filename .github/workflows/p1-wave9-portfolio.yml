@@ -1,0 +1,63 @@
+name: P1 Wave 9 Portfolio Runtime
+
+on:
+  pull_request:
+    paths:
+      - 'recovery/p1-wave9/**'
+      - 'src/EIMS.Authority.Recovery/**'
+      - 'src/EIMS.Persistence.Recovery/**'
+      - 'tests/EIMS.P1.Wave9.Portfolio.ContractTests/**'
+      - 'tests/EIMS.P1.Wave9.Portfolio.EventHandler.ContractTests/**'
+      - '.github/workflows/p1-wave9-portfolio.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'recovery/p1-wave9/**'
+      - 'src/EIMS.Authority.Recovery/**'
+      - 'src/EIMS.Persistence.Recovery/**'
+      - 'tests/EIMS.P1.Wave9.Portfolio.ContractTests/**'
+      - 'tests/EIMS.P1.Wave9.Portfolio.EventHandler.ContractTests/**'
+      - '.github/workflows/p1-wave9-portfolio.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  portfolio-runtime:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10.0.302
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.302'
+
+      - name: Build Wave 9 Portfolio tests
+        shell: pwsh
+        run: dotnet build .\tests\EIMS.P1.Wave9.Portfolio.ContractTests\EIMS.P1.Wave9.Portfolio.ContractTests.csproj -c Release
+
+      - name: Run Wave 9 Portfolio tests
+        shell: pwsh
+        run: dotnet run --project .\tests\EIMS.P1.Wave9.Portfolio.ContractTests\EIMS.P1.Wave9.Portfolio.ContractTests.csproj -c Release --no-build
+
+      - name: Build Wave 9 automatic eligibility event-handler tests
+        shell: pwsh
+        run: dotnet build .\tests\EIMS.P1.Wave9.Portfolio.EventHandler.ContractTests\EIMS.P1.Wave9.Portfolio.EventHandler.ContractTests.csproj -c Release
+
+      - name: Run Wave 9 automatic eligibility event-handler tests
+        shell: pwsh
+        run: dotnet run --project .\tests\EIMS.P1.Wave9.Portfolio.EventHandler.ContractTests\EIMS.P1.Wave9.Portfolio.EventHandler.ContractTests.csproj -c Release --no-build
+
+      - name: Verify ACR-P0-008 machine decision remains valid
+        shell: pwsh
+        run: |
+          dotnet build .\tools\EIMS.ACR.P0.008.Verifier\EIMS.ACR.P0.008.Verifier.csproj -c Release
+          dotnet run --project .\tools\EIMS.ACR.P0.008.Verifier\EIMS.ACR.P0.008.Verifier.csproj -c Release --no-build -- .\architecture\decisions\ACR-P0-008_POST_G04_COMMAND_BINDING_v1.0.json
+
+      - name: Verify OP-05 preflight remains valid
+        shell: pwsh
+        run: |
+          dotnet build .\tools\EIMS.OP05.PreflightVerifier\EIMS.OP05.PreflightVerifier.csproj -c Release
+          dotnet run --project .\tools\EIMS.OP05.PreflightVerifier\EIMS.OP05.PreflightVerifier.csproj -c Release --no-build -- .\pilot\vertical-slice\op-05-test-matrix.v1.1.json
