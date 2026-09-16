@@ -1,0 +1,33 @@
+{
+  "artifactId": "P1-WAVE10-LOCAL-VALIDATION-EVIDENCE",
+  "version": "1.0",
+  "evidenceDate": "2026-09-16",
+  "environmentClass": "LAB_WINDOWS",
+  "sourceLogCommitted": false,
+  "sourceLogSha256": "e11cb23a007f798dc47fd4d61448871dff543ab034217c8df6fd80f0d8b21c23",
+  "reasonRawLogNotCommitted": "Raw transcript contains local machine/user/path metadata; only sanitized verification results are retained in GitHub.",
+  "dotnetSdk": "10.0.302",
+  "results": {
+    "wave10Lifecycle": "30/30 PASS",
+    "wave10HandoffIntakeAndScopeHardening": "8/8 PASS",
+    "acrP0008Verifier": "38/38 PASS",
+    "wave9PortfolioRegression": "22/22 PASS",
+    "p1P5Wave9BindingRegression": "18/18 PASS",
+    "wave10DedicatedTotal": "38/38 PASS",
+    "overallLocalValidation": "PASS"
+  },
+  "build": {
+    "wave10Lifecycle": "PASS",
+    "wave10HandoffIntake": "PASS",
+    "acrP0008Verifier": "PASS",
+    "wave9PortfolioRegression": "PASS",
+    "p1P5Wave9BindingRegression": "PASS"
+  },
+  "securityGate": "PENDING_LOCAL_SECURITY_VALIDATION",
+  "nonClaims": [
+    "This is LAB evidence, not OP-04 PILOT_ENVIRONMENT_EVIDENCE.",
+    "No physical Oracle readiness claim.",
+    "No live Domain/IIS readiness claim.",
+    "No Network Pilot readiness claim."
+  ]
+}
