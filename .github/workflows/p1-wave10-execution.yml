@@ -6,6 +6,7 @@ on:
       - 'src/EIMS.Authority.Recovery/**'
       - 'src/EIMS.Persistence.Recovery/**'
       - 'tests/EIMS.P1.Wave10.Execution.ContractTests/**'
+      - 'tests/EIMS.P1.Wave10.ExecutionIntake.ContractTests/**'
       - 'architecture/decisions/ACR-P0-008_POST_G04_COMMAND_BINDING_v1.0.json'
       - 'recovery/p1-wave10/**'
       - '.github/workflows/p1-wave10-execution.yml'
@@ -15,6 +16,7 @@ on:
       - 'src/EIMS.Authority.Recovery/**'
       - 'src/EIMS.Persistence.Recovery/**'
       - 'tests/EIMS.P1.Wave10.Execution.ContractTests/**'
+      - 'tests/EIMS.P1.Wave10.ExecutionIntake.ContractTests/**'
       - 'architecture/decisions/ACR-P0-008_POST_G04_COMMAND_BINDING_v1.0.json'
       - 'recovery/p1-wave10/**'
       - '.github/workflows/p1-wave10-execution.yml'
@@ -34,13 +36,21 @@ jobs:
         with:
           dotnet-version: '10.0.302'
 
-      - name: Build Wave 10 Execution tests
+      - name: Build Wave 10 Execution lifecycle tests
         shell: pwsh
         run: dotnet build .\tests\EIMS.P1.Wave10.Execution.ContractTests\EIMS.P1.Wave10.Execution.ContractTests.csproj -c Release
 
-      - name: Run Wave 10 Execution tests
+      - name: Run Wave 10 Execution lifecycle tests
         shell: pwsh
         run: dotnet run --project .\tests\EIMS.P1.Wave10.Execution.ContractTests\EIMS.P1.Wave10.Execution.ContractTests.csproj -c Release --no-build
+
+      - name: Build Wave 10 Execution handoff intake tests
+        shell: pwsh
+        run: dotnet build .\tests\EIMS.P1.Wave10.ExecutionIntake.ContractTests\EIMS.P1.Wave10.ExecutionIntake.ContractTests.csproj -c Release
+
+      - name: Run Wave 10 Execution handoff intake tests
+        shell: pwsh
+        run: dotnet run --project .\tests\EIMS.P1.Wave10.ExecutionIntake.ContractTests\EIMS.P1.Wave10.ExecutionIntake.ContractTests.csproj -c Release --no-build
 
       - name: Verify ACR-P0-008 machine decision remains valid
         shell: pwsh
