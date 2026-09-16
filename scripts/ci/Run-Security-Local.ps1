@@ -23,30 +23,70 @@ function Write-Section([string]$title) {
     Write-Host "============================================================"
 }
 
-function Invoke-Checked([string]$name, [scriptblock]$command) {
+function Invoke-NativeChecked([string]$name, [scriptblock]$command) {
     Write-Section $name
     & $command
     if ($LASTEXITCODE -ne 0) { throw "$name failed with exit code $LASTEXITCODE" }
     Write-Host "PASS: $name"
 }
 
+function Invoke-RepositoryPolicy {
+    Write-Section "Repository policy"
+
+    $forbiddenSuffixes = @('.pfx', '.p12', '.key', '.pem', '.dmp', '.bak', '.dump', '.sqlite')
+    $forbiddenPathParts = @('private-evidence', 'customer-data', 'secrets')
+    $forbiddenPrefixes = @('hr-export', 'oracle-export')
+    $violations = New-Object System.Collections.Generic.List[string]
+
+    Get-ChildItem -Path $repoRoot -Recurse -File -Force | ForEach-Object {
+        $full = $_.FullName
+        $rel = $full.Substring($repoRoot.Length).TrimStart('\', '/')
+        $parts = $rel -split '[\\/]'
+        $partsLower = @($parts | ForEach-Object { $_.ToLowerInvariant() })
+        $nameLower = $_.Name.ToLowerInvariant()
+        $suffixLower = $_.Extension.ToLowerInvariant()
+
+        if ($partsLower -contains '.git') { return }
+
+        foreach ($part in $forbiddenPathParts) {
+            if ($partsLower -contains $part) {
+                $violations.Add("forbidden path: $rel")
+                break
+            }
+        }
+
+        if ($forbiddenSuffixes -contains $suffixLower) {
+            $violations.Add("forbidden file type: $rel")
+        }
+
+        foreach ($prefix in $forbiddenPrefixes) {
+            if ($nameLower.StartsWith($prefix)) {
+                $violations.Add("forbidden data export filename: $rel")
+                break
+            }
+        }
+    }
+
+    if ($violations.Count -gt 0) {
+        Write-Host "EIMS repository policy check: FAIL"
+        $violations | Sort-Object -Unique | ForEach-Object { Write-Host " - $_" }
+        throw "Repository policy violations detected."
+    }
+
+    Write-Host "EIMS repository policy check: PASS"
+    Write-Host "No prohibited evidence/data file paths were detected."
+    Write-Host "PASS: Repository policy"
+}
+
 Start-Transcript -Path $ReportPath -Force | Out-Null
 try {
     Write-Section "EIMS Local Security Validation"
     Write-Host "Runner: LOCAL-WINDOWS"
-    Write-Host "ScriptVersion: SECURITY-LOCAL-1.0"
+    Write-Host "ScriptVersion: SECURITY-LOCAL-1.1"
     Write-Host "RepositoryRoot: $repoRoot"
     Write-Host "StartedAt: $(Get-Date -Format o)"
 
-    $python = Get-Command python -ErrorAction SilentlyContinue
-    if ($python) {
-        Invoke-Checked "Repository policy" { python .\scripts\ci\repository_policy_check.py }
-    }
-    else {
-        $py = Get-Command py -ErrorAction SilentlyContinue
-        if (-not $py) { throw "Python 3 is required for repository policy validation." }
-        Invoke-Checked "Repository policy" { py -3 .\scripts\ci\repository_policy_check.py }
-    }
+    Invoke-RepositoryPolicy
 
     $version = "0.71.0"
     $zipName = "trivy_${version}_windows-64bit.zip"
@@ -69,14 +109,14 @@ try {
         Expand-Archive -Path $zipPath -DestinationPath $trivyDir -Force
     }
 
-    Invoke-Checked "Trivy version" { & $trivyExe version }
-    Invoke-Checked "Trivy HIGH/CRITICAL vulnerability-secret-misconfig scan" {
-        & $trivyExe fs --scanners vuln,secret,misconfig --severity HIGH,CRITICAL --exit-code 1 --no-progress .
+    Invoke-NativeChecked "Trivy version" { & $trivyExe version }
+    Invoke-NativeChecked "Trivy HIGH/CRITICAL vulnerability-secret-misconfig scan" {
+        & $trivyExe fs --scanners vuln,secret,misconfig --severity HIGH,CRITICAL --exit-code 1 --no-progress --skip-dirs artifacts .
     }
 
     $sbom = Join-Path $reportDir "eims-sbom.cdx.json"
-    Invoke-Checked "Generate CycloneDX SBOM" {
-        & $trivyExe fs --format cyclonedx --output $sbom --no-progress .
+    Invoke-NativeChecked "Generate CycloneDX SBOM" {
+        & $trivyExe fs --format cyclonedx --output $sbom --no-progress --skip-dirs artifacts .
     }
 
     Write-Section "FINAL RESULT"
