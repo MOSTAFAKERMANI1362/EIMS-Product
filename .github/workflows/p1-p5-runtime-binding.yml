@@ -10,6 +10,7 @@ on:
       - 'src/EIMS.Identity.Rbac/**'
       - 'src/EIMS.Persistence.Recovery/**'
       - 'tests/EIMS.P1P5.RuntimeBinding.ContractTests/**'
+      - 'tests/EIMS.P1P5.Wave9PortfolioBinding.ContractTests/**'
       - '.github/workflows/p1-p5-runtime-binding.yml'
   push:
     branches: [ main ]
@@ -21,6 +22,7 @@ on:
       - 'src/EIMS.Identity.Rbac/**'
       - 'src/EIMS.Persistence.Recovery/**'
       - 'tests/EIMS.P1P5.RuntimeBinding.ContractTests/**'
+      - 'tests/EIMS.P1P5.Wave9PortfolioBinding.ContractTests/**'
       - '.github/workflows/p1-p5-runtime-binding.yml'
 
 permissions:
@@ -42,10 +44,18 @@ jobs:
         shell: pwsh
         run: dotnet build .\src\EIMS.PilotAssembly.Host\EIMS.PilotAssembly.Host.csproj -c Release
 
-      - name: Build P1-P5 runtime binding tests
+      - name: Build historical P1-P5 runtime binding tests
         shell: pwsh
         run: dotnet build .\tests\EIMS.P1P5.RuntimeBinding.ContractTests\EIMS.P1P5.RuntimeBinding.ContractTests.csproj -c Release
 
-      - name: Run P1-P5 runtime binding tests
+      - name: Run historical P1-P5 runtime binding tests
         shell: pwsh
         run: dotnet run --project .\tests\EIMS.P1P5.RuntimeBinding.ContractTests\EIMS.P1P5.RuntimeBinding.ContractTests.csproj -c Release --no-build
+
+      - name: Build Wave 9 Portfolio P1-P5 binding tests
+        shell: pwsh
+        run: dotnet build .\tests\EIMS.P1P5.Wave9PortfolioBinding.ContractTests\EIMS.P1P5.Wave9PortfolioBinding.ContractTests.csproj -c Release
+
+      - name: Run Wave 9 Portfolio P1-P5 binding tests
+        shell: pwsh
+        run: dotnet run --project .\tests\EIMS.P1P5.Wave9PortfolioBinding.ContractTests\EIMS.P1P5.Wave9PortfolioBinding.ContractTests.csproj -c Release --no-build
