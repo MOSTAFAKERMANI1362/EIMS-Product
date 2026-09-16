@@ -34,7 +34,7 @@ Start-Transcript -Path $ReportPath -Force | Out-Null
 try {
     Write-Section "EIMS P1-P5 Wave12 Local Validation"
     Write-Host "Runner: LOCAL-WINDOWS"
-    Write-Host "ScriptVersion: WAVE12-LOCAL-1.0"
+    Write-Host "ScriptVersion: WAVE12-LOCAL-1.1"
     Write-Host "RepositoryRoot: $repoRoot"
     Write-Host "StartedAt: $(Get-Date -Format o)"
 
@@ -68,6 +68,13 @@ try {
         dotnet run --project .\tests\EIMS.P1P5.Wave12ExecutionBenefitBinding.ContractTests\EIMS.P1P5.Wave12ExecutionBenefitBinding.ContractTests.csproj -c Release --no-build
     }
 
+    Invoke-Checked "Build Wave12 real composition tests" {
+        dotnet build .\tests\EIMS.P1P5.Wave12Composition.ContractTests\EIMS.P1P5.Wave12Composition.ContractTests.csproj -c Release
+    }
+    Invoke-Checked "Run Wave12 real composition tests" {
+        dotnet run --project .\tests\EIMS.P1P5.Wave12Composition.ContractTests\EIMS.P1P5.Wave12Composition.ContractTests.csproj -c Release --no-build
+    }
+
     Invoke-Checked "Run Wave10 Execution lifecycle regression" {
         dotnet run --project .\tests\EIMS.P1.Wave10.Execution.ContractTests\EIMS.P1.Wave10.Execution.ContractTests.csproj -c Release
     }
@@ -94,7 +101,8 @@ try {
     Write-Host "Binding contract: P1P5-1.2.0"
     Write-Host "Recovered user mutations: 29"
     Write-Host "Dedicated Wave12 binding tests: 19"
-    Write-Host "Expected combined control/test evidence: 160 checks across historical binding, Wave9, Wave10, Wave11 and ACR-P0-008 suites"
+    Write-Host "Real Wave12 composition tests: 4"
+    Write-Host "Expected combined control/test evidence: 164 checks across historical binding, Wave9, Wave12 binding/composition, Wave10, Wave11 and ACR-P0-008 suites"
     Write-Host "CompletedAt: $(Get-Date -Format o)"
     Write-Host "Report: $ReportPath"
     exit 0
