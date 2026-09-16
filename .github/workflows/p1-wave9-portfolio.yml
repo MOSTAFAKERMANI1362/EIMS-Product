@@ -7,6 +7,7 @@ on:
       - 'src/EIMS.Authority.Recovery/**'
       - 'src/EIMS.Persistence.Recovery/**'
       - 'tests/EIMS.P1.Wave9.Portfolio.ContractTests/**'
+      - 'tests/EIMS.P1.Wave9.Portfolio.EventHandler.ContractTests/**'
       - '.github/workflows/p1-wave9-portfolio.yml'
   push:
     branches: [ main ]
@@ -15,6 +16,7 @@ on:
       - 'src/EIMS.Authority.Recovery/**'
       - 'src/EIMS.Persistence.Recovery/**'
       - 'tests/EIMS.P1.Wave9.Portfolio.ContractTests/**'
+      - 'tests/EIMS.P1.Wave9.Portfolio.EventHandler.ContractTests/**'
       - '.github/workflows/p1-wave9-portfolio.yml'
 
 permissions:
@@ -39,6 +41,14 @@ jobs:
       - name: Run Wave 9 Portfolio tests
         shell: pwsh
         run: dotnet run --project .\tests\EIMS.P1.Wave9.Portfolio.ContractTests\EIMS.P1.Wave9.Portfolio.ContractTests.csproj -c Release --no-build
+
+      - name: Build Wave 9 automatic eligibility event-handler tests
+        shell: pwsh
+        run: dotnet build .\tests\EIMS.P1.Wave9.Portfolio.EventHandler.ContractTests\EIMS.P1.Wave9.Portfolio.EventHandler.ContractTests.csproj -c Release
+
+      - name: Run Wave 9 automatic eligibility event-handler tests
+        shell: pwsh
+        run: dotnet run --project .\tests\EIMS.P1.Wave9.Portfolio.EventHandler.ContractTests\EIMS.P1.Wave9.Portfolio.EventHandler.ContractTests.csproj -c Release --no-build
 
       - name: Verify ACR-P0-008 machine decision remains valid
         shell: pwsh
