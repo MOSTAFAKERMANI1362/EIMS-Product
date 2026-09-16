@@ -1,6 +1,6 @@
 {
   "artifactId": "P1-WAVE10-LOCAL-VALIDATION-EVIDENCE",
-  "version": "1.0",
+  "version": "1.1",
   "evidenceDate": "2026-09-16",
   "environmentClass": "LAB_WINDOWS",
   "sourceLogCommitted": false,
@@ -23,9 +23,27 @@
     "wave9PortfolioRegression": "PASS",
     "p1P5Wave9BindingRegression": "PASS"
   },
-  "securityGate": "PENDING_LOCAL_SECURITY_VALIDATION",
+  "security": {
+    "repositoryPolicy": "PASS",
+    "trivyVersion": "0.71.0",
+    "trivyWindowsBinarySha256Verified": true,
+    "trivyFullScan": "NOT_EXECUTED_NETWORK_BLOCKED",
+    "trivyNetworkEvidence": [
+      "mirror.gcr.io vulnerability DB request returned HTTP 403 before scan",
+      "ghcr.io vulnerability DB request failed with TLS handshake timeout before scan"
+    ],
+    "differentialSecurityReview": "PASS",
+    "newExternalPackageReferences": 0,
+    "secretsOrCredentialsAddedInDiff": false,
+    "authorityScopeIdempotencyAtomicityReview": "PASS",
+    "workflowActionsPinnedToCommitSha": true,
+    "checkoutPersistCredentials": false
+  },
+  "securityGate": "DIFFERENTIAL_REVIEW_PASS_TRIVY_DEFERRED_NETWORK_EXCEPTION",
+  "securityGateInterpretation": "This does not claim a successful Trivy vulnerability scan. Merge acceptance is based on prior hosted Security PASS before hardening, zero new external packages, successful repository policy, full local Wave10/regression coverage, and independent differential security review of the post-green changes. A full Trivy scan remains required when network access to the vulnerability DB is available.",
   "nonClaims": [
     "This is LAB evidence, not OP-04 PILOT_ENVIRONMENT_EVIDENCE.",
+    "No successful full Trivy vulnerability scan is claimed for this evidence package.",
     "No physical Oracle readiness claim.",
     "No live Domain/IIS readiness claim.",
     "No Network Pilot readiness claim."
