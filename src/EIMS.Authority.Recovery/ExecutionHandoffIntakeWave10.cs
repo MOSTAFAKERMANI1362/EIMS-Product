@@ -62,6 +62,8 @@ public interface IExecutionHandoffIntakeStoreWave10
 /// System-only consumer for the authoritative Wave 9 ExecutionCreatedFromRecommendation.v1 event.
 /// The event is a trigger, not the source of full domain data. Full handoff facts are reloaded from
 /// a server-side provider so missing/minimal event payload cannot become authority.
+/// Exact replay is resolved before source reload, so a committed retry does not depend on current
+/// source-provider availability.
 /// </summary>
 public sealed class ExecutionHandoffEventHandlerWave10(
     IExecutionWave10Store executionStore,
@@ -85,16 +87,11 @@ public sealed class ExecutionHandoffEventHandlerWave10(
             return AuthorityResult.Deny(400, "P1_EXECUTION_HANDOFF_EVENT_INVALID", sourceEvent.CorrelationId ?? string.Empty);
 
         var executionId = sourceEvent.AggregateId.Trim();
-        var source = await sourceProvider.ResolveAsync(executionId, cancellationToken);
-        if (!ValidSource(source, executionId))
-            return AuthorityResult.Deny(409, "P1_EXECUTION_HANDOFF_SOURCE_EVIDENCE_REQUIRED", sourceEvent.CorrelationId);
-        var resolved = source!;
-
-        if (!EventPayloadConsistent(sourceEvent.Payload, resolved))
-            return AuthorityResult.Deny(409, "P1_EXECUTION_HANDOFF_EVENT_SOURCE_MISMATCH", sourceEvent.CorrelationId);
-
-        var fingerprint = Fingerprint(sourceEvent.MessageId, resolved);
-        var prior = await intakeStore.GetExecutionIntakeIdempotencyAsync(executionId, sourceEvent.MessageId, cancellationToken);
+        var fingerprint = EventFingerprint(sourceEvent);
+        var prior = await intakeStore.GetExecutionIntakeIdempotencyAsync(
+            executionId,
+            sourceEvent.MessageId,
+            cancellationToken);
         if (prior is not null)
         {
             if (!string.Equals(prior.Fingerprint, fingerprint, StringComparison.Ordinal))
@@ -106,6 +103,14 @@ public sealed class ExecutionHandoffEventHandlerWave10(
                 CorrelationId = sourceEvent.CorrelationId
             };
         }
+
+        var source = await sourceProvider.ResolveAsync(executionId, cancellationToken);
+        if (!ValidSource(source, executionId))
+            return AuthorityResult.Deny(409, "P1_EXECUTION_HANDOFF_SOURCE_EVIDENCE_REQUIRED", sourceEvent.CorrelationId);
+        var resolved = source!;
+
+        if (!EventPayloadConsistent(sourceEvent.Payload, resolved))
+            return AuthorityResult.Deny(409, "P1_EXECUTION_HANDOFF_EVENT_SOURCE_MISMATCH", sourceEvent.CorrelationId);
 
         var existing = await executionStore.GetExecutionAsync(executionId, cancellationToken);
         if (existing is not null)
@@ -201,20 +206,20 @@ public sealed class ExecutionHandoffEventHandlerWave10(
         && string.Equals(execution.IdeaId, source.IdeaId, StringComparison.Ordinal)
         && execution.ApprovedIdeaVersion == source.ApprovedIdeaVersion;
 
-    private static string Fingerprint(string sourceMessageId, ExecutionHandoffSourceEvidenceWave10 source)
+    private static string EventFingerprint(OutboxEnvelope sourceEvent)
     {
+        var payload = sourceEvent.Payload is null
+            ? string.Empty
+            : string.Join(";", sourceEvent.Payload
+                .OrderBy(x => x.Key, StringComparer.Ordinal)
+                .Select(x => x.Key + "=" + x.Value));
         var raw = string.Join('|', new[]
         {
-            sourceMessageId,
-            source.ExecutionId,
-            source.RecommendationId,
-            source.CandidateId,
-            source.IdeaId,
-            source.ApprovedIdeaVersion.ToString(),
-            source.State,
-            source.Version.ToString(),
-            source.EvidenceRef,
-            source.EvidenceVersion
+            sourceEvent.MessageId,
+            sourceEvent.EventName,
+            sourceEvent.AggregateId,
+            sourceEvent.AggregateVersion.ToString(),
+            payload
         });
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(raw))).ToLowerInvariant();
     }
