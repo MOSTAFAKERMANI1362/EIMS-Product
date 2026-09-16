@@ -58,7 +58,7 @@ return passed == tests.Count ? 0 : 1;
 static void Catalog()
 {
     var catalog = new RecoveredApiCommandCatalogWave11();
-    Assert(catalog.All.Count == RecoveredApiCommandCatalogWave11.Wave11RecoveredMutationCommandCount, "catalog count");
+    Assert(catalog.All.Count(x => x.MutationContractRecovered) == RecoveredApiCommandCatalogWave11.Wave11RecoveredMutationCommandCount, "catalog recovered mutation count");
     var names = new[] { "benefits.accept", "benefits.set-baseline", "benefits.approve-measurement-plan", "benefits.measure", "benefits.verify", "benefits.attribution", "benefits.realize", "benefits.close" };
     foreach (var name in names)
         Assert(catalog.TryGet(name, out var p) && p.MutationContractRecovered && p.EventContractRecovered, name);
