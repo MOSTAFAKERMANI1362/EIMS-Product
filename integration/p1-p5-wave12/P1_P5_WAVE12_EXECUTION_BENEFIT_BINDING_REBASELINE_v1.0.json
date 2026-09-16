@@ -1,0 +1,83 @@
+{
+  "artifactId": "P1-P5-WAVE12-EXECUTION-BENEFIT-BINDING-REBASELINE",
+  "version": "1.0",
+  "bindingContract": "P1P5-1.2.0",
+  "baseMainCommit": "fc46c2455922986709ffee14159dafc5bdd4a2cc",
+  "recoveredUserMutationCount": 29,
+  "domains": {
+    "prePortfolioHistorical": 6,
+    "portfolio": 6,
+    "execution": 9,
+    "benefit": 8
+  },
+  "executionBinding": {
+    "executorInterface": "IP1ExecutionExecutor",
+    "productionExecutor": "ExecutionExecutor",
+    "requiredFacade": "ExecutionServiceWave10Guarded",
+    "innerExecutionServiceAllowedDirectlyInP5": false,
+    "commands": [
+      "executions.approve-charter",
+      "executions.approve-plan-baseline",
+      "executions.start",
+      "executions.progress",
+      "executions.submit-completion",
+      "executions.completion-review",
+      "executions.request-benefit-handoff",
+      "executions.begin-closure",
+      "executions.close"
+    ]
+  },
+  "benefitBinding": {
+    "executorInterface": "IP1BenefitExecutor",
+    "productionExecutor": "BenefitExecutor",
+    "service": "BenefitServiceWave11",
+    "commands": [
+      "benefits.accept",
+      "benefits.set-baseline",
+      "benefits.approve-measurement-plan",
+      "benefits.measure",
+      "benefits.verify",
+      "benefits.attribution",
+      "benefits.realize",
+      "benefits.close"
+    ]
+  },
+  "systemOnlyNotUserInvokable": [
+    "IdeaApprovedForPortfolio.v1 eligibility handler",
+    "ExecutionCreatedFromRecommendation.v1 intake handler",
+    "BenefitObligationCreated.v1 intake handler"
+  ],
+  "authorityBoundary": {
+    "identitySource": "P3_SERVER_RESOLVED_WINDOWS_IDENTITY",
+    "assignmentRequired": true,
+    "clientRoleTrusted": false,
+    "clientScopeGrantTrusted": false,
+    "clientOwnershipTrusted": false,
+    "expectedVersionRequired": true,
+    "idempotencyKeyRequired": true,
+    "correlationIdRequired": true,
+    "requestedScopeCanWidenAuthority": false,
+    "executionOwnershipResolvedServerSide": true,
+    "benefitOwnershipResolvedServerSide": true,
+    "executionCompletionReviewerSodPreserved": true,
+    "benefitVerifierSodPreserved": true
+  },
+  "failClosed": {
+    "missingExecutionExecutor": true,
+    "missingBenefitExecutor": true,
+    "legacyExecutionsPrepare": true,
+    "unrecoveredCommands": true
+  },
+  "hostActivation": {
+    "pilotHostGatewayRemainsFailClosed": true,
+    "reason": "Physical P2 persistence, authoritative live P3 directory and OP-04 evidence are not yet available."
+  },
+  "explicitNonClaims": [
+    "No physical Oracle binding",
+    "No live Domain/IIS activation",
+    "No OP-04 readiness claim",
+    "No Network Pilot readiness claim",
+    "No Knowledge runtime in Wave12",
+    "Frozen v6.360 unchanged"
+  ]
+}
