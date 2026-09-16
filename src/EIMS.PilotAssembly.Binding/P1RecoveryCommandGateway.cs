@@ -25,6 +25,11 @@ public interface IP1G04FinalDecisionExecutor
     ValueTask<AuthorityResult> ExecuteAsync(G04FinalDecisionCommand command, AuthorityActor actor, CancellationToken cancellationToken = default);
 }
 
+public interface IP1PortfolioExecutor
+{
+    ValueTask<AuthorityResult> ExecuteAsync(PortfolioCommandWave9 command, AuthorityActor actor, CancellationToken cancellationToken = default);
+}
+
 public sealed class AuthorityKernelExecutor(AuthorityKernel kernel) : IP1AuthorityKernelExecutor
 {
     public ValueTask<AuthorityResult> ExecuteAsync(AuthorityCommand command, AuthorityActor actor, CancellationToken cancellationToken = default) =>
@@ -49,10 +54,17 @@ public sealed class G04FinalDecisionExecutor(G04FinalDecisionServiceWave8 servic
         service.DecideAsync(command, actor, cancellationToken);
 }
 
+public sealed class PortfolioExecutor(PortfolioServiceWave9 service) : IP1PortfolioExecutor
+{
+    public ValueTask<AuthorityResult> ExecuteAsync(PortfolioCommandWave9 command, AuthorityActor actor, CancellationToken cancellationToken = default) =>
+        service.ExecuteAsync(command, actor, cancellationToken);
+}
+
 /// <summary>
-/// P5 -> P3 -> P1 binding adapter for the six mutation commands recovered through Wave 8.
+/// P5 -> P3 -> P1 binding adapter for the twelve user mutation commands recovered through Wave 9.
 /// The client supplies only selectors (assignmentId/requestedScope); P3 resolves the authoritative
 /// Person/Role/Scope from the server-side directory. Commands not recovered for mutation remain fail-closed.
+/// System-only Portfolio eligibility is intentionally not exposed through this command gateway.
 /// </summary>
 public sealed class P1RecoveryCommandGateway(
     WindowsIdentityRbacResolver identityResolver,
@@ -60,15 +72,27 @@ public sealed class P1RecoveryCommandGateway(
     IP1EvaluationCompletionExecutor evaluationCompletion,
     IP1G04VoteExecutor g04Vote,
     IP1G04FinalDecisionExecutor g04FinalDecision,
-    ICommandPolicyCatalog? catalog = null) : ICommandGateway
+    ICommandPolicyCatalog? catalog = null,
+    IP1PortfolioExecutor? portfolio = null) : ICommandGateway
 {
-    private readonly ICommandPolicyCatalog _catalog = catalog ?? new RecoveredApiCommandCatalogWave8();
+    private readonly ICommandPolicyCatalog _catalog = catalog ?? new RecoveredApiCommandCatalogWave9();
+    private readonly IP1PortfolioExecutor? _portfolio = portfolio;
 
     private static readonly HashSet<string> KernelCommands = new(StringComparer.OrdinalIgnoreCase)
     {
         "needs.submit-g03",
         "needs.g03-decision",
         "ideas.submit-g04"
+    };
+
+    private static readonly HashSet<string> PortfolioCommands = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "portfolio.assign-candidate",
+        "portfolio.membership-decision",
+        "portfolio.generate-execution-recommendation",
+        "portfolio.approve-execution-recommendation",
+        "portfolio.bind-approved-baseline",
+        "portfolio.request-execution-handoff"
     };
 
     public async Task<CommandAttemptResult> ExecuteAsync(CommandAttempt attempt, CancellationToken cancellationToken = default)
@@ -188,6 +212,28 @@ public sealed class P1RecoveryCommandGateway(
                             attempt.IdempotencyKey!,
                             attempt.CorrelationId!,
                             requestedScope),
+                        resolved.Actor,
+                        cancellationToken);
+                }
+                else if (PortfolioCommands.Contains(commandName))
+                {
+                    if (_portfolio is null)
+                        return Deny(503, "P5_COMMAND_DISPATCH_NOT_BOUND",
+                            "Portfolio mutation is recovered but the P1 Wave 9 Portfolio executor is not composed into this gateway.");
+
+                    result = await _portfolio.ExecuteAsync(
+                        new PortfolioCommandWave9(
+                            commandName,
+                            RequireString(body.RootElement, "candidateId"),
+                            RequireExpectedVersion(attempt),
+                            attempt.IdempotencyKey!,
+                            attempt.CorrelationId!,
+                            PortfolioId: String(body.RootElement, "portfolioId"),
+                            MembershipDecision: String(body.RootElement, "membershipDecision"),
+                            RecommendationId: String(body.RootElement, "recommendationId"),
+                            GovernanceDecisionRef: String(body.RootElement, "governanceDecisionRef"),
+                            ApprovedBaselineRef: String(body.RootElement, "approvedBaselineRef"),
+                            RequestedScope: requestedScope),
                         resolved.Actor,
                         cancellationToken);
                 }
