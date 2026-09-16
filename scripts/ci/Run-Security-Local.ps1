@@ -82,7 +82,7 @@ Start-Transcript -Path $ReportPath -Force | Out-Null
 try {
     Write-Section "EIMS Local Security Validation"
     Write-Host "Runner: LOCAL-WINDOWS"
-    Write-Host "ScriptVersion: SECURITY-LOCAL-1.1"
+    Write-Host "ScriptVersion: SECURITY-LOCAL-1.2"
     Write-Host "RepositoryRoot: $repoRoot"
     Write-Host "StartedAt: $(Get-Date -Format o)"
 
@@ -95,7 +95,11 @@ try {
     $trivyDir = Join-Path $toolsRoot "trivy-$version"
     $zipPath = Join-Path $toolsRoot $zipName
     $trivyExe = Join-Path $trivyDir "trivy.exe"
+    $trivyCache = Join-Path $toolsRoot "trivy-cache-ghcr"
+    $dbRepository = "ghcr.io/aquasecurity/trivy-db:2"
+    $checksRepository = "ghcr.io/aquasecurity/trivy-checks:1"
     New-Item -ItemType Directory -Path $toolsRoot -Force | Out-Null
+    New-Item -ItemType Directory -Path $trivyCache -Force | Out-Null
 
     if (-not (Test-Path $trivyExe)) {
         Write-Section "Download Trivy v$version"
@@ -110,17 +114,24 @@ try {
     }
 
     Invoke-NativeChecked "Trivy version" { & $trivyExe version }
+
+    Invoke-NativeChecked "Download vulnerability DB from GHCR" {
+        & $trivyExe image --cache-dir $trivyCache --db-repository $dbRepository --download-db-only --no-progress
+    }
+
     Invoke-NativeChecked "Trivy HIGH/CRITICAL vulnerability-secret-misconfig scan" {
-        & $trivyExe fs --scanners vuln,secret,misconfig --severity HIGH,CRITICAL --exit-code 1 --no-progress --skip-dirs artifacts .
+        & $trivyExe fs --cache-dir $trivyCache --db-repository $dbRepository --checks-bundle-repository $checksRepository --skip-db-update --scanners vuln,secret,misconfig --severity HIGH,CRITICAL --exit-code 1 --no-progress --skip-dirs artifacts .
     }
 
     $sbom = Join-Path $reportDir "eims-sbom.cdx.json"
     Invoke-NativeChecked "Generate CycloneDX SBOM" {
-        & $trivyExe fs --format cyclonedx --output $sbom --no-progress --skip-dirs artifacts .
+        & $trivyExe fs --cache-dir $trivyCache --db-repository $dbRepository --checks-bundle-repository $checksRepository --skip-db-update --format cyclonedx --output $sbom --no-progress --skip-dirs artifacts .
     }
 
     Write-Section "FINAL RESULT"
     Write-Host "PASS: EIMS LOCAL SECURITY VALIDATION"
+    Write-Host "DB repository: $dbRepository"
+    Write-Host "Checks repository: $checksRepository"
     Write-Host "Report: $ReportPath"
     Write-Host "SBOM: $sbom"
     Write-Host "CompletedAt: $(Get-Date -Format o)"
