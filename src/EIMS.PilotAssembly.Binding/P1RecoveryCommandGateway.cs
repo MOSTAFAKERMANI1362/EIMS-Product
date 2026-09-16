@@ -30,6 +30,16 @@ public interface IP1PortfolioExecutor
     ValueTask<AuthorityResult> ExecuteAsync(PortfolioCommandWave9 command, AuthorityActor actor, CancellationToken cancellationToken = default);
 }
 
+public interface IP1ExecutionExecutor
+{
+    ValueTask<AuthorityResult> ExecuteAsync(ExecutionCommandWave10 command, AuthorityActor actor, CancellationToken cancellationToken = default);
+}
+
+public interface IP1BenefitExecutor
+{
+    ValueTask<AuthorityResult> ExecuteAsync(BenefitCommandWave11 command, AuthorityActor actor, CancellationToken cancellationToken = default);
+}
+
 public sealed class AuthorityKernelExecutor(AuthorityKernel kernel) : IP1AuthorityKernelExecutor
 {
     public ValueTask<AuthorityResult> ExecuteAsync(AuthorityCommand command, AuthorityActor actor, CancellationToken cancellationToken = default) =>
@@ -61,10 +71,27 @@ public sealed class PortfolioExecutor(PortfolioServiceWave9 service) : IP1Portfo
 }
 
 /// <summary>
-/// P5 -> P3 -> P1 binding adapter for the twelve user mutation commands recovered through Wave 9.
-/// The client supplies only selectors (assignmentId/requestedScope); P3 resolves the authoritative
-/// Person/Role/Scope from the server-side directory. Commands not recovered for mutation remain fail-closed.
-/// System-only Portfolio eligibility is intentionally not exposed through this command gateway.
+/// Production Execution binding intentionally wraps the guarded Wave10 facade, never the inner service.
+/// </summary>
+public sealed class ExecutionExecutor(ExecutionServiceWave10Guarded service) : IP1ExecutionExecutor
+{
+    public ValueTask<AuthorityResult> ExecuteAsync(ExecutionCommandWave10 command, AuthorityActor actor, CancellationToken cancellationToken = default) =>
+        service.ExecuteAsync(command, actor, cancellationToken);
+}
+
+public sealed class BenefitExecutor(BenefitServiceWave11 service) : IP1BenefitExecutor
+{
+    public ValueTask<AuthorityResult> ExecuteAsync(BenefitCommandWave11 command, AuthorityActor actor, CancellationToken cancellationToken = default) =>
+        service.ExecuteAsync(command, actor, cancellationToken);
+}
+
+/// <summary>
+/// P5 -> P3 -> P1 binding adapter for the twenty-nine user mutation commands recovered through Wave 11.
+/// The client supplies only selectors (assignmentId/requestedScope); P3 resolves authoritative
+/// Person/Role/Scope from the server-side directory. Client ownership claims are never authority.
+/// Commands not recovered for mutation remain fail-closed.
+/// System-only Portfolio eligibility, Execution handoff intake and Benefit obligation intake are intentionally
+/// excluded from this user-command gateway.
 /// </summary>
 public sealed class P1RecoveryCommandGateway(
     WindowsIdentityRbacResolver identityResolver,
@@ -73,10 +100,14 @@ public sealed class P1RecoveryCommandGateway(
     IP1G04VoteExecutor g04Vote,
     IP1G04FinalDecisionExecutor g04FinalDecision,
     ICommandPolicyCatalog? catalog = null,
-    IP1PortfolioExecutor? portfolio = null) : ICommandGateway
+    IP1PortfolioExecutor? portfolio = null,
+    IP1ExecutionExecutor? execution = null,
+    IP1BenefitExecutor? benefit = null) : ICommandGateway
 {
-    private readonly ICommandPolicyCatalog _catalog = catalog ?? new RecoveredApiCommandCatalogWave9();
+    private readonly ICommandPolicyCatalog _catalog = catalog ?? new RecoveredApiCommandCatalogWave11();
     private readonly IP1PortfolioExecutor? _portfolio = portfolio;
+    private readonly IP1ExecutionExecutor? _execution = execution;
+    private readonly IP1BenefitExecutor? _benefit = benefit;
 
     private static readonly HashSet<string> KernelCommands = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -93,6 +124,31 @@ public sealed class P1RecoveryCommandGateway(
         "portfolio.approve-execution-recommendation",
         "portfolio.bind-approved-baseline",
         "portfolio.request-execution-handoff"
+    };
+
+    private static readonly HashSet<string> ExecutionCommands = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "executions.approve-charter",
+        "executions.approve-plan-baseline",
+        "executions.start",
+        "executions.progress",
+        "executions.submit-completion",
+        "executions.completion-review",
+        "executions.request-benefit-handoff",
+        "executions.begin-closure",
+        "executions.close"
+    };
+
+    private static readonly HashSet<string> BenefitCommands = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "benefits.accept",
+        "benefits.set-baseline",
+        "benefits.approve-measurement-plan",
+        "benefits.measure",
+        "benefits.verify",
+        "benefits.attribution",
+        "benefits.realize",
+        "benefits.close"
     };
 
     public async Task<CommandAttemptResult> ExecuteAsync(CommandAttempt attempt, CancellationToken cancellationToken = default)
@@ -237,6 +293,51 @@ public sealed class P1RecoveryCommandGateway(
                         resolved.Actor,
                         cancellationToken);
                 }
+                else if (ExecutionCommands.Contains(commandName))
+                {
+                    if (_execution is null)
+                        return Deny(503, "P5_COMMAND_DISPATCH_NOT_BOUND",
+                            "Execution mutation is recovered but the guarded P1 Wave 10 Execution executor is not composed into this gateway.");
+
+                    result = await _execution.ExecuteAsync(
+                        new ExecutionCommandWave10(
+                            commandName,
+                            RequireString(body.RootElement, "executionId"),
+                            RequireExpectedVersion(attempt),
+                            attempt.IdempotencyKey!,
+                            attempt.CorrelationId!,
+                            RequestedScope: requestedScope,
+                            ProgressPercent: OptionalInt32(body.RootElement, "progressPercent"),
+                            CompletionDossierRef: String(body.RootElement, "completionDossierRef"),
+                            CompletionDecision: String(body.RootElement, "completionDecision"),
+                            ReviewNote: String(body.RootElement, "reviewNote")),
+                        resolved.Actor,
+                        cancellationToken);
+                }
+                else if (BenefitCommands.Contains(commandName))
+                {
+                    if (_benefit is null)
+                        return Deny(503, "P5_COMMAND_DISPATCH_NOT_BOUND",
+                            "Benefit mutation is recovered but the P1 Wave 11 Benefit executor is not composed into this gateway.");
+
+                    result = await _benefit.ExecuteAsync(
+                        new BenefitCommandWave11(
+                            commandName,
+                            RequireString(body.RootElement, "benefitId"),
+                            RequireExpectedVersion(attempt),
+                            attempt.IdempotencyKey!,
+                            attempt.CorrelationId!,
+                            RequestedScope: requestedScope,
+                            BaselineEvidenceRef: String(body.RootElement, "baselineEvidenceRef"),
+                            TargetEvidenceRef: String(body.RootElement, "targetEvidenceRef"),
+                            MeasurementPlanRef: String(body.RootElement, "measurementPlanRef"),
+                            MeasurementDossierRef: String(body.RootElement, "measurementDossierRef"),
+                            VerificationDossierRef: String(body.RootElement, "verificationDossierRef"),
+                            AttributionDossierRef: String(body.RootElement, "attributionDossierRef"),
+                            RealizationDossierRef: String(body.RootElement, "realizationDossierRef")),
+                        resolved.Actor,
+                        cancellationToken);
+                }
                 else
                 {
                     return Deny(503, "P5_COMMAND_DISPATCH_NOT_BOUND",
@@ -277,6 +378,15 @@ public sealed class P1RecoveryCommandGateway(
     private static int RequireInt32(JsonElement root, string name)
     {
         if (!root.TryGetProperty(name, out var value) || value.ValueKind != JsonValueKind.Number || !value.TryGetInt32(out var parsed))
+            throw new CommandEnvelopeException("P5_COMMAND_FIELD_TYPE_INVALID", $"Command field '{name}' must be an integer.");
+        return parsed;
+    }
+
+    private static int? OptionalInt32(JsonElement root, string name)
+    {
+        if (!root.TryGetProperty(name, out var value) || value.ValueKind == JsonValueKind.Null)
+            return null;
+        if (value.ValueKind != JsonValueKind.Number || !value.TryGetInt32(out var parsed))
             throw new CommandEnvelopeException("P5_COMMAND_FIELD_TYPE_INVALID", $"Command field '{name}' must be an integer.");
         return parsed;
     }
