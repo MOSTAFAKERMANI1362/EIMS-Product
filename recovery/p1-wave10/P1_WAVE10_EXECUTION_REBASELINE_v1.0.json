@@ -1,0 +1,80 @@
+{
+  "artifactId": "P1-WAVE10-EXECUTION-RUNTIME-REBASELINE",
+  "version": "1.0",
+  "status": "IMPLEMENTATION_CANDIDATE",
+  "architectureDecision": "ACR-P0-008",
+  "stateMachine": [
+    "PLANNING",
+    "ACTIVE",
+    "COMPLETION_REVIEW",
+    "COMPLETED",
+    "CLOSURE_IN_PROGRESS",
+    "CLOSED"
+  ],
+  "systemIntake": {
+    "sourceEvent": "ExecutionCreatedFromRecommendation.v1",
+    "userInvokable": false,
+    "sourceOfFullThreadFacts": "SERVER_SIDE_HANDOFF_SOURCE_PROVIDER",
+    "materializedState": "PLANNING",
+    "materializedVersion": 1,
+    "createsAdditionalDomainEvent": false,
+    "reasonNoAdditionalDomainEvent": "The authoritative Wave9 source event already represents Execution creation; intake records state, system audit and idempotency without duplicating domain meaning."
+  },
+  "recoveredExecutionCommands": [
+    "executions.approve-charter",
+    "executions.approve-plan-baseline",
+    "executions.start",
+    "executions.progress",
+    "executions.submit-completion",
+    "executions.completion-review",
+    "executions.request-benefit-handoff",
+    "executions.begin-closure",
+    "executions.close"
+  ],
+  "legacyFailClosed": [
+    "executions.prepare"
+  ],
+  "authority": {
+    "ownerCommands": "EXECUTION_OWNER",
+    "completionReview": "EXECUTION_COMPLETION_REVIEWER",
+    "ownerResolution": "SERVER_SIDE_EVIDENCE_PROVIDER",
+    "productionCompositionFacade": "ExecutionServiceWave10Guarded",
+    "actorMustContainOwnershipScopeEvenWhenRequestedScopeOmitted": true,
+    "clientOwnershipTrusted": false,
+    "clientRoleTrusted": false,
+    "clientScopeGrantTrusted": false,
+    "selfCompletionReviewAllowed": false
+  },
+  "benefitBoundary": {
+    "handoffCreatesState": "OBLIGATION_PENDING_ACCEPTANCE",
+    "benefitLifecycleImplemented": false,
+    "closureAcceptanceSource": "SERVER_SIDE_BENEFIT_ACCEPTANCE_EVIDENCE_PROVIDER"
+  },
+  "transactionBoundary": [
+    "ExecutionState",
+    "BenefitObligationWhenCreated",
+    "Audit",
+    "OutboxForUserDomainCommands",
+    "Idempotency"
+  ],
+  "intakeTransactionBoundary": [
+    "ExecutionState",
+    "SystemAudit",
+    "Idempotency"
+  ],
+  "verification": {
+    "lifecycleTests": 30,
+    "handoffIntakeAndScopeHardeningTests": 8,
+    "dedicatedExecutionTests": 38,
+    "faultInjection": true,
+    "warningsAsErrors": true
+  },
+  "explicitNonClaims": [
+    "No physical Oracle binding",
+    "No live Domain/IIS activation",
+    "No OP-04 readiness claim",
+    "No Benefit measurement/verification/realization runtime in Wave10",
+    "No Knowledge runtime in Wave10",
+    "Frozen v6.360 unchanged"
+  ]
+}
