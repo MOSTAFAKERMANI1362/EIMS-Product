@@ -1,0 +1,89 @@
+{
+  "artifactId": "P1-WAVE9-PORTFOLIO-RUNTIME-REBASELINE",
+  "version": "1.0",
+  "status": "IMPLEMENTATION_CANDIDATE",
+  "architectureBinding": "ACR-P0-008",
+  "frozenProductSpecification": "EIMS_v6.360_WORKLIST_UX_ROLE_SELECTOR_CLEANUP.html",
+  "scope": {
+    "systemTrigger": "portfolio.evaluate-eligibility-from-approved-idea",
+    "userCommands": [
+      "portfolio.assign-candidate",
+      "portfolio.membership-decision",
+      "portfolio.generate-execution-recommendation",
+      "portfolio.approve-execution-recommendation",
+      "portfolio.bind-approved-baseline",
+      "portfolio.request-execution-handoff"
+    ],
+    "explicitlyExcluded": [
+      "executions.approve-charter",
+      "executions.approve-plan-baseline",
+      "executions.start",
+      "executions.progress",
+      "executions.submit-completion",
+      "executions.completion-review",
+      "benefit runtime",
+      "knowledge runtime",
+      "physical Oracle binding",
+      "live Windows Domain/IIS activation"
+    ]
+  },
+  "authority": {
+    "systemTriggerUserInvocable": false,
+    "userRole": "PORTFOLIO_MANAGER",
+    "identitySource": "P3_SERVER_RESOLVED",
+    "clientRoleScopeTrusted": false,
+    "exactAssignmentRequired": true,
+    "expectedVersionRequired": true,
+    "serverIdempotencyRequired": true
+  },
+  "eligibility": {
+    "sourceEvent": "IdeaApprovedForPortfolio.v1",
+    "requiredIdeaStatus": "APPROVED",
+    "requiredHardReadinessGaps": 0,
+    "policyExcludedMustBe": false,
+    "idempotencyFingerprint": "ideaId|approvedIdeaVersion",
+    "exactlyOneCandidatePerApprovedIdeaVersion": true,
+    "events": [
+      "PortfolioEligibilityEvaluated.v1",
+      "PortfolioIntakeCandidateCreated.v1"
+    ]
+  },
+  "portfolioSemantics": {
+    "candidateEqualsAssignment": false,
+    "assignmentEqualsMembership": false,
+    "membershipEqualsRecommendation": false,
+    "recommendationEqualsBaseline": false,
+    "baselineEqualsHandoff": false,
+    "legacyGroupedCommandImplemented": false,
+    "acceptedMembershipRequiredForRecommendation": true,
+    "governanceDecisionRefRequiredForApproval": true,
+    "approvedBaselineRefRequiredForBaselineBinding": true,
+    "handoffCreatesExecutionState": "PLANNING",
+    "exactlyOneExecutionPerRecommendation": true,
+    "digitalThreadPreserved": true
+  },
+  "persistence": {
+    "providerNeutral": true,
+    "productionOracleAdapter": false,
+    "atomicUnit": ["PortfolioThreadState", "Audit", "Outbox", "Idempotency"],
+    "faultInjectionRequired": true,
+    "partialCommitAllowed": false
+  },
+  "security": {
+    "outboxPayloadPolicy": "IDENTIFIERS_STATUS_EVIDENCE_REFS_ONLY",
+    "secretsAllowed": false,
+    "hrPersonalDataAllowed": false,
+    "livePilotReadinessClaim": false
+  },
+  "verification": {
+    "contractTestProject": "tests/EIMS.P1.Wave9.Portfolio.ContractTests",
+    "minimumContractTests": 22,
+    "requiredRegressions": [
+      "P1 Wave 8 G04 Final Decision",
+      "ACR-P0-008 verifier",
+      "P1-P5 Runtime Binding",
+      "OP-05 Preflight",
+      "Security Baseline"
+    ]
+  }
+}
