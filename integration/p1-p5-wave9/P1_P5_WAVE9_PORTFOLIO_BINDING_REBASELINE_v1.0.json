@@ -1,0 +1,41 @@
+{
+  "artifactId": "P1-P5-WAVE9-PORTFOLIO-BINDING-REBASELINE",
+  "version": "1.0",
+  "status": "IMPLEMENTATION_CANDIDATE",
+  "bindingContract": "P1P5-1.1.0",
+  "recoveredUserMutationCommands": 12,
+  "portfolioUserCommands": [
+    "portfolio.assign-candidate",
+    "portfolio.membership-decision",
+    "portfolio.generate-execution-recommendation",
+    "portfolio.approve-execution-recommendation",
+    "portfolio.bind-approved-baseline",
+    "portfolio.request-execution-handoff"
+  ],
+  "systemOnlyNotUserInvokable": [
+    "portfolio.evaluate-eligibility-from-approved-idea"
+  ],
+  "legacyFailClosed": [
+    "portfolio.assign-accept"
+  ],
+  "authorityBoundary": {
+    "identitySource": "P3_SERVER_RESOLVED_WINDOWS_IDENTITY",
+    "clientRoleTrusted": false,
+    "clientScopeGrantTrusted": false,
+    "expectedVersionRequired": true,
+    "idempotencyRequired": true,
+    "correlationRequired": true
+  },
+  "activation": {
+    "p5RuntimeActivationChanged": false,
+    "requiresDurableP2": true,
+    "requiresAuthoritativeLiveP3": true,
+    "networkPilotReady": false
+  },
+  "explicitNonClaims": [
+    "No physical Oracle binding",
+    "No live Domain/IIS activation",
+    "No OP-04 readiness claim",
+    "No change to frozen v6.360"
+  ]
+}
