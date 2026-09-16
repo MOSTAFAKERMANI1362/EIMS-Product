@@ -98,7 +98,7 @@ public sealed class PortfolioServiceWave9(
 
         if (!ValidateActor(actor, command, out var actorError))
             return AuthorityResult.Deny(actorError.Status, actorError.Code, command.CorrelationId);
-        actor = actor!;
+        var resolvedActor = actor!;
 
         if (string.IsNullOrWhiteSpace(command.CommandName)
             || string.IsNullOrWhiteSpace(command.CandidateId)
@@ -114,7 +114,7 @@ public sealed class PortfolioServiceWave9(
             return AuthorityResult.Deny(503, "P1_PORTFOLIO_COMMAND_NOT_BOUND", command.CorrelationId);
 
         var normalized = Normalize(command);
-        var fingerprint = Fingerprint(normalized, actor);
+        var fingerprint = Fingerprint(normalized, resolvedActor);
         var prior = await store.GetPortfolioIdempotencyAsync(
             normalized.CommandName,
             normalized.CandidateId,
@@ -133,12 +133,12 @@ public sealed class PortfolioServiceWave9(
         if (before.ThreadVersion != normalized.ExpectedThreadVersion)
             return AuthorityResult.Deny(409, "P1_PORTFOLIO_VERSION_CONFLICT", normalized.CorrelationId);
 
-        var result = Plan(normalized, actor, before, policy);
+        var result = Plan(normalized, resolvedActor, before, policy);
         if (!result.Allowed || result.Commit is null)
             return AuthorityResult.Deny(result.Status, result.Code, normalized.CorrelationId, result.Detail);
 
         return await store.CommitPortfolioCommandAsync(
-            new PortfolioCommandRequestWave9(normalized, actor, before, policy, fingerprint),
+            new PortfolioCommandRequestWave9(normalized, resolvedActor, before, policy, fingerprint),
             result.Commit,
             cancellationToken);
     }
