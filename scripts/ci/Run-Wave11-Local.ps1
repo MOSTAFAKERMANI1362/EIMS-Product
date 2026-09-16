@@ -34,7 +34,7 @@ Start-Transcript -Path $ReportPath -Force | Out-Null
 try {
     Write-Section "EIMS Wave11 Local Validation"
     Write-Host "Runner: LOCAL-WINDOWS"
-    Write-Host "ScriptVersion: WAVE11-LOCAL-1.0"
+    Write-Host "ScriptVersion: WAVE11-LOCAL-1.1"
     Write-Host "RepositoryRoot: $repoRoot"
     Write-Host "StartedAt: $(Get-Date -Format o)"
 
@@ -48,6 +48,13 @@ try {
     }
     Invoke-Checked "Run Wave11 Benefit tests" {
         dotnet run --project .\tests\EIMS.P1.Wave11.Benefit.ContractTests\EIMS.P1.Wave11.Benefit.ContractTests.csproj -c Release --no-build
+    }
+
+    Invoke-Checked "Build Wave11 Benefit intake hardening tests" {
+        dotnet build .\tests\EIMS.P1.Wave11.BenefitIntake.ContractTests\EIMS.P1.Wave11.BenefitIntake.ContractTests.csproj -c Release
+    }
+    Invoke-Checked "Run Wave11 Benefit intake hardening tests" {
+        dotnet run --project .\tests\EIMS.P1.Wave11.BenefitIntake.ContractTests\EIMS.P1.Wave11.BenefitIntake.ContractTests.csproj -c Release --no-build
     }
 
     Invoke-Checked "Build ACR-P0-008 verifier" {
@@ -73,7 +80,7 @@ try {
 
     Write-Section "FINAL RESULT"
     Write-Host "PASS: WAVE11 LOCAL VALIDATION"
-    Write-Host "Expected dedicated Wave11 coverage: 32 Benefit lifecycle/intake/hardening tests"
+    Write-Host "Expected dedicated Wave11 coverage: 37 tests (32 Benefit lifecycle + 5 intake hardening)"
     Write-Host "CompletedAt: $(Get-Date -Format o)"
     Write-Host "Report: $ReportPath"
     exit 0
