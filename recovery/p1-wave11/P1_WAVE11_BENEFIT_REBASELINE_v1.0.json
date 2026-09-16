@@ -1,0 +1,102 @@
+{
+  "artifactId": "P1-WAVE11-BENEFIT-RUNTIME-REBASELINE",
+  "version": "1.0",
+  "status": "IMPLEMENTATION_CANDIDATE",
+  "architectureDecision": "ACR-P0-008",
+  "recoveredSource": "recovery/p0-wave2/P0_PORTFOLIO_KNOWLEDGE_RECOVERED_CONTRACT_v1.0.json",
+  "stateMachine": [
+    "OBLIGATION_PENDING_ACCEPTANCE",
+    "BASELINE_REQUIRED",
+    "PLAN_REQUIRED",
+    "MEASUREMENT_PENDING",
+    "MEASURED",
+    "VERIFIED",
+    "VALIDATED",
+    "REALIZED",
+    "CLOSED"
+  ],
+  "systemIntake": {
+    "sourceEvent": "BenefitObligationCreated.v1",
+    "userInvokable": false,
+    "sourceOfFullThreadFacts": "SERVER_SIDE_EXECUTION_BENEFIT_SOURCE_PROVIDER",
+    "materializedState": "OBLIGATION_PENDING_ACCEPTANCE",
+    "materializedVersion": 1,
+    "createsAdditionalDomainEvent": false,
+    "reasonNoAdditionalDomainEvent": "The authoritative Wave10 event already represents Benefit obligation creation; intake materializes state and system audit without duplicating domain meaning."
+  },
+  "commands": [
+    "benefits.accept",
+    "benefits.set-baseline",
+    "benefits.approve-measurement-plan",
+    "benefits.measure",
+    "benefits.verify",
+    "benefits.attribution",
+    "benefits.realize",
+    "benefits.close"
+  ],
+  "authority": {
+    "ownerCommands": ["benefits.accept", "benefits.set-baseline", "benefits.approve-measurement-plan", "benefits.measure", "benefits.realize", "benefits.close"],
+    "verifierCommands": ["benefits.verify", "benefits.attribution"],
+    "pilotMeasurementAuthority": "BENEFIT_OWNER",
+    "authorizedDataProviderEnabledByDefault": false,
+    "authorizedDataProviderRequiresServerPolicy": true,
+    "ownerResolution": "SERVER_SIDE_EVIDENCE_PROVIDER",
+    "verifierIndependence": "INDEPENDENT_FROM_EXECUTION_OWNER_FOR_SAME_OUTPUT",
+    "clientOwnershipTrusted": false,
+    "clientRoleTrusted": false,
+    "clientScopeGrantTrusted": false
+  },
+  "valueRepresentation": {
+    "exactP0ValueSchemaRecovered": false,
+    "implementationBinding": "IMMUTABLE_EVIDENCE_REFERENCES",
+    "baselineTargetValidation": "SERVER_SIDE_EVIDENCE_PROVIDER",
+    "requiresValidBaseline": true,
+    "requiresValidTarget": true,
+    "requiresDistinctBaselineAndTarget": true,
+    "nonFinancialBenefitFirstClass": true,
+    "financialOnlyFieldsInvented": false
+  },
+  "evidenceReferences": [
+    "baselineEvidenceRef",
+    "targetEvidenceRef",
+    "measurementPlanRef",
+    "measurementDossierRef",
+    "verificationDossierRef",
+    "attributionDossierRef",
+    "realizationDossierRef",
+    "knowledgePublicationEvidenceRef"
+  ],
+  "knowledgeBoundary": {
+    "knowledgeRuntimeImplemented": false,
+    "benefitCloseRequiresKnowledgePublished": true,
+    "benefitCloseEvidenceSource": "SERVER_SIDE_KNOWLEDGE_PUBLICATION_EVIDENCE_PROVIDER",
+    "benefitOwnerAloneGrantsKnowledgeAuthorAuthority": false
+  },
+  "events": [
+    "BenefitObligationAccepted.v1",
+    "BenefitBaselineDefined.v1",
+    "BenefitMeasurementPlanApproved.v1",
+    "BenefitMeasured.v1",
+    "BenefitVerified.v1",
+    "BenefitAttributionValidated.v1",
+    "BenefitRealized.v1",
+    "BenefitClosed.v1"
+  ],
+  "transactionBoundary": ["BenefitState", "Audit", "Outbox", "Idempotency"],
+  "intakeTransactionBoundary": ["BenefitState", "SystemAudit", "Idempotency"],
+  "invariants": [
+    "MEASURE_VERIFY_ATTRIBUTION_REALIZE_DISTINCT",
+    "NON_FINANCIAL_BENEFIT_FIRST_CLASS",
+    "VERIFIER_INDEPENDENT_FROM_EXECUTION_OWNER",
+    "BENEFIT_CLOSE_REQUIRES_PUBLISHED_KNOWLEDGE",
+    "KNOWLEDGE_AUTHORITY_NOT_DERIVED_FROM_BENEFIT_OWNER"
+  ],
+  "explicitNonClaims": [
+    "No Knowledge create/validate/publish runtime in Wave11",
+    "No physical Oracle binding",
+    "No live Domain/IIS activation",
+    "No OP-04 readiness claim",
+    "No Network Pilot readiness claim",
+    "Frozen v6.360 unchanged"
+  ]
+}

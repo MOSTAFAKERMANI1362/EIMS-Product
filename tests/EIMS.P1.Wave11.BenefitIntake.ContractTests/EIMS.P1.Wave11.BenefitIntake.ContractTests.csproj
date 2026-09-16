@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>EIMS.P1.Wave11.BenefitIntake.ContractTests</AssemblyName>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/EIMS.Authority.Recovery/EIMS.Authority.Recovery.csproj" />
+    <ProjectReference Include="../../src/EIMS.Persistence.Recovery/EIMS.Persistence.Recovery.csproj" />
+  </ItemGroup>
+</Project>
