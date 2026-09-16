@@ -12,6 +12,7 @@ on:
       - 'tests/EIMS.P1P5.RuntimeBinding.ContractTests/**'
       - 'tests/EIMS.P1P5.Wave9PortfolioBinding.ContractTests/**'
       - 'tests/EIMS.P1P5.Wave12ExecutionBenefitBinding.ContractTests/**'
+      - 'tests/EIMS.P1P5.Wave12Composition.ContractTests/**'
       - 'integration/p1-p5-wave12/**'
       - '.github/workflows/p1-p5-runtime-binding.yml'
   push:
@@ -26,6 +27,7 @@ on:
       - 'tests/EIMS.P1P5.RuntimeBinding.ContractTests/**'
       - 'tests/EIMS.P1P5.Wave9PortfolioBinding.ContractTests/**'
       - 'tests/EIMS.P1P5.Wave12ExecutionBenefitBinding.ContractTests/**'
+      - 'tests/EIMS.P1P5.Wave12Composition.ContractTests/**'
       - 'integration/p1-p5-wave12/**'
       - '.github/workflows/p1-p5-runtime-binding.yml'
 
@@ -67,6 +69,12 @@ jobs:
         run: |
           dotnet build .\tests\EIMS.P1P5.Wave12ExecutionBenefitBinding.ContractTests\EIMS.P1P5.Wave12ExecutionBenefitBinding.ContractTests.csproj -c Release
           dotnet run --project .\tests\EIMS.P1P5.Wave12ExecutionBenefitBinding.ContractTests\EIMS.P1P5.Wave12ExecutionBenefitBinding.ContractTests.csproj -c Release --no-build
+
+      - name: Wave 12 real P1-P5 composition tests
+        shell: pwsh
+        run: |
+          dotnet build .\tests\EIMS.P1P5.Wave12Composition.ContractTests\EIMS.P1P5.Wave12Composition.ContractTests.csproj -c Release
+          dotnet run --project .\tests\EIMS.P1P5.Wave12Composition.ContractTests\EIMS.P1P5.Wave12Composition.ContractTests.csproj -c Release --no-build
 
       - name: Wave 10 Execution regressions
         shell: pwsh
