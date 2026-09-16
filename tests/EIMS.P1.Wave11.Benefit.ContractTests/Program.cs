@@ -170,7 +170,7 @@ static void DataProviderDenied()
 static void DataProviderAllowed()
 {
     var authority = new StaticBenefitMeasurementAuthorityProviderWave11(
-        new("BEN-1", "P-DATA", "A-DATA", "UNIT:RND", true, "MEASURE-AUTH-EV", "1"));
+        new BenefitMeasurementAuthorityEvidenceWave11("BEN-1", "P-DATA", "A-DATA", "UNIT:RND", true, "MEASURE-AUTH-EV", "1"));
     var ctx = Context(NewBenefit("MEASUREMENT_PENDING", baseline: "BASE-REF", target: "TARGET-REF", plan: "PLAN-1"), measurementAuthority: authority);
     var result = Exec(ctx, Cmd("benefits.measure", 1) with { MeasurementDossierRef = "MEASURE-1" }, DataProvider());
     Assert(result.Allowed && Current(ctx).MeasuredByPersonId == "P-DATA", "provider allowed");
@@ -339,7 +339,7 @@ static TestContext Context(
 {
     var store = new BenefitTransactionalStoreWave11(benefit);
     var owner = new StaticBenefitOwnershipEvidenceProviderWave11(
-        new("BEN-1", "P-BEN", "A-BEN", "UNIT:RND", "BEN-OWNER-EV", "1"));
+        new BenefitOwnershipEvidenceWave11("BEN-1", "P-BEN", "A-BEN", "UNIT:RND", "BEN-OWNER-EV", "1"));
     var baseline = new StaticBenefitBaselineTargetEvidenceProviderWave11(
         baselineEvidence ?? new[] { new BenefitBaselineTargetEvidenceWave11("BEN-1", "BASE-REF", "TARGET-REF", true, true, true, "NON_FINANCIAL", "BASE-TARGET-EV", "1") });
     var execOwner = new StaticBenefitExecutionOwnerEvidenceProviderWave11(
