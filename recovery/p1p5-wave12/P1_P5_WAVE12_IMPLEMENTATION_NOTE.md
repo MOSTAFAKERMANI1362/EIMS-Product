@@ -1,6 +1,6 @@
 # P1→P5 Wave12 — Execution + Benefit Binding
 
-Status: IMPLEMENTATION CANDIDATE — NOT PILOT ACTIVATION
+Status: LOCAL VALIDATION PASS — READY FOR CONTROLLED MERGE — NOT PILOT ACTIVATION
 
 Wave12 extends the controlled P1→P5 user-command binding from the Wave9 Portfolio-era 12 recovered mutations to all 29 mutations recovered through Wave11.
 
@@ -22,16 +22,21 @@ Wave12 extends the controlled P1→P5 user-command binding from the Wave9 Portfo
 - If-Match expected version, Idempotency-Key and correlation ID remain mandatory.
 - The Pilot Host continues to register `FailClosedCommandGateway` until physical P2/P3/OP-04 prerequisites are available.
 
-## Validation target
+## Validation result — 2026-09-17
 
-Local Windows/.NET 10.0.302 release gate runs:
+Windows/.NET SDK 10.0.302 local release gate PASS on validated head `ecfc96632ad0d38ad21e25814ebe02a35083a368`:
 
-- Pilot Host build
-- historical P1→P5 regression
-- Wave9 Portfolio binding regression
-- Wave12 Execution+Benefit binding tests
-- Wave10 Execution lifecycle + intake regressions
-- Wave11 Benefit lifecycle + intake regressions
-- ACR-P0-008 verifier
+- Historical P1→P5 binding: 16/16 PASS
+- Wave9 Portfolio binding: 12/12 PASS
+- Wave12 Execution+Benefit binding: 19/19 PASS
+- Wave12 real composition: 4/4 PASS
+- Wave10 Execution lifecycle: 30/30 PASS
+- Wave10 Execution intake: 8/8 PASS
+- Wave11 Benefit lifecycle: 32/32 PASS
+- Wave11 Benefit intake: 5/5 PASS
+- ACR-P0-008 verifier: 38/38 PASS
+- Combined: 164 checks/controls PASS
+
+Only sanitized evidence/status documentation was committed after the validated head; runtime/test code did not change.
 
 No Network Pilot readiness is claimed by this wave.
