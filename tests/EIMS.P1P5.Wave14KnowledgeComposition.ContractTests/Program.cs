@@ -248,9 +248,6 @@ static string Body(
     return "{" + string.Join(",", parts) + "}";
 }
 
-static AuthorityResult Success(string correlationId, long? version) =>
-    new(200, "OK", true, true, false, version, correlationId, Array.Empty<string>());
-
 static void True(bool value)
 {
     if (!value) throw new InvalidOperationException("Expected true.");
