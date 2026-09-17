@@ -1,3 +1,4 @@
+using System.Text.Json;
 using EIMS.Persistence.Recovery;
 using EIMS.PilotAssembly.Binding;
 using EIMS.PilotAssembly.Core;
@@ -31,7 +32,7 @@ public sealed record RuntimeCompositionCandidate(
     ICommandGateway Gateway,
     PersistenceContractDescriptor Persistence,
     IdentityRuntimeBindingEvidence Identity,
-    EnvironmentEvidenceReport Environment,
+    string EnvironmentEvidenceJson,
     string BindingContractVersion,
     bool P1ContractTestsPassed,
     string? EvidenceReference);
@@ -79,10 +80,13 @@ public static class RuntimeCompositionActivator
         if (!candidate.Identity.IsPhysicalBindingReady)
             return Blocked("P5_RUNTIME_P3_PHYSICAL_BINDING_REQUIRED", "Authoritative live P3 Windows identity/directory binding evidence is incomplete or unsafe.");
 
-        if (!candidate.Environment.SchemaSupported
-            || candidate.Environment.SensitiveKeysDetected
-            || !string.Equals(candidate.Environment.EvidenceClass, EnvironmentEvidenceEvaluator.PilotEvidenceClass, StringComparison.Ordinal)
-            || !candidate.Environment.PilotActivationReady)
+        if (!TryEvaluateEnvironment(candidate.EnvironmentEvidenceJson, out var environment))
+            return Blocked("P5_RUNTIME_OP04_EVIDENCE_INVALID", "OP-04 environment evidence is missing or invalid JSON.");
+
+        if (!environment.SchemaSupported
+            || environment.SensitiveKeysDetected
+            || !string.Equals(environment.EvidenceClass, EnvironmentEvidenceEvaluator.PilotEvidenceClass, StringComparison.Ordinal)
+            || !environment.PilotActivationReady)
             return Blocked("P5_RUNTIME_OP04_PILOT_EVIDENCE_REQUIRED", "Production activation requires a clean OP-04 PILOT evidence report with every gate passed.");
 
         if (string.IsNullOrWhiteSpace(candidate.EvidenceReference))
@@ -109,15 +113,38 @@ public static class RuntimeCompositionActivator
         if (!candidate.Persistence.IsLogicalContractReady)
             return new(false, "P5_LAB_P2_LOGICAL_CONTRACT_REQUIRED", "Lab wiring still requires the recovered logical P2 contract.");
 
-        if (!candidate.Environment.SchemaSupported
-            || candidate.Environment.SensitiveKeysDetected
-            || !string.Equals(candidate.Environment.EvidenceClass, EnvironmentEvidenceEvaluator.LabEvidenceClass, StringComparison.Ordinal))
+        if (!TryEvaluateEnvironment(candidate.EnvironmentEvidenceJson, out var environment)
+            || !environment.SchemaSupported
+            || environment.SensitiveKeysDetected
+            || !string.Equals(environment.EvidenceClass, EnvironmentEvidenceEvaluator.LabEvidenceClass, StringComparison.Ordinal))
             return new(false, "P5_LAB_EVIDENCE_REQUIRED", "Lab wiring requires clean LAB_EVIDENCE; it is never production activation evidence.");
 
         return new(
             true,
             "P5_LAB_COMPOSITION_WIRING_ACCEPTED_NON_PRODUCTION",
             "Lab wiring is structurally valid but is explicitly not eligible for production or Network Pilot activation.");
+    }
+
+    private static bool TryEvaluateEnvironment(string json, out EnvironmentEvidenceReport report)
+    {
+        try
+        {
+            report = EnvironmentEvidenceEvaluator.Evaluate(json);
+            return true;
+        }
+        catch (JsonException)
+        {
+            report = new EnvironmentEvidenceReport(
+                string.Empty,
+                string.Empty,
+                false,
+                false,
+                false,
+                Array.Empty<string>(),
+                Array.Empty<EvidenceGate>(),
+                false);
+            return false;
+        }
     }
 
     private static RuntimeActivationDecision Blocked(string code, string detail) =>
