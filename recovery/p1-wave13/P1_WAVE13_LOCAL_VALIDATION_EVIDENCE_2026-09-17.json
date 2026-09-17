@@ -1,0 +1,45 @@
+{
+  "schema": "EIMS-LOCAL-VALIDATION-EVIDENCE-1.0",
+  "wave": "P1-WAVE13-KNOWLEDGE",
+  "validatedHead": "e0927b993951134bfcc124613d2fbbaf05079817",
+  "validatedAtLocal": "2026-09-17T10:32:57.6348428+03:30",
+  "runner": "LOCAL-WINDOWS",
+  "dotNetSdk": "10.0.302",
+  "rawLog": {
+    "filename": "Wave13-20260917-103222.log",
+    "sha256": "48b21e98113721c87bad426e40bf5dc22b3dffd828c466739d490463c8ff42b7",
+    "sizeBytes": 16776,
+    "committed": false,
+    "reason": "Raw transcript contains local machine, username and filesystem path metadata."
+  },
+  "results": {
+    "wave13Knowledge": "24/24 PASS",
+    "historicalP1P5": "16/16 PASS",
+    "wave9PortfolioBinding": "12/12 PASS",
+    "wave12ExecutionBenefitBinding": "19/19 PASS",
+    "wave12RealComposition": "4/4 PASS",
+    "wave10ExecutionLifecycle": "30/30 PASS",
+    "wave10ExecutionIntake": "8/8 PASS",
+    "wave11BenefitLifecycle": "32/32 PASS",
+    "wave11BenefitIntake": "5/5 PASS",
+    "acrP0008": "38/38 PASS",
+    "combined": "188/188 PASS"
+  },
+  "finalResult": "PASS: WAVE13 LOCAL VALIDATION",
+  "securityReview": {
+    "newExternalPackageReference": false,
+    "secretsCredentialsConnectionStrings": false,
+    "customerOrHrData": false,
+    "hostActivationChanged": false,
+    "knowledgeP1P5BindingIncluded": false,
+    "systemSourceEvidenceAuthoritative": true,
+    "clientRoleScopeOwnershipTrusted": false
+  },
+  "nonClaims": [
+    "NO_PHYSICAL_ORACLE_BINDING",
+    "NO_LIVE_DOMAIN_IIS_TLS_ACTIVATION",
+    "NO_OP04_NETWORK_PILOT_READINESS",
+    "NO_KNOWLEDGE_P1P5_BINDING_IN_WAVE13",
+    "FROZEN_V6_360_UNCHANGED"
+  ]
+}
