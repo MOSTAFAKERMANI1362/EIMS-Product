@@ -16,8 +16,8 @@ var tests = new List<(string Name, Action Run)>
     ("W13-11 validation RETURN remains correction DRAFT", ValidateReturn),
     ("W13-12 publish requires publication dossier", PublishDossier),
     ("W13-13 publish requires Knowledge Publisher", PublishRole),
-    ("W13-14 validator cannot publish same asset", PublishSod),
-    ("W13-15 independent publisher advances to PUBLISHED", PublishHappy),
+    ("W13-14 Knowledge Publisher authority cannot perform validation", ValidatePublisherDenied),
+    ("W13-15 publisher advances VALIDATED to PUBLISHED", PublishHappy),
     ("W13-16 publisher RETURN sends asset back to DRAFT", PublishReturn),
     ("W13-17 exact create retry is idempotent before source reload", ReplayBeforeSource),
     ("W13-18 changed payload with same key conflicts", ReplayConflict),
@@ -150,11 +150,11 @@ static void PublishRole()
     Assert(!result.Allowed && result.Code == "P1_KNOWLEDGE_COMMAND_ROLE_REQUIRED", "publisher role");
 }
 
-static void PublishSod()
+static void ValidatePublisherDenied()
 {
-    var store = new KnowledgeTransactionalStoreWave13(Validated(validatorPerson: "P-PUB", validatorAssignment: "A-PUB"));
-    var result = Exec(Service(store), Publish("PUBLISH"), Publisher());
-    Assert(!result.Allowed && result.Code == "SOD_KNOWLEDGE_VALIDATOR_NOT_PUBLISHER", "sod");
+    var store = new KnowledgeTransactionalStoreWave13(Draft());
+    var result = Exec(Service(store), Validate("APPROVE"), Publisher());
+    Assert(!result.Allowed && result.Code == "P1_KNOWLEDGE_COMMAND_ROLE_REQUIRED", "authority separation");
 }
 
 static void PublishHappy()
