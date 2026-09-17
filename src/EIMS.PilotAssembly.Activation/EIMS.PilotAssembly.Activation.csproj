@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../EIMS.PilotAssembly.Core/EIMS.PilotAssembly.Core.csproj" />
+    <ProjectReference Include="../EIMS.PilotAssembly.Binding/EIMS.PilotAssembly.Binding.csproj" />
+    <ProjectReference Include="../EIMS.Persistence.Recovery/EIMS.Persistence.Recovery.csproj" />
+    <ProjectReference Include="../EIMS.PilotEnvironment.Readiness/EIMS.PilotEnvironment.Readiness.csproj" />
+  </ItemGroup>
+</Project>
