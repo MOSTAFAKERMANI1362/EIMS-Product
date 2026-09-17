@@ -88,8 +88,10 @@ void CompletePrerequisitesActivate()
 RuntimeActivationDecision Decision(EnvironmentEvidenceReport r, bool p2, bool p3, bool gateway, bool failClosed) =>
     RuntimeActivationGate.Evaluate(new RuntimeActivationPrerequisites(r.PilotActivationReady, p2, p3, gateway, failClosed));
 
-string Evidence(string evidenceClass) => $$"""
-{"schemaVersion":"1.1","evidenceClass":"{{evidenceClass}}","referenceCustomer":"Mes Shahid Bahonar",
+string Evidence(string evidenceClass)
+{
+    const string template = """
+{"schemaVersion":"1.1","evidenceClass":"__EVIDENCE_CLASS__","referenceCustomer":"Mes Shahid Bahonar",
 "windows":{"serverName":"EIMS-PILOT-01","osVersion":"Windows Server","vmProvisioned":true,"domainJoined":true,"domainName":"EXAMPLE","iisInstalled":true,"windowsAuthenticationInstalled":true,"dotnetRuntimeVersion":"10.0","collectedAt":"2026-09-15T12:00:00Z"},
 "oracle":{"version":"VERIFIED","providerName":"VERIFIED","providerVersion":"VERIFIED","connectionMode":"VERIFIED","serviceAccountName":"EIMS_SVC","schemaOwner":"EIMS_OWNER","liveConnectionValidated":true,"evidenceRef":"EV-ORA"},
 "p1Authority":{"physicalPackageAvailable":true,"packageRef":"PKG","buildPassed":true,"contractTestsPassed":true,"evidenceRef":"EV-P1"},
@@ -100,6 +102,8 @@ string Evidence(string evidenceClass) => $$"""
 "operations":{"backupMethod":"VERIFIED","backupRestoreValidated":true,"monitoringTarget":"VERIFIED","monitoringValidated":true,"evidenceRef":"EV-OPS"},
 "security":{"noSecretsCommitted":true,"noPersonalDataCommitted":true,"reviewedByRole":"SECURITY","reviewDate":"2026-09-15"}}
 """;
+    return template.Replace("__EVIDENCE_CLASS__", evidenceClass, StringComparison.Ordinal);
+}
 
 void True(bool v) { if (!v) throw new Exception("Expected true"); }
 void False(bool v) { if (v) throw new Exception("Expected false"); }
