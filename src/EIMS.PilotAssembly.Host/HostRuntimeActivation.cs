@@ -1,5 +1,6 @@
 using EIMS.PilotAssembly.Core;
 using EIMS.PilotEnvironment.Readiness;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace EIMS.PilotAssembly.Host;
 
@@ -18,7 +19,9 @@ public static class HostRuntimeActivation
         IConfiguration configuration,
         string contentRootPath)
     {
-        services.AddSingleton<IProductionRuntimeComposition, UnavailableProductionRuntimeComposition>();
+        // Environment-specific production composition may register this before the activation extension.
+        // The default is inserted only when no real composition has been supplied.
+        services.TryAddSingleton<IProductionRuntimeComposition, UnavailableProductionRuntimeComposition>();
         services.AddSingleton(sp => Evaluate(
             configuration,
             contentRootPath,
