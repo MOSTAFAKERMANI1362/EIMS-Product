@@ -1,0 +1,44 @@
+{
+  "evidenceType": "WAVE17A_PACKAGE_LOCAL_VALIDATION",
+  "validationDate": "2026-09-17",
+  "environment": "LOCAL_WINDOWS_DOTNET10",
+  "testedHead": "e73a5315f4d21b1bf5a637e45bc7230681a55ae3",
+  "dotnetSdk": "10.0.302",
+  "packagePurpose": "ISOLATED_TECHNICAL_VALIDATION_ONLY",
+  "packageFile": "EIMS_Pilot_TechnicalValidation_20260917-153557.zip",
+  "packageSha256": "8467490a1234d1ee097744f778ef51e93fe9c0474750a26ff9e2676c04396571",
+  "rawLocalLogSha256": "526b2260edc9c12325de7e59049f3eab8448a0963a788e8709a24102863254b3",
+  "rawLocalLogBytes": 4551,
+  "results": {
+    "publishHost": "PASS",
+    "packageBuilder": "PASS",
+    "zipAndSidecar": "PASS",
+    "zipSha256Match": "PASS",
+    "requiredContents": "PASS",
+    "metadataFailClosedAndProvenance": "PASS",
+    "configurationDocumentationOnly": "PASS",
+    "fileHashManifest": "PASS",
+    "wave15Activation": "8/8 PASS",
+    "op04EnvironmentRegression": "10/10 PASS",
+    "runnerFinal": "PASS: WAVE17A PILOT DEPLOYMENT PACKAGE LOCAL VALIDATION"
+  },
+  "claims": {
+    "physicalPilotActivation": false,
+    "productionGoLive": false,
+    "packageIsInstaller": false,
+    "defaultActivationFailClosed": true
+  },
+  "security": {
+    "rawLogCommitted": false,
+    "credentialsCommitted": false,
+    "connectionStringsCommitted": false,
+    "privateKeysCommitted": false,
+    "hrOrCustomerPiiCommitted": false,
+    "fullTrivy": "NOT_EXECUTED_NETWORK_BLOCKED"
+  },
+  "notes": [
+    "SourceCommit is UNAVAILABLE_FROM_SOURCE_ARCHIVE because the validation source was downloaded as a GitHub archive without .git metadata.",
+    "SourceRef and repository provenance are embedded in package metadata.",
+    "The package is approved only for isolated technical validation and remains fail-closed by default."
+  ]
+}
