@@ -201,9 +201,6 @@ public sealed class KnowledgeServiceWave13(
             if (string.Equals(decision, "PUBLISH", StringComparison.Ordinal)
                 && string.IsNullOrWhiteSpace(command.PublicationDossierRef))
                 return AuthorityResult.Deny(400, "P1_KNOWLEDGE_PUBLICATION_DOSSIER_REQUIRED", command.CorrelationId);
-            if (string.Equals(decision, "PUBLISH", StringComparison.Ordinal)
-                && string.Equals(before.ValidatedByPersonId, actor.PersonId, StringComparison.OrdinalIgnoreCase))
-                return AuthorityResult.Deny(403, "SOD_KNOWLEDGE_VALIDATOR_NOT_PUBLISHER", command.CorrelationId);
 
             eventName = policy.ResolveEventName(decision);
             after = before with
