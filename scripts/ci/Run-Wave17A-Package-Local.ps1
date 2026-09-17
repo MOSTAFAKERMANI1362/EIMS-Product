@@ -23,8 +23,8 @@ try {
 
     $dist = Join-Path $repoRoot "artifacts\distribution"
     New-Item -ItemType Directory -Path $dist -Force | Out-Null
-    & ".\scripts\deployment\Build-Pilot-TechnicalValidation-Package.ps1" -OutputDirectory $dist
-    Assert-True ($LASTEXITCODE -eq 0) "Package builder failed"
+    & ".\scripts\deployment\Build-Pilot-TechnicalValidation-Package.ps1" -OutputDirectory $dist -SourceRef "recovery/wave17a-pilot-deployment-package"
+    Assert-True ($?) "Package builder failed"
     Pass "package builder completed"
 
     $zip = Get-ChildItem $dist -Filter "EIMS_Pilot_TechnicalValidation_*.zip" | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
@@ -53,7 +53,10 @@ try {
     Assert-True ($metadata.defaultActivationState -eq "FAIL_CLOSED_UNTIL_OP04_AND_PHYSICAL_COMPOSITION_READY") "Default activation state mismatch"
     Assert-True (-not $metadata.secretsIncluded) "Metadata indicates secrets included"
     Assert-True (-not $metadata.personalDataIncluded) "Metadata indicates personal data included"
-    Pass "metadata confirms isolated fail-closed package"
+    Assert-True ($metadata.sourceRepository -eq "MOSTAFAKERMANI1362/EIMS-Product") "Source repository metadata mismatch"
+    Assert-True ($metadata.sourceRef -eq "recovery/wave17a-pilot-deployment-package") "Source ref metadata mismatch"
+    Assert-True (-not [string]::IsNullOrWhiteSpace([string]$metadata.sourceCommit)) "Source commit metadata missing"
+    Pass "metadata confirms isolated fail-closed package and source provenance"
 
     Assert-True (-not (Test-Path (Join-Path $extract "app\appsettings.Pilot.example.json"))) "Example Pilot config must not be active in app directory"
     Assert-True (Test-Path (Join-Path $extract "docs\appsettings.Pilot.example.json")) "Example Pilot config missing from docs"
