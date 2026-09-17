@@ -1,0 +1,43 @@
+{
+  "schemaVersion": "1.0",
+  "evidenceClass": "LAB_VALIDATION_EVIDENCE",
+  "wave": "P1P5-WAVE15-HOST-ACTIVATION",
+  "validatedAt": "2026-09-17T11:39:01.2752566+03:30",
+  "runner": "LOCAL_WINDOWS",
+  "dotNetSdk": "10.0.302",
+  "scriptVersion": "WAVE15-LOCAL-1.0",
+  "testedHeadSha": "e33e44b3c1d42af91ae47f6b52617a8d11e7543a",
+  "results": {
+    "pilotHostBuild": "PASS",
+    "wave15Activation": { "passed": 8, "total": 8 },
+    "authoritativeOp04Regression": { "passed": 10, "total": 10 },
+    "priorWave14Regression": { "passed": 177, "total": 177 },
+    "combinedChecks": { "passed": 195, "total": 195 },
+    "final": "PASS"
+  },
+  "activationClaim": "FAIL_CLOSED_LOGIC_VALIDATED_PHYSICAL_PILOT_ACTIVATION_NOT_CLAIMED",
+  "rawLog": {
+    "committed": false,
+    "sha256": "b1bca64fc168ce21533be786873166c61f8d964fbfbbc5784ca86d79bf042858",
+    "bytes": 17301,
+    "reason": "raw local transcript contains local username, machine name, and filesystem paths"
+  },
+  "securityReview": {
+    "status": "DIFFERENTIAL_REVIEW_PASS_TRIVY_DEFERRED_NETWORK_EXCEPTION",
+    "newExternalPackages": false,
+    "secretsOrCredentialsCommitted": false,
+    "customerOrHrDataCommitted": false,
+    "hostDefaultFailClosed": true,
+    "configFlagsCanActivateAlone": false,
+    "op04PilotEvidenceRequired": true,
+    "durableP2Required": true,
+    "authoritativeP3Required": true,
+    "realNonFailClosedGatewayRequired": true,
+    "trivyFullScan": "NOT_EXECUTED_NETWORK_BLOCKED"
+  },
+  "nonClaims": [
+    "No physical Oracle binding validated",
+    "No live Windows Domain/IIS/TLS validation claimed",
+    "No Network Pilot readiness claimed from LAB evidence"
+  ]
+}
