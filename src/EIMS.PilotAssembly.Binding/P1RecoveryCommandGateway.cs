@@ -40,6 +40,11 @@ public interface IP1BenefitExecutor
     ValueTask<AuthorityResult> ExecuteAsync(BenefitCommandWave11 command, AuthorityActor actor, CancellationToken cancellationToken = default);
 }
 
+public interface IP1KnowledgeExecutor
+{
+    ValueTask<AuthorityResult> ExecuteAsync(KnowledgeCommandWave13 command, AuthorityActor actor, CancellationToken cancellationToken = default);
+}
+
 public sealed class AuthorityKernelExecutor(AuthorityKernel kernel) : IP1AuthorityKernelExecutor
 {
     public ValueTask<AuthorityResult> ExecuteAsync(AuthorityCommand command, AuthorityActor actor, CancellationToken cancellationToken = default) =>
@@ -85,13 +90,19 @@ public sealed class BenefitExecutor(BenefitServiceWave11 service) : IP1BenefitEx
         service.ExecuteAsync(command, actor, cancellationToken);
 }
 
+public sealed class KnowledgeExecutor(KnowledgeServiceWave13 service) : IP1KnowledgeExecutor
+{
+    public ValueTask<AuthorityResult> ExecuteAsync(KnowledgeCommandWave13 command, AuthorityActor actor, CancellationToken cancellationToken = default) =>
+        service.ExecuteAsync(command, actor, cancellationToken);
+}
+
 /// <summary>
-/// P5 -> P3 -> P1 binding adapter for the twenty-nine user mutation commands recovered through Wave 11.
+/// P5 -> P3 -> P1 binding adapter for the thirty-two user mutation commands recovered through Wave13.
 /// The client supplies only selectors (assignmentId/requestedScope); P3 resolves authoritative
-/// Person/Role/Scope from the server-side directory. Client ownership claims are never authority.
+/// Person/Role/Scope from the server-side directory. Client ownership/author claims are never authority.
 /// Commands not recovered for mutation remain fail-closed.
-/// System-only Portfolio eligibility, Execution handoff intake and Benefit obligation intake are intentionally
-/// excluded from this user-command gateway.
+/// System-only Portfolio eligibility, Execution handoff intake and Benefit obligation intake remain outside
+/// this user-command gateway. Knowledge source Benefit evidence and author policy are resolved server-side.
 /// </summary>
 public sealed class P1RecoveryCommandGateway(
     WindowsIdentityRbacResolver identityResolver,
@@ -102,12 +113,14 @@ public sealed class P1RecoveryCommandGateway(
     ICommandPolicyCatalog? catalog = null,
     IP1PortfolioExecutor? portfolio = null,
     IP1ExecutionExecutor? execution = null,
-    IP1BenefitExecutor? benefit = null) : ICommandGateway
+    IP1BenefitExecutor? benefit = null,
+    IP1KnowledgeExecutor? knowledge = null) : ICommandGateway
 {
-    private readonly ICommandPolicyCatalog _catalog = catalog ?? new RecoveredApiCommandCatalogWave11();
+    private readonly ICommandPolicyCatalog _catalog = catalog ?? new RecoveredApiCommandCatalogWave13();
     private readonly IP1PortfolioExecutor? _portfolio = portfolio;
     private readonly IP1ExecutionExecutor? _execution = execution;
     private readonly IP1BenefitExecutor? _benefit = benefit;
+    private readonly IP1KnowledgeExecutor? _knowledge = knowledge;
 
     private static readonly HashSet<string> KernelCommands = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -149,6 +162,13 @@ public sealed class P1RecoveryCommandGateway(
         "benefits.attribution",
         "benefits.realize",
         "benefits.close"
+    };
+
+    private static readonly HashSet<string> KnowledgeCommands = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "knowledge.create-draft",
+        "knowledge.validate",
+        "knowledge.publish"
     };
 
     public async Task<CommandAttemptResult> ExecuteAsync(CommandAttempt attempt, CancellationToken cancellationToken = default)
@@ -275,7 +295,7 @@ public sealed class P1RecoveryCommandGateway(
                 {
                     if (_portfolio is null)
                         return Deny(503, "P5_COMMAND_DISPATCH_NOT_BOUND",
-                            "Portfolio mutation is recovered but the P1 Wave 9 Portfolio executor is not composed into this gateway.");
+                            "Portfolio mutation is recovered but the P1 Wave9 Portfolio executor is not composed into this gateway.");
 
                     result = await _portfolio.ExecuteAsync(
                         new PortfolioCommandWave9(
@@ -297,7 +317,7 @@ public sealed class P1RecoveryCommandGateway(
                 {
                     if (_execution is null)
                         return Deny(503, "P5_COMMAND_DISPATCH_NOT_BOUND",
-                            "Execution mutation is recovered but the guarded P1 Wave 10 Execution executor is not composed into this gateway.");
+                            "Execution mutation is recovered but the guarded P1 Wave10 Execution executor is not composed into this gateway.");
 
                     result = await _execution.ExecuteAsync(
                         new ExecutionCommandWave10(
@@ -318,7 +338,7 @@ public sealed class P1RecoveryCommandGateway(
                 {
                     if (_benefit is null)
                         return Deny(503, "P5_COMMAND_DISPATCH_NOT_BOUND",
-                            "Benefit mutation is recovered but the P1 Wave 11 Benefit executor is not composed into this gateway.");
+                            "Benefit mutation is recovered but the P1 Wave11 Benefit executor is not composed into this gateway.");
 
                     result = await _benefit.ExecuteAsync(
                         new BenefitCommandWave11(
@@ -335,6 +355,28 @@ public sealed class P1RecoveryCommandGateway(
                             VerificationDossierRef: String(body.RootElement, "verificationDossierRef"),
                             AttributionDossierRef: String(body.RootElement, "attributionDossierRef"),
                             RealizationDossierRef: String(body.RootElement, "realizationDossierRef")),
+                        resolved.Actor,
+                        cancellationToken);
+                }
+                else if (KnowledgeCommands.Contains(commandName))
+                {
+                    if (_knowledge is null)
+                        return Deny(503, "P5_COMMAND_DISPATCH_NOT_BOUND",
+                            "Knowledge mutation is recovered but the P1 Wave13 Knowledge executor is not composed into this gateway.");
+
+                    var createDraft = string.Equals(commandName, "knowledge.create-draft", StringComparison.OrdinalIgnoreCase);
+                    result = await _knowledge.ExecuteAsync(
+                        new KnowledgeCommandWave13(
+                            commandName,
+                            KnowledgeId: createDraft ? String(body.RootElement, "knowledgeId") : RequireString(body.RootElement, "knowledgeId"),
+                            BenefitId: createDraft ? RequireString(body.RootElement, "benefitId") : String(body.RootElement, "benefitId"),
+                            ExpectedVersion: RequireExpectedVersion(attempt),
+                            IdempotencyKey: attempt.IdempotencyKey!,
+                            CorrelationId: attempt.CorrelationId!,
+                            RequestedScope: requestedScope,
+                            Decision: String(body.RootElement, "decision"),
+                            Note: String(body.RootElement, "note"),
+                            PublicationDossierRef: String(body.RootElement, "publicationDossierRef")),
                         resolved.Actor,
                         cancellationToken);
                 }
