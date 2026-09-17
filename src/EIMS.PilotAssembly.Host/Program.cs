@@ -1,17 +1,29 @@
+using EIMS.PilotAssembly.Activation;
 using EIMS.PilotAssembly.Binding;
 using EIMS.PilotAssembly.Core;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseIISIntegration();
 
-// The binding adapter is compiled into the Host, but production activation remains fail-closed
-// until durable P2 persistence and authoritative live P3 directory composition are supplied.
-builder.Services.AddSingleton<ICommandGateway, FailClosedCommandGateway>();
+// Wave15 introduces an explicit production activation seam. The default Host still registers
+// no physical P2/P3 composition candidate, so it remains fail-closed. A configuration flag alone
+// cannot create or promote a runtime gateway.
+builder.Services.TryAddSingleton<IRuntimeCompositionCandidateProvider, NoRuntimeCompositionCandidateProvider>();
+builder.Services.AddSingleton<RuntimeActivationDecision>(sp =>
+    RuntimeCompositionActivator.SelectProduction(
+        sp.GetRequiredService<IRuntimeCompositionCandidateProvider>().GetCandidate()));
+builder.Services.AddSingleton<ICommandGateway>(sp =>
+    sp.GetRequiredService<RuntimeActivationDecision>().Gateway);
 
 var app = builder.Build();
 
+RuntimeActivationDecision RuntimeDecision() =>
+    app.Services.GetRequiredService<RuntimeActivationDecision>();
+
 bool RuntimeGatewayBound() =>
-    app.Services.GetRequiredService<ICommandGateway>() is not FailClosedCommandGateway;
+    RuntimeDecision().Activated
+    && app.Services.GetRequiredService<ICommandGateway>() is not FailClosedCommandGateway;
 
 PilotBindingSnapshot Snapshot()
 {
@@ -21,8 +33,9 @@ PilotBindingSnapshot Snapshot()
     if (!string.IsNullOrWhiteSpace(p4Path) && !Path.IsPathRooted(p4Path))
         p4Path = Path.GetFullPath(Path.Combine(app.Environment.ContentRootPath, p4Path));
 
-    // A config flag alone can never promote P1 to READY. The active DI gateway must also be a real bound gateway.
-    var p1RuntimeBound = Flag("Pilot:P1Authority:RuntimeBound") && RuntimeGatewayBound();
+    // Runtime authority is derived only from the activation decision. Legacy/config RuntimeBound flags
+    // are intentionally not authority inputs.
+    var p1RuntimeBound = RuntimeGatewayBound();
 
     return new PilotBindingSnapshot(
         p1RuntimeBound,
@@ -53,6 +66,7 @@ PilotBindingSnapshot Snapshot()
 app.MapGet("/health", () =>
 {
     var snapshot = Snapshot();
+    var activation = RuntimeDecision();
     return Results.Ok(new
     {
         status = "Healthy",
@@ -65,9 +79,12 @@ app.MapGet("/health", () =>
         recoveredMutationCommandCount = P1P5BindingContract.RecoveredMutationCommandCount,
         runtimeGatewayBound = RuntimeGatewayBound(),
         domainCommandAuthorityBound = snapshot.P1AuthorityRuntimeBound,
-        activationState = snapshot.P1AuthorityRuntimeBound
+        runtimeActivationCode = activation.Code,
+        runtimeActivationDetail = activation.Detail,
+        legacyRuntimeBoundConfigIsAuthority = false,
+        activationState = activation.Activated
             ? "RUNTIME_COMPOSITION_ACTIVE"
-            : "FAIL_CLOSED_UNTIL_P2_P3_COMPOSED"
+            : "FAIL_CLOSED_UNTIL_PHYSICAL_P2_P3_OP04_COMPOSED"
     });
 });
 
@@ -77,6 +94,7 @@ app.MapGet("/api/pilot/readiness", () =>
     return Results.Ok(new
     {
         ready = PilotReadinessEvaluator.IsNetworkPilotReady(gates),
+        runtimeActivation = new { RuntimeDecision().Activated, RuntimeDecision().Code },
         gates
     });
 });
@@ -95,8 +113,8 @@ app.MapPost("/api/authority/check", (HttpContext ctx) =>
     if (networkName is null)
         return Results.Json(new { code = "P5_WINDOWS_IDENTITY_REQUIRED" }, statusCode: 401);
 
-    var snapshot = Snapshot();
-    if (!snapshot.P1AuthorityRuntimeBound)
+    var activation = RuntimeDecision();
+    if (!activation.Activated)
     {
         return Results.Json(new
         {
@@ -104,7 +122,8 @@ app.MapPost("/api/authority/check", (HttpContext ctx) =>
             allowed = false,
             bindingAdapterAvailable = true,
             bindingContract = P1P5BindingContract.Version,
-            message = "P1-P5 adapter is compiled and contract-tested, but durable P2 and authoritative live P3 composition are not activated."
+            activationCode = activation.Code,
+            message = "P1-P5 adapter is compiled and contract-tested, but production P2/P3/OP-04 runtime composition is not activated."
         }, statusCode: 503);
     }
 
