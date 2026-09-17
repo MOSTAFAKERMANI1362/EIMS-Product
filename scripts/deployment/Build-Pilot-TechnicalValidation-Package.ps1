@@ -1,6 +1,7 @@
 param(
     [string]$OutputDirectory = "",
-    [string]$Configuration = "Release"
+    [string]$Configuration = "Release",
+    [string]$SourceRef = "recovery/wave17a-pilot-deployment-package"
 )
 
 $ErrorActionPreference = "Stop"
@@ -52,11 +53,21 @@ foreach ($relative in $requiredDocs) {
     Copy-Item $source -Destination (Join-Path $docsDir (Split-Path $relative -Leaf)) -Force
 }
 
+# GitHub source ZIP archives intentionally do not contain .git metadata. Do not invoke git
+# in that case: record the source ref truthfully and leave the exact commit unavailable.
 $sourceCommit = "UNAVAILABLE_FROM_SOURCE_ARCHIVE"
-try {
-    $candidate = (& git -C $repoRoot rev-parse HEAD 2>$null).Trim()
-    if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($candidate)) { $sourceCommit = $candidate }
-} catch { }
+$gitMetadataAvailable = Test-Path (Join-Path $repoRoot ".git")
+if ($gitMetadataAvailable) {
+    try {
+        $candidate = (& git -C $repoRoot rev-parse HEAD 2>$null).Trim()
+        if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($candidate)) {
+            $sourceCommit = $candidate
+        }
+    }
+    catch {
+        $sourceCommit = "GIT_METADATA_PRESENT_BUT_COMMIT_UNAVAILABLE"
+    }
+}
 
 $metadata = [ordered]@{
     packageName = $packageName
@@ -64,7 +75,10 @@ $metadata = [ordered]@{
     builtAt = (Get-Date -Format o)
     dotnetSdk = $sdk
     configuration = $Configuration
+    sourceRepository = "MOSTAFAKERMANI1362/EIMS-Product"
+    sourceRef = $SourceRef
     sourceCommit = $sourceCommit
+    sourceGitMetadataAvailable = $gitMetadataAvailable
     selfContained = $false
     installerType = "TRANSPARENT_ZIP_NO_MACHINE_LEVEL_INSTALLER"
     defaultActivationState = "FAIL_CLOSED_UNTIL_OP04_AND_PHYSICAL_COMPOSITION_READY"
@@ -105,5 +119,10 @@ Write-Host ""
 Write-Host "PASS: EIMS Pilot Technical Validation package created"
 Write-Host "Package: $zipPath"
 Write-Host "SHA256 : $zipHash"
+Write-Host "SourceRef: $SourceRef"
+Write-Host "SourceCommit: $sourceCommit"
 Write-Host "Purpose: ISOLATED TECHNICAL VALIDATION ONLY"
 Write-Host "Activation: FAIL-CLOSED BY DEFAULT"
+
+# Ensure callers do not inherit a stale native-process exit code from optional metadata probes.
+$global:LASTEXITCODE = 0
