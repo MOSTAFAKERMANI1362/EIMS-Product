@@ -1,0 +1,50 @@
+{
+  "schemaVersion": "1.0",
+  "evidenceClass": "LAB",
+  "wave": "P1-P5-WAVE14-KNOWLEDGE-BINDING",
+  "validatedAt": "2026-09-17T10:50:50.0312291+03:30",
+  "platform": {
+    "osFamily": "Windows",
+    "dotnetSdk": "10.0.302"
+  },
+  "binding": {
+    "contractVersion": "P1P5-1.3.0",
+    "recoveredUserMutations": 32
+  },
+  "results": {
+    "wave14Binding": "16/16 PASS",
+    "wave14KnowledgeComposition": "4/4 PASS",
+    "historicalP1P5": "16/16 PASS",
+    "wave12RealExecutionBenefitComposition": "4/4 PASS",
+    "wave10ExecutionLifecycle": "30/30 PASS",
+    "wave10ExecutionIntake": "8/8 PASS",
+    "wave11BenefitLifecycle": "32/32 PASS",
+    "wave11BenefitIntake": "5/5 PASS",
+    "wave13KnowledgeRuntime": "24/24 PASS",
+    "acrP0008": "38/38 PASS",
+    "combined": "177/177 PASS",
+    "finalResult": "PASS: WAVE14 LOCAL VALIDATION"
+  },
+  "rawLog": {
+    "committed": false,
+    "reason": "Contains local machine/user/path metadata",
+    "sha256": "93b48bc80563bb5503f5a87325272c3d2650488ff4f4806e62d2c3062ac1767e",
+    "bytes": 17769
+  },
+  "securityReview": {
+    "status": "DIFFERENTIAL_REVIEW_PASS_TRIVY_DEFERRED_NETWORK_EXCEPTION",
+    "noNewExternalPackages": true,
+    "noSecretsCredentialsConnectionStrings": true,
+    "noCustomerOrHrData": true,
+    "clientRoleScopeOwnershipAuthorClaimsTrusted": false,
+    "hostActivationChanged": false,
+    "systemOnlyIntakesExposedAsUserCommands": false,
+    "trivyFullScan": "NOT_EXECUTED_NETWORK_BLOCKED"
+  },
+  "nonClaims": [
+    "No physical Oracle binding",
+    "No live Domain/IIS/TLS activation",
+    "No OP-04 Network Pilot readiness claim",
+    "Frozen v6.360 unchanged"
+  ]
+}
