@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>EIMS.P1P5.Wave12ExecutionBenefitBinding.ContractTests</AssemblyName>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/EIMS.PilotAssembly.Binding/EIMS.PilotAssembly.Binding.csproj" />
+  </ItemGroup>
+</Project>

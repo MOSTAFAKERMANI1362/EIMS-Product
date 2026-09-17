@@ -1,0 +1,40 @@
+{
+  "artifactId": "P1-P5-WAVE12-LOCAL-VALIDATION-EVIDENCE",
+  "version": "1.0",
+  "validatedBranch": "recovery/p1p5-wave12-execution-benefit-binding",
+  "validatedHeadSha": "ecfc96632ad0d38ad21e25814ebe02a35083a368",
+  "validatedAtLocal": "2026-09-17T08:54:56+03:30",
+  "runner": "LOCAL-WINDOWS",
+  "dotnetSdk": "10.0.302",
+  "scriptVersion": "WAVE12-LOCAL-1.1",
+  "result": "PASS",
+  "bindingContract": "P1P5-1.2.0",
+  "recoveredUserMutations": 29,
+  "checks": {
+    "historicalP1P5Binding": "16/16 PASS",
+    "wave9PortfolioBindingRegression": "12/12 PASS",
+    "wave12ExecutionBenefitBinding": "19/19 PASS",
+    "wave12RealComposition": "4/4 PASS",
+    "wave10ExecutionLifecycle": "30/30 PASS",
+    "wave10ExecutionIntake": "8/8 PASS",
+    "wave11BenefitLifecycle": "32/32 PASS",
+    "wave11BenefitIntake": "5/5 PASS",
+    "acrP0008Verifier": "38/38 PASS",
+    "combined": "164 checks/controls PASS"
+  },
+  "rawLog": {
+    "committed": false,
+    "reason": "Raw local log contains workstation/user/path metadata and is intentionally not committed.",
+    "sha256": "6cf37a3cb085ccdd004e77d5d445b17c9a10652d40d741b318d6d02188afab85",
+    "sizeBytes": 19258,
+    "lineCount": 360
+  },
+  "claims": {
+    "localDotNetValidationPassed": true,
+    "hostedCiPassed": false,
+    "physicalOracleValidated": false,
+    "liveDomainIisValidated": false,
+    "op04PilotEvidenceComplete": false,
+    "networkPilotReady": false
+  }
+}

@@ -11,6 +11,9 @@ on:
       - 'src/EIMS.Persistence.Recovery/**'
       - 'tests/EIMS.P1P5.RuntimeBinding.ContractTests/**'
       - 'tests/EIMS.P1P5.Wave9PortfolioBinding.ContractTests/**'
+      - 'tests/EIMS.P1P5.Wave12ExecutionBenefitBinding.ContractTests/**'
+      - 'tests/EIMS.P1P5.Wave12Composition.ContractTests/**'
+      - 'integration/p1-p5-wave12/**'
       - '.github/workflows/p1-p5-runtime-binding.yml'
   push:
     branches: [ main ]
@@ -23,6 +26,9 @@ on:
       - 'src/EIMS.Persistence.Recovery/**'
       - 'tests/EIMS.P1P5.RuntimeBinding.ContractTests/**'
       - 'tests/EIMS.P1P5.Wave9PortfolioBinding.ContractTests/**'
+      - 'tests/EIMS.P1P5.Wave12ExecutionBenefitBinding.ContractTests/**'
+      - 'tests/EIMS.P1P5.Wave12Composition.ContractTests/**'
+      - 'integration/p1-p5-wave12/**'
       - '.github/workflows/p1-p5-runtime-binding.yml'
 
 permissions:
@@ -33,10 +39,12 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       - name: Setup .NET 10.0.302
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
           dotnet-version: '10.0.302'
 
@@ -44,18 +52,44 @@ jobs:
         shell: pwsh
         run: dotnet build .\src\EIMS.PilotAssembly.Host\EIMS.PilotAssembly.Host.csproj -c Release
 
-      - name: Build historical P1-P5 runtime binding tests
+      - name: Historical P1-P5 runtime binding regression
         shell: pwsh
-        run: dotnet build .\tests\EIMS.P1P5.RuntimeBinding.ContractTests\EIMS.P1P5.RuntimeBinding.ContractTests.csproj -c Release
+        run: |
+          dotnet build .\tests\EIMS.P1P5.RuntimeBinding.ContractTests\EIMS.P1P5.RuntimeBinding.ContractTests.csproj -c Release
+          dotnet run --project .\tests\EIMS.P1P5.RuntimeBinding.ContractTests\EIMS.P1P5.RuntimeBinding.ContractTests.csproj -c Release --no-build
 
-      - name: Run historical P1-P5 runtime binding tests
+      - name: Wave 9 Portfolio P1-P5 binding regression
         shell: pwsh
-        run: dotnet run --project .\tests\EIMS.P1P5.RuntimeBinding.ContractTests\EIMS.P1P5.RuntimeBinding.ContractTests.csproj -c Release --no-build
+        run: |
+          dotnet build .\tests\EIMS.P1P5.Wave9PortfolioBinding.ContractTests\EIMS.P1P5.Wave9PortfolioBinding.ContractTests.csproj -c Release
+          dotnet run --project .\tests\EIMS.P1P5.Wave9PortfolioBinding.ContractTests\EIMS.P1P5.Wave9PortfolioBinding.ContractTests.csproj -c Release --no-build
 
-      - name: Build Wave 9 Portfolio P1-P5 binding tests
+      - name: Wave 12 Execution Benefit P1-P5 binding tests
         shell: pwsh
-        run: dotnet build .\tests\EIMS.P1P5.Wave9PortfolioBinding.ContractTests\EIMS.P1P5.Wave9PortfolioBinding.ContractTests.csproj -c Release
+        run: |
+          dotnet build .\tests\EIMS.P1P5.Wave12ExecutionBenefitBinding.ContractTests\EIMS.P1P5.Wave12ExecutionBenefitBinding.ContractTests.csproj -c Release
+          dotnet run --project .\tests\EIMS.P1P5.Wave12ExecutionBenefitBinding.ContractTests\EIMS.P1P5.Wave12ExecutionBenefitBinding.ContractTests.csproj -c Release --no-build
 
-      - name: Run Wave 9 Portfolio P1-P5 binding tests
+      - name: Wave 12 real P1-P5 composition tests
         shell: pwsh
-        run: dotnet run --project .\tests\EIMS.P1P5.Wave9PortfolioBinding.ContractTests\EIMS.P1P5.Wave9PortfolioBinding.ContractTests.csproj -c Release --no-build
+        run: |
+          dotnet build .\tests\EIMS.P1P5.Wave12Composition.ContractTests\EIMS.P1P5.Wave12Composition.ContractTests.csproj -c Release
+          dotnet run --project .\tests\EIMS.P1P5.Wave12Composition.ContractTests\EIMS.P1P5.Wave12Composition.ContractTests.csproj -c Release --no-build
+
+      - name: Wave 10 Execution regressions
+        shell: pwsh
+        run: |
+          dotnet run --project .\tests\EIMS.P1.Wave10.Execution.ContractTests\EIMS.P1.Wave10.Execution.ContractTests.csproj -c Release
+          dotnet run --project .\tests\EIMS.P1.Wave10.ExecutionIntake.ContractTests\EIMS.P1.Wave10.ExecutionIntake.ContractTests.csproj -c Release
+
+      - name: Wave 11 Benefit regressions
+        shell: pwsh
+        run: |
+          dotnet run --project .\tests\EIMS.P1.Wave11.Benefit.ContractTests\EIMS.P1.Wave11.Benefit.ContractTests.csproj -c Release
+          dotnet run --project .\tests\EIMS.P1.Wave11.BenefitIntake.ContractTests\EIMS.P1.Wave11.BenefitIntake.ContractTests.csproj -c Release
+
+      - name: Verify ACR-P0-008 machine decision remains valid
+        shell: pwsh
+        run: |
+          dotnet build .\tools\EIMS.ACR.P0.008.Verifier\EIMS.ACR.P0.008.Verifier.csproj -c Release
+          dotnet run --project .\tools\EIMS.ACR.P0.008.Verifier\EIMS.ACR.P0.008.Verifier.csproj -c Release --no-build -- .\architecture\decisions\ACR-P0-008_POST_G04_COMMAND_BINDING_v1.0.json
