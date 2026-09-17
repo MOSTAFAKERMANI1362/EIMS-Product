@@ -35,6 +35,7 @@ public sealed record KnowledgeEnvelopeWave13(
 
 public sealed record KnowledgeBenefitSourceEvidenceWave13(
     string BenefitId,
+    long BenefitVersion,
     string ExecutionId,
     string IdeaId,
     long ApprovedIdeaVersion,
