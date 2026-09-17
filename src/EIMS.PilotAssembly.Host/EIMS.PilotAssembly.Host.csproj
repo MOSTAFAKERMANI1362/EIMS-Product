@@ -2,5 +2,6 @@
   <ItemGroup>
     <ProjectReference Include="../EIMS.PilotAssembly.Core/EIMS.PilotAssembly.Core.csproj" />
     <ProjectReference Include="../EIMS.PilotAssembly.Binding/EIMS.PilotAssembly.Binding.csproj" />
+    <ProjectReference Include="../EIMS.PilotAssembly.Activation/EIMS.PilotAssembly.Activation.csproj" />
   </ItemGroup>
 </Project>
