@@ -1,12 +1,14 @@
 using EIMS.PilotAssembly.Binding;
 using EIMS.PilotAssembly.Core;
+using EIMS.PilotAssembly.Host;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseIISIntegration();
 
-// The binding adapter is compiled into the Host, but production activation remains fail-closed
-// until durable P2 persistence and authoritative live P3 directory composition are supplied.
-builder.Services.AddSingleton<ICommandGateway, FailClosedCommandGateway>();
+// Production activation is controlled by OP-04 PILOT evidence plus real physical composition.
+// The default composition is unavailable, so the Host remains fail-closed in LAB/dev and until
+// durable P2 + authoritative P3 + a real candidate gateway are supplied by an environment adapter.
+builder.Services.AddEimsRuntimeActivation(builder.Configuration, builder.Environment.ContentRootPath);
 
 var app = builder.Build();
 
@@ -53,6 +55,7 @@ PilotBindingSnapshot Snapshot()
 app.MapGet("/health", () =>
 {
     var snapshot = Snapshot();
+    var activation = app.Services.GetRequiredService<HostRuntimeActivationStatus>();
     return Results.Ok(new
     {
         status = "Healthy",
@@ -65,19 +68,33 @@ app.MapGet("/health", () =>
         recoveredMutationCommandCount = P1P5BindingContract.RecoveredMutationCommandCount,
         runtimeGatewayBound = RuntimeGatewayBound(),
         domainCommandAuthorityBound = snapshot.P1AuthorityRuntimeBound,
-        activationState = snapshot.P1AuthorityRuntimeBound
+        activationState = activation.Decision.Activate
             ? "RUNTIME_COMPOSITION_ACTIVE"
-            : "FAIL_CLOSED_UNTIL_P2_P3_COMPOSED"
+            : "FAIL_CLOSED_UNTIL_OP04_AND_PHYSICAL_COMPOSITION_READY",
+        op04EvidenceState = activation.EvidenceState,
+        op04PilotReady = activation.Op04PilotReady,
+        activationCode = activation.Decision.Code,
+        activationBlockers = activation.Decision.Blockers,
+        compositionEvidenceRef = activation.CompositionEvidenceRef
     });
 });
 
 app.MapGet("/api/pilot/readiness", () =>
 {
     var gates = PilotReadinessEvaluator.Evaluate(Snapshot());
+    var activation = app.Services.GetRequiredService<HostRuntimeActivationStatus>();
     return Results.Ok(new
     {
-        ready = PilotReadinessEvaluator.IsNetworkPilotReady(gates),
-        gates
+        ready = PilotReadinessEvaluator.IsNetworkPilotReady(gates) && activation.Decision.Activate,
+        legacyDiagnosticGates = gates,
+        authoritativeActivation = new
+        {
+            activation.Op04EvidenceLoaded,
+            activation.Op04PilotReady,
+            activation.EvidenceState,
+            activation.Decision.Code,
+            activation.Decision.Blockers
+        }
     });
 });
 
@@ -95,8 +112,8 @@ app.MapPost("/api/authority/check", (HttpContext ctx) =>
     if (networkName is null)
         return Results.Json(new { code = "P5_WINDOWS_IDENTITY_REQUIRED" }, statusCode: 401);
 
-    var snapshot = Snapshot();
-    if (!snapshot.P1AuthorityRuntimeBound)
+    var activation = app.Services.GetRequiredService<HostRuntimeActivationStatus>();
+    if (!activation.Decision.Activate || !RuntimeGatewayBound())
     {
         return Results.Json(new
         {
@@ -104,7 +121,9 @@ app.MapPost("/api/authority/check", (HttpContext ctx) =>
             allowed = false,
             bindingAdapterAvailable = true,
             bindingContract = P1P5BindingContract.Version,
-            message = "P1-P5 adapter is compiled and contract-tested, but durable P2 and authoritative live P3 composition are not activated."
+            activationCode = activation.Decision.Code,
+            blockers = activation.Decision.Blockers,
+            message = "P1-P5 adapter is compiled and contract-tested, but OP-04 PILOT evidence and physical P2/P3 production composition are not all activated."
         }, statusCode: 503);
     }
 
