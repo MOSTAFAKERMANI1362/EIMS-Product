@@ -19,9 +19,9 @@ Wave13 implements the three Knowledge mutations stabilized by ACR-P0-008 without
 - Knowledge author authority is resolved by server-side author policy.
 - default policy family is `NEED_OWNER_OR_DOMAIN_EXPERT`; supported recovered author-role alternatives are NEED_OWNER, IDEA_OWNER and DOMAIN_EXPERT.
 - Benefit Owner alone does not grant Knowledge author authority.
-- `KNOWLEDGE_STEWARD` validates.
-- `KNOWLEDGE_PUBLISHER` publishes.
-- the same person who validated the asset cannot publish it.
+- `KNOWLEDGE_STEWARD` authority validates.
+- `KNOWLEDGE_PUBLISHER` authority publishes.
+- validation and publication authorities remain distinct at the server-resolved role/assignment boundary; no stronger person-level prohibition is invented beyond ACR-P0-008.
 - publication requires a publication dossier.
 
 ## Persistence
