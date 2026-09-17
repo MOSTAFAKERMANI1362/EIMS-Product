@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>EIMS.P5.Wave15.RuntimeComposition.ContractTests</AssemblyName>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/EIMS.PilotAssembly.Activation/EIMS.PilotAssembly.Activation.csproj" />
+  </ItemGroup>
+</Project>
