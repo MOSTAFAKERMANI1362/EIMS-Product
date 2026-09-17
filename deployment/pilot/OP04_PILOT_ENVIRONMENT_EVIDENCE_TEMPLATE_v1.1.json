@@ -1,0 +1,77 @@
+{
+  "schemaVersion": "1.1",
+  "evidenceClass": "PILOT_ENVIRONMENT_EVIDENCE",
+  "referenceCustomer": "Mes Shahid Bahonar",
+  "windows": {
+    "serverName": "",
+    "osVersion": "",
+    "vmProvisioned": false,
+    "domainJoined": false,
+    "domainName": "",
+    "iisInstalled": false,
+    "windowsAuthenticationInstalled": false,
+    "dotnetRuntimeVersion": "",
+    "collectedAt": ""
+  },
+  "oracle": {
+    "version": "",
+    "providerName": "",
+    "providerVersion": "",
+    "connectionMode": "",
+    "serviceAccountName": "",
+    "schemaOwner": "",
+    "liveConnectionValidated": false,
+    "evidenceRef": ""
+  },
+  "p1Authority": {
+    "physicalPackageAvailable": false,
+    "packageRef": "",
+    "buildPassed": false,
+    "contractTestsPassed": false,
+    "evidenceRef": ""
+  },
+  "windowsIdentity": {
+    "identityFormat": "DOMAIN\\user",
+    "liveDomainIdentityValidated": false,
+    "personIdMappingValidated": false,
+    "serverRoleScopeValidated": false,
+    "clientIdentityHeadersTrusted": false,
+    "evidenceRef": ""
+  },
+  "hrOrg": {
+    "sourceSystem": "Oracle HR",
+    "exportOwnerRole": "",
+    "realExportPrepared": false,
+    "p4SchemaValidated": false,
+    "reconciled": false,
+    "approvalRef": "",
+    "evidenceRef": ""
+  },
+  "tls": {
+    "configured": false,
+    "hostname": "",
+    "certificateSubject": "",
+    "validTo": "",
+    "liveHandshakeValidated": false,
+    "evidenceRef": ""
+  },
+  "runtime": {
+    "concurrencyValidated": false,
+    "idempotencyValidated": false,
+    "auditOutboxAtomicityValidated": false,
+    "evidenceRef": ""
+  },
+  "operations": {
+    "backupMethod": "",
+    "backupRestoreValidated": false,
+    "monitoringTarget": "",
+    "monitoringValidated": false,
+    "evidenceRef": ""
+  },
+  "security": {
+    "noSecretsCommitted": true,
+    "noPersonalDataCommitted": true,
+    "reviewedByRole": "",
+    "reviewDate": ""
+  }
+}
