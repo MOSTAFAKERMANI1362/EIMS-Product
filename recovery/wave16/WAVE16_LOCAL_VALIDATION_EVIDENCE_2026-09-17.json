@@ -1,0 +1,39 @@
+{
+  "evidenceClass": "LAB_LOCAL_VALIDATION",
+  "wave": "Wave16",
+  "validatedAtLocal": "2026-09-17T11:47:30+03:30",
+  "dotNetSdk": "10.0.302",
+  "scriptVersion": "WAVE16-LOCAL-1.0",
+  "result": "PASS",
+  "checks": {
+    "wave15ActivationControls": { "passed": 8, "total": 8 },
+    "authoritativeOp04Controls": { "passed": 10, "total": 10 },
+    "failClosedTemplateControls": { "passed": 1, "total": 1 },
+    "combined": { "passed": 19, "total": 19 }
+  },
+  "templateResult": {
+    "pilotActivationReady": false,
+    "passedGateCount": 0,
+    "totalGateCount": 9,
+    "expectedState": "BLOCKED_EVIDENCE_REQUIRED"
+  },
+  "rawLog": {
+    "sha256": "fca943aace21f7ff5b5bcadb47c714d455cd901b890dada2c1c5ae3e59c2d4f3",
+    "bytes": 8104,
+    "committed": false,
+    "reason": "Raw local transcript contains user/machine/path identifiers; sanitized evidence only is committed."
+  },
+  "claims": {
+    "softwareSideReadinessPackValidated": true,
+    "physicalPilotReady": false,
+    "realEnvironmentEvidenceRequired": true,
+    "physicalOracleValidated": false,
+    "liveDomainIisTlsValidated": false,
+    "realHrEvidenceValidated": false
+  },
+  "security": {
+    "secretsCommitted": false,
+    "piiCommitted": false,
+    "trivyFullScan": "NOT_EXECUTED_NETWORK_BLOCKED"
+  }
+}
