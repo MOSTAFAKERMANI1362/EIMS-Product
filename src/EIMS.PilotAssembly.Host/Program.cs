@@ -23,7 +23,7 @@ PilotBindingSnapshot Snapshot()
     if (!string.IsNullOrWhiteSpace(p4Path) && !Path.IsPathRooted(p4Path))
         p4Path = Path.GetFullPath(Path.Combine(app.Environment.ContentRootPath, p4Path));
 
-    // A config flag alone can never promote P1 to READY. The active DI gateway must also be a real bound gateway.
+    // Legacy diagnostic snapshot only. It cannot activate the runtime by itself.
     var p1RuntimeBound = Flag("Pilot:P1Authority:RuntimeBound") && RuntimeGatewayBound();
 
     return new PilotBindingSnapshot(
@@ -74,19 +74,17 @@ app.MapGet("/health", () =>
         op04EvidenceState = activation.EvidenceState,
         op04PilotReady = activation.Op04PilotReady,
         activationCode = activation.Decision.Code,
-        activationBlockers = activation.Decision.Blockers,
-        compositionEvidenceRef = activation.CompositionEvidenceRef
+        activationBlockers = activation.Decision.Blockers
     });
 });
 
 app.MapGet("/api/pilot/readiness", () =>
 {
-    var gates = PilotReadinessEvaluator.Evaluate(Snapshot());
+    var legacyGates = PilotReadinessEvaluator.Evaluate(Snapshot());
     var activation = app.Services.GetRequiredService<HostRuntimeActivationStatus>();
     return Results.Ok(new
     {
-        ready = PilotReadinessEvaluator.IsNetworkPilotReady(gates) && activation.Decision.Activate,
-        legacyDiagnosticGates = gates,
+        ready = activation.Decision.Activate,
         authoritativeActivation = new
         {
             activation.Op04EvidenceLoaded,
@@ -94,7 +92,8 @@ app.MapGet("/api/pilot/readiness", () =>
             activation.EvidenceState,
             activation.Decision.Code,
             activation.Decision.Blockers
-        }
+        },
+        legacyDiagnosticGates = legacyGates
     });
 });
 
