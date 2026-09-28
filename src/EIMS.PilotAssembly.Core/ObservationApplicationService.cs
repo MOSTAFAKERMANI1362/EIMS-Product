@@ -21,8 +21,7 @@ public sealed class ObservationApplicationService
         ObservationSecurityContext securityContext,
         string requiredScope,
         string? clientRole = null,
-        string? clientCapability = null,
-        long? expectedVersion = null)
+        string? clientCapability = null)
     {
         ArgumentNullException.ThrowIfNull(observation);
         ArgumentNullException.ThrowIfNull(securityContext);
@@ -41,7 +40,8 @@ public sealed class ObservationApplicationService
         ObservationSecurityContext securityContext,
         string requiredScope,
         string? clientRole = null,
-        string? clientCapability = null)
+        string? clientCapability = null,
+        long? expectedVersion = null)
     {
         ArgumentNullException.ThrowIfNull(observation);
         ArgumentNullException.ThrowIfNull(securityContext);
