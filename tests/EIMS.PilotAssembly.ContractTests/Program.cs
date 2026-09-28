@@ -282,6 +282,33 @@ Test("VS01-APP-003 application command ignores client authorization claims",()=>
     }
 });
 
+
+
+Test("VS01-APP-004 atomic submit returns observation and exactly one G01 assignment as one business operation",()=>{
+    var context = new ObservationSecurityContext(
+        "DOMAIN\\user4",
+        new[] { "SUBMITTER" },
+        new[] { "CREATE" },
+        new[] { "OWNED_RECORD" });
+
+    var observation = new Observation("OBS-APP-004", "نمونه", ObservationStatus.Draft, 1);
+    var service = new ObservationApplicationService();
+
+    var result = service.SubmitObservationWithG01Assignment(
+        observation,
+        context,
+        "OWNED_RECORD");
+
+    Assert(result.Observation.Status == ObservationStatus.SubmittedForG01,
+        "VS01 RED: atomic application command must submit the observation.");
+    Assert(result.Observation.Version == 2,
+        "VS01 RED: atomic application command must increment the observation version.");
+    Assert(result.Assignment.ObservationId == observation.Id,
+        "VS01 RED: atomic application command must create a G01 assignment for the submitted observation.");
+    Assert(result.Assignment.Status == G01WorkAssignmentStatus.Pending,
+        "VS01 RED: the created G01 assignment must be PENDING.");
+});
+
 Console.WriteLine($"RESULT {passed}/{passed+failed} PASS");
 Environment.ExitCode=failed==0?0:1;
 
