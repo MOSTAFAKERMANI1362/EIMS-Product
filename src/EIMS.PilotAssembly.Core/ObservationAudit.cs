@@ -1,32 +1,46 @@
 namespace EIMS.PilotAssembly.Core;
 
-public sealed record ObservationAuditRecord(
-    string Id,
-    string ActorPrincipalId,
-    string CommandName,
-    string EntityId,
-    string Outcome,
-    long ResultingVersion)
+public sealed record ObservationAuditRecord
 {
-    public ObservationAuditRecord
+    public string Id { get; }
+    public string ActorPrincipalId { get; }
+    public string CommandName { get; }
+    public string EntityId { get; }
+    public string Outcome { get; }
+    public long ResultingVersion { get; }
+
+    public ObservationAuditRecord(
+        string id,
+        string actorPrincipalId,
+        string commandName,
+        string entityId,
+        string outcome,
+        long resultingVersion)
     {
-        if (string.IsNullOrWhiteSpace(Id))
-            throw new ArgumentException("Audit identifier is required.", nameof(Id));
+        if (string.IsNullOrWhiteSpace(id))
+            throw new ArgumentException("Audit identifier is required.", nameof(id));
 
-        if (string.IsNullOrWhiteSpace(ActorPrincipalId))
-            throw new ArgumentException("Actor principal identifier is required.", nameof(ActorPrincipalId));
+        if (string.IsNullOrWhiteSpace(actorPrincipalId))
+            throw new ArgumentException("Actor principal identifier is required.", nameof(actorPrincipalId));
 
-        if (string.IsNullOrWhiteSpace(CommandName))
-            throw new ArgumentException("Command name is required.", nameof(CommandName));
+        if (string.IsNullOrWhiteSpace(commandName))
+            throw new ArgumentException("Command name is required.", nameof(commandName));
 
-        if (string.IsNullOrWhiteSpace(EntityId))
-            throw new ArgumentException("Entity identifier is required.", nameof(EntityId));
+        if (string.IsNullOrWhiteSpace(entityId))
+            throw new ArgumentException("Entity identifier is required.", nameof(entityId));
 
-        if (string.IsNullOrWhiteSpace(Outcome))
-            throw new ArgumentException("Audit outcome is required.", nameof(Outcome));
+        if (string.IsNullOrWhiteSpace(outcome))
+            throw new ArgumentException("Audit outcome is required.", nameof(outcome));
 
-        if (ResultingVersion < 0)
-            throw new ArgumentOutOfRangeException(nameof(ResultingVersion));
+        if (resultingVersion < 0)
+            throw new ArgumentOutOfRangeException(nameof(resultingVersion));
+
+        Id = id;
+        ActorPrincipalId = actorPrincipalId;
+        CommandName = commandName;
+        EntityId = entityId;
+        Outcome = outcome;
+        ResultingVersion = resultingVersion;
     }
 }
 
