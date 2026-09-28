@@ -99,7 +99,7 @@ public sealed class ObservationApplicationService
             }
             catch
             {
-                _repository.Restore(observation.Id, previousObservation);
+                _repository.RestoreIfVersion(observation.Id, previousObservation, observation.Version + 1);
                 throw;
             }
         });
