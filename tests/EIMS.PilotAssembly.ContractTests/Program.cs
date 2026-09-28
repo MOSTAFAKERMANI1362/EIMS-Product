@@ -336,4 +336,26 @@ Environment.ExitCode=failed==0?0:1;
 PilotBindingSnapshot Snapshot(string p4Path,string p4ExpectedHash,bool p1,bool oracle,bool live)=>new(
     p1, live&&p1, p1?"P1-PACKAGE":"",
     oracle?"APPROVED_VERSION":"",oracle?"APPROVED_PROVIDER":"",oracle?"APPROVED_CONNECTION":"",oracle?"EIMS_SVC":"",oracle?"EIMS":"",live&&oracle,
-    "IIS_WINDOWS_AUTH",true,false,live,true,true,live,p4Path,p4ExpectedHash,live,live,live,live,live);\n\n// VS01 RED helper: implementation must provide the transaction boundary contract.\nsealed class RecordingObservationTransaction : IObservationTransaction\n{\n    public ObservationTransactionState State { get; private set; }\n\n    public T Execute<T>(Func<T> operation)\n    {\n        State = ObservationTransactionState.Active;\n        try\n        {\n            var result = operation();\n            State = ObservationTransactionState.Committed;\n            return result;\n        }\n        catch\n        {\n            State = ObservationTransactionState.RolledBack;\n            throw;\n        }\n    }\n}\n
+    "IIS_WINDOWS_AUTH",true,false,live,true,true,live,p4Path,p4ExpectedHash,live,live,live,live,live);
+
+// VS01 RED helper: implementation must provide the transaction boundary contract.
+sealed class RecordingObservationTransaction : IObservationTransaction
+{
+    public ObservationTransactionState State { get; private set; }
+
+    public T Execute<T>(Func<T> operation)
+    {
+        State = ObservationTransactionState.Active;
+        try
+        {
+            var result = operation();
+            State = ObservationTransactionState.Committed;
+            return result;
+        }
+        catch
+        {
+            State = ObservationTransactionState.RolledBack;
+            throw;
+        }
+    }
+}
