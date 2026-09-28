@@ -495,6 +495,62 @@ Test("VS01-API-003 submission contract defines command route and concurrency/ide
         "VS01 RED: sensitive submission must support Idempotency-Key.");
 });
 
+
+Test("VS01-AUDIT-001 audit record captures server-derived actor and command identity",()=>{
+    var audit = new ObservationAuditRecord(
+        "AUD-001",
+        "DOMAIN\\\\reviewer1",
+        "OBSERVATION_SUBMIT",
+        "OBS-AUD-001",
+        "SUCCESS",
+        2);
+    Assert(audit.ActorPrincipalId == "DOMAIN\\\\reviewer1",
+        "VS01 RED: audit actor must come from the authenticated server context.");
+    Assert(audit.CommandName == "OBSERVATION_SUBMIT",
+        "VS01 RED: audit must identify the business command.");
+    Assert(audit.EntityId == "OBS-AUD-001",
+        "VS01 RED: audit must identify the affected business entity.");
+});
+
+Test("VS01-AUDIT-002 audit record is append-oriented and does not expose mutation operations",()=>{
+    var methods = typeof(IObservationAuditSink).GetMethods();
+    Assert(methods.Length == 1,
+        "VS01 RED: audit sink must expose only an append operation at the application contract boundary.");
+    Assert(methods[0].Name == "Append",
+        "VS01 RED: audit sink mutation contract must be append-only.");
+});
+
+Test("VS01-AUDIT-003 audit append requires a non-empty server actor",()=>{
+    try
+    {
+        _ = new ObservationAuditRecord(
+            "AUD-003",
+            "",
+            "OBSERVATION_SUBMIT",
+            "OBS-AUD-003",
+            "SUCCESS",
+            2);
+        throw new Exception("VS01 RED: audit records must reject an empty actor principal.");
+    }
+    catch (ArgumentException)
+    {
+    }
+});
+
+Test("VS01-AUDIT-004 audit record carries operation outcome and resulting version",()=>{
+    var audit = new ObservationAuditRecord(
+        "AUD-004",
+        "DOMAIN\\\\reviewer4",
+        "OBSERVATION_SUBMIT",
+        "OBS-AUD-004",
+        "SUCCESS",
+        7);
+    Assert(audit.Outcome == "SUCCESS",
+        "VS01 RED: audit must record the operation outcome.");
+    Assert(audit.ResultingVersion == 7,
+        "VS01 RED: audit must record the resulting business version.");
+});
+
 Console.WriteLine($"RESULT {passed}/{passed+failed} PASS");
 Environment.ExitCode=failed==0?0:1;
 
