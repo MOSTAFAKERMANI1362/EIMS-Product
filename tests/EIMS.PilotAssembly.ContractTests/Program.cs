@@ -407,6 +407,34 @@ Test("VS01-IDEMP-002 same idempotency key with different semantic request is rej
         "VS01 RED: reusing an idempotency key for a different semantic request must raise EIMS_IDEMPOTENCY_CONFLICT.");
 });
 
+Test("VS01-REPO-001 repository loads observation by stable identifier",()=>{
+    IObservationRepository repository = new InMemoryObservationRepository();
+    var observation = new Observation("OBS-REPO-001", "نمونه", ObservationStatus.Draft, 1);
+    repository.Save(observation);
+    var loaded = repository.GetById(observation.Id);
+    Assert(loaded == observation, "VS01 RED: repository must return the observation stored under its stable identifier.");
+});
+
+Test("VS01-REPO-002 repository saves submitted observation with expected version guard",()=>{
+    IObservationRepository repository = new InMemoryObservationRepository();
+    var observation = new Observation("OBS-REPO-002", "نمونه", ObservationStatus.Draft, 3);
+    repository.Save(observation);
+    var submitted = new Observation(observation.Id, observation.Title, ObservationStatus.SubmittedForG01, 4);
+    var updated = repository.SaveIfVersion(submitted, expectedVersion: 3);
+    Assert(updated, "VS01 RED: matching expected version must permit repository update.");
+    Assert(repository.GetById(observation.Id) == submitted, "VS01 RED: successful repository update must persist the new version/state.");
+});
+
+Test("VS01-REPO-003 stale repository version rejects without overwrite",()=>{
+    IObservationRepository repository = new InMemoryObservationRepository();
+    var current = new Observation("OBS-REPO-003", "نمونه", ObservationStatus.SubmittedForG01, 5);
+    repository.Save(current);
+    var stale = new Observation(current.Id, current.Title, ObservationStatus.SubmittedForG01, 6);
+    var updated = repository.SaveIfVersion(stale, expectedVersion: 4);
+    Assert(!updated, "VS01 RED: stale expected version must reject the repository update.");
+    Assert(repository.GetById(current.Id) == current, "VS01 RED: rejected stale update must not overwrite current state.");
+});
+
 Test("VS01-APP-005 submit-to-G01 executes inside an application transaction boundary",()=>{
     var context = new ObservationSecurityContext(
         "DOMAIN\\user5",
