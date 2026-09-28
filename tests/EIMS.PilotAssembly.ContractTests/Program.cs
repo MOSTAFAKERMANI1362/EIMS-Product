@@ -137,6 +137,81 @@ Test("VS01-UNIT-008 completed G01 assignment cannot be accepted again",()=>{
     }
 });
 
+Test("VS01-AUTH-001 submit observation requires CREATE capability and valid scope",()=>{
+    var context = new ObservationSecurityContext(
+        "DOMAIN\\user1",
+        new[] { "SUBMITTER" },
+        new[] { "CREATE" },
+        new[] { "OWNED_RECORD" });
+
+    var service = new ObservationAuthorizationService();
+    Assert(service.CanSubmit(context, "OWNED_RECORD"),
+        "VS01 RED: authenticated SUBMITTER with CREATE and valid scope must be authorized.");
+});
+
+Test("VS01-AUTH-002 missing CREATE capability is forbidden",()=>{
+    var context = new ObservationSecurityContext(
+        "DOMAIN\\user1",
+        new[] { "SUBMITTER" },
+        Array.Empty<string>(),
+        new[] { "OWNED_RECORD" });
+
+    var service = new ObservationAuthorizationService();
+
+    try
+    {
+        service.AuthorizeSubmit(context, "OWNED_RECORD");
+        throw new Exception("VS01 RED: missing CREATE capability must be forbidden.");
+    }
+    catch (ObservationAuthorizationException ex)
+    {
+        Assert(ex.Code == "EIMS_FORBIDDEN",
+            "VS01 RED: authorization failure must produce EIMS_FORBIDDEN.");
+    }
+});
+
+Test("VS01-AUTH-003 wrong scope is forbidden",()=>{
+    var context = new ObservationSecurityContext(
+        "DOMAIN\\user1",
+        new[] { "SUBMITTER" },
+        new[] { "CREATE" },
+        new[] { "OWNED_RECORD" });
+
+    var service = new ObservationAuthorizationService();
+
+    try
+    {
+        service.AuthorizeSubmit(context, "ORG_UNIT");
+        throw new Exception("VS01 RED: scope outside effective scopes must be forbidden.");
+    }
+    catch (ObservationAuthorizationException ex)
+    {
+        Assert(ex.Code == "EIMS_SCOPE_VIOLATION",
+            "VS01 RED: invalid scope must produce EIMS_SCOPE_VIOLATION.");
+    }
+});
+
+Test("VS01-AUTH-004 client role and scope values do not override security context",()=>{
+    var context = new ObservationSecurityContext(
+        "DOMAIN\\user1",
+        new[] { "SUBMITTER" },
+        new[] { "CREATE" },
+        new[] { "OWNED_RECORD" });
+
+    var service = new ObservationAuthorizationService();
+
+    try
+    {
+        service.AuthorizeSubmit(context, "GLOBAL", clientRole: "ADMIN", clientCapability: "ROLE_ADMIN");
+        throw new Exception("VS01 RED: client-supplied role/capability/scope must not elevate authorization.");
+    }
+    catch (ObservationAuthorizationException ex)
+    {
+        Assert(ex.Code == "EIMS_SCOPE_VIOLATION",
+            "VS01 RED: authorization must use server-derived effective scope.");
+    }
+});
+
 Console.WriteLine($"RESULT {passed}/{passed+failed} PASS");
 Environment.ExitCode=failed==0?0:1;
 
