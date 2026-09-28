@@ -42,4 +42,28 @@ public sealed class ObservationSubmissionService
             Version = checked(observation.Version + 1)
         };
     }
+
+    public ObservationSubmissionWithG01Result SubmitObservationWithG01Assignment(Observation observation)
+    {
+        ArgumentNullException.ThrowIfNull(observation);
+
+        if (observation.Status == ObservationStatus.SubmittedForG01)
+        {
+            return new ObservationSubmissionWithG01Result(
+                observation,
+                CreateG01Assignment(observation));
+        }
+
+        var submitted = SubmitObservation(observation);
+        return new ObservationSubmissionWithG01Result(
+            submitted,
+            CreateG01Assignment(submitted));
+    }
+
+    private static G01WorkAssignment CreateG01Assignment(Observation observation) =>
+        new(
+            $"G01-{observation.Id}",
+            observation.Id,
+            "INTAKE_STEWARD",
+            G01WorkAssignmentStatus.Pending);
 }
