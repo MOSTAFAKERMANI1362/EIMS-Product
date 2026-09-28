@@ -456,6 +456,44 @@ Test("VS01-APP-005 submit-to-G01 executes inside an application transaction boun
         "VS01 RED: successful submit-to-G01 must commit the application transaction.");
 });
 
+
+Test("VS01-API-001 submission request DTO carries only command data",()=>{
+    var request = new SubmitObservationRequestDto();
+    var properties = typeof(SubmitObservationRequestDto).GetProperties();
+
+    Assert(properties.Length == 0,
+        "VS01 RED: submission authorization data must not be accepted through the request body.");
+});
+
+Test("VS01-API-002 submission response DTO exposes observation and G01 assignment state",()=>{
+    var response = new SubmitObservationResponseDto(
+        "OBS-API-002",
+        "SUBMITTED_FOR_G01",
+        2,
+        "G01-OBS-API-002",
+        "PENDING");
+
+    Assert(response.ObservationId == "OBS-API-002",
+        "VS01 RED: response must expose the stable observation identifier.");
+    Assert(response.Status == "SUBMITTED_FOR_G01",
+        "VS01 RED: response must expose the resulting observation state.");
+    Assert(response.Version == 2,
+        "VS01 RED: response must expose the resulting optimistic-concurrency version.");
+    Assert(response.G01AssignmentId == "G01-OBS-API-002",
+        "VS01 RED: response must expose the created G01 assignment identifier.");
+    Assert(response.G01AssignmentStatus == "PENDING",
+        "VS01 RED: response must expose the G01 assignment state.");
+});
+
+Test("VS01-API-003 submission contract defines command route and concurrency/idempotency headers",()=>{
+    Assert(ObservationApiContract.SubmissionRoute == "/api/v1/observations/{observationId}/submission",
+        "VS01 RED: submission must use the approved command route.");
+    Assert(ObservationApiContract.ExpectedVersionHeader == "If-Match",
+        "VS01 RED: optimistic concurrency must bind expectedVersion to If-Match.");
+    Assert(ObservationApiContract.IdempotencyHeader == "Idempotency-Key",
+        "VS01 RED: sensitive submission must support Idempotency-Key.");
+});
+
 Console.WriteLine($"RESULT {passed}/{passed+failed} PASS");
 Environment.ExitCode=failed==0?0:1;
 
