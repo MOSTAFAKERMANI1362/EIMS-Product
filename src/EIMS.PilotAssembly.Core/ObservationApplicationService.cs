@@ -4,13 +4,16 @@ public sealed class ObservationApplicationService
 {
     private readonly ObservationAuthorizationService _authorization;
     private readonly ObservationSubmissionService _domain;
+    private readonly IObservationTransaction _transaction;
 
     public ObservationApplicationService(
         ObservationAuthorizationService? authorization = null,
-        ObservationSubmissionService? domain = null)
+        ObservationSubmissionService? domain = null,
+        IObservationTransaction? transaction = null)
     {
         _authorization = authorization ?? new ObservationAuthorizationService();
         _domain = domain ?? new ObservationSubmissionService();
+        _transaction = transaction ?? new ObservationTransaction();
     }
 
     public Observation SubmitObservation(
@@ -48,6 +51,7 @@ public sealed class ObservationApplicationService
             clientRole,
             clientCapability);
 
-        return _domain.SubmitObservationWithG01Assignment(observation);
+        return _transaction.Execute(() =>
+            _domain.SubmitObservationWithG01Assignment(observation));
     }
 }
