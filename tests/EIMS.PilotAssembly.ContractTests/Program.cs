@@ -30,10 +30,37 @@ Test("P5-CT-13 config-only assembly cannot claim Network Pilot READY",()=>{var g
 Test("P5-CT-14 complete live evidence can satisfy readiness contract",()=>{var g=PilotReadinessEvaluator.Evaluate(Snapshot(p4Fixture,p4FixtureHash,true,true,true));Assert(PilotReadinessEvaluator.IsNetworkPilotReady(g));});
 Test("P5-CT-15 fail-closed command gateway never mutates state",()=>{var r=new FailClosedCommandGateway().ExecuteAsync(new CommandAttempt("g01/decide","DOMAIN\\user1","c1",1,"i1","{}")).GetAwaiter().GetResult();Assert(r.HttpStatus==503);Assert(!r.StateMutated);});
 
-// VS-01 TDD RED: the current assembly has no Observation submission contract yet.
+// VS-01 TDD: state-based contract. GREEN requires real domain behavior, not type existence.
 Test("VS01-UNIT-001 SubmitObservation valid transitions DRAFT to SUBMITTED_FOR_G01",()=>{
-    var observationSubmissionService = typeof(PilotBaseline).Assembly.GetType("EIMS.PilotAssembly.Core.ObservationSubmissionService");
-    Assert(observationSubmissionService is not null, "VS01 RED: ObservationSubmissionService contract is not implemented.");
+    var observation = new Observation("OBS-TEST-001", "کاهش توقف خط تولید", ObservationStatus.Draft, 1);
+    var service = new ObservationSubmissionService();
+
+    var submitted = service.SubmitObservation(observation);
+
+    Assert(submitted.Status == ObservationStatus.SubmittedForG01,
+        "VS01 RED: valid submission must transition DRAFT to SUBMITTED_FOR_G01.");
+    Assert(submitted.Version == 2,
+        "VS01 RED: successful submission must increment version.");
+});
+
+Test("VS01-UNIT-002 SubmitObservation rejects non-DRAFT without mutation",()=>{
+    var observation = new Observation("OBS-TEST-002", "نمونه", ObservationStatus.SubmittedForG01, 2);
+    var service = new ObservationSubmissionService();
+
+    try
+    {
+        service.SubmitObservation(observation);
+        throw new Exception("VS01 RED: submitting a non-DRAFT observation must fail.");
+    }
+    catch (ObservationDomainException ex)
+    {
+        Assert(ex.Code == "EIMS_INVALID_STATE",
+            "VS01 RED: invalid submission state must produce EIMS_INVALID_STATE.");
+        Assert(observation.Status == ObservationStatus.SubmittedForG01,
+            "VS01 RED: failed submission must not mutate state.");
+        Assert(observation.Version == 2,
+            "VS01 RED: failed submission must not mutate version.");
+    }
 });
 
 Console.WriteLine($"RESULT {passed}/{passed+failed} PASS");
