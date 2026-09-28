@@ -359,6 +359,54 @@ Test("VS01-CON-002 stale expected version rejects without mutation",()=>{
         "VS01 RED: stale concurrency rejection must not mutate the observation.");
 });
 
+Test("VS01-IDEMP-001 same idempotency key and semantic request returns same result",()=>{
+    var context = new ObservationSecurityContext(
+        "DOMAIN\\\\idemp1",
+        new[] { "SUBMITTER" },
+        new[] { "CREATE" },
+        new[] { "OWNED_RECORD" });
+    var observation = new Observation("OBS-IDEMP-001", "نمونه", ObservationStatus.Draft, 1);
+    var service = new ObservationApplicationService();
+
+    var first = service.SubmitObservationWithG01Assignment(
+        observation, context, "OWNED_RECORD", idempotencyKey: "IDEMP-001");
+    var second = service.SubmitObservationWithG01Assignment(
+        observation, context, "OWNED_RECORD", idempotencyKey: "IDEMP-001");
+
+    Assert(first.Observation == second.Observation,
+        "VS01 RED: same idempotency key and semantic request must return the same result.");
+    Assert(first.Assignment.Id == second.Assignment.Id,
+        "VS01 RED: same idempotency key must not create a duplicate G01 assignment.");
+});
+
+Test("VS01-IDEMP-002 same idempotency key with different semantic request is rejected",()=>{
+    var context = new ObservationSecurityContext(
+        "DOMAIN\\\\idemp2",
+        new[] { "SUBMITTER" },
+        new[] { "CREATE" },
+        new[] { "OWNED_RECORD" });
+    var firstObservation = new Observation("OBS-IDEMP-002-A", "نمونه A", ObservationStatus.Draft, 1);
+    var secondObservation = new Observation("OBS-IDEMP-002-B", "نمونه B", ObservationStatus.Draft, 1);
+    var service = new ObservationApplicationService();
+
+    service.SubmitObservationWithG01Assignment(
+        firstObservation, context, "OWNED_RECORD", idempotencyKey: "IDEMP-002");
+
+    var failed = false;
+    try
+    {
+        service.SubmitObservationWithG01Assignment(
+            secondObservation, context, "OWNED_RECORD", idempotencyKey: "IDEMP-002");
+    }
+    catch (ObservationDomainException ex)
+    {
+        failed = ex.Code == "EIMS_IDEMPOTENCY_CONFLICT";
+    }
+
+    Assert(failed,
+        "VS01 RED: reusing an idempotency key for a different semantic request must raise EIMS_IDEMPOTENCY_CONFLICT.");
+});
+
 Test("VS01-APP-005 submit-to-G01 executes inside an application transaction boundary",()=>{
     var context = new ObservationSecurityContext(
         "DOMAIN\\user5",
