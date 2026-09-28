@@ -63,7 +63,11 @@ public sealed class ObservationApplicationService
 
         return _transaction.Execute(() =>
         {
-            var key = string.IsNullOrWhiteSpace(idempotencyKey) ? null : idempotencyKey.Trim();
+            var previousObservation = _repository.GetById(observation.Id);
+
+            try
+            {
+                var key = string.IsNullOrWhiteSpace(idempotencyKey) ? null : idempotencyKey.Trim();
             var fingerprint = key is null ? null : CreateSemanticFingerprint(observation, securityContext, requiredScope);
 
             if (key is not null)
@@ -89,9 +93,15 @@ public sealed class ObservationApplicationService
                 }
             }
 
-            var submittedResult = ExecuteSubmitToG01(observation, expectedVersion);
-            AppendSuccessAudit(submittedResult, securityContext);
-            return submittedResult;
+                var submittedResult = ExecuteSubmitToG01(observation, expectedVersion);
+                AppendSuccessAudit(submittedResult, securityContext);
+                return submittedResult;
+            }
+            catch
+            {
+                _repository.Restore(observation.Id, previousObservation);
+                throw;
+            }
         });
     }
 
