@@ -309,6 +309,56 @@ Test("VS01-APP-004 atomic submit returns observation and exactly one G01 assignm
         "VS01 RED: the created G01 assignment must be PENDING.");
 });
 
+Test("VS01-CON-001 matching expected version succeeds and increments version",()=>{
+    var context = new ObservationSecurityContext(
+        "DOMAIN\\user6",
+        new[] { "SUBMITTER" },
+        new[] { "CREATE" },
+        new[] { "OWNED_RECORD" });
+    var observation = new Observation("OBS-CON-001", "نمونه", ObservationStatus.Draft, 7);
+    var service = new ObservationApplicationService();
+
+    var result = service.SubmitObservationWithG01Assignment(
+        observation,
+        context,
+        "OWNED_RECORD",
+        expectedVersion: 7);
+
+    Assert(result.Observation.Status == ObservationStatus.SubmittedForG01,
+        "VS01 RED: matching expectedVersion must allow submission.");
+    Assert(result.Observation.Version == 8,
+        "VS01 RED: successful optimistic-concurrency transition must increment version.");
+});
+
+Test("VS01-CON-002 stale expected version rejects without mutation",()=>{
+    var context = new ObservationSecurityContext(
+        "DOMAIN\\user7",
+        new[] { "SUBMITTER" },
+        new[] { "CREATE" },
+        new[] { "OWNED_RECORD" });
+    var observation = new Observation("OBS-CON-002", "نمونه", ObservationStatus.Draft, 7);
+    var service = new ObservationApplicationService();
+
+    var failed = false;
+    try
+    {
+        service.SubmitObservationWithG01Assignment(
+            observation,
+            context,
+            "OWNED_RECORD",
+            expectedVersion: 6);
+    }
+    catch (ObservationDomainException ex)
+    {
+        failed = ex.Code == "EIMS_CONCURRENCY_CONFLICT";
+    }
+
+    Assert(failed,
+        "VS01 RED: stale expectedVersion must raise EIMS_CONCURRENCY_CONFLICT.");
+    Assert(observation.Status == ObservationStatus.Draft && observation.Version == 7,
+        "VS01 RED: stale concurrency rejection must not mutate the observation.");
+});
+
 Test("VS01-APP-005 submit-to-G01 executes inside an application transaction boundary",()=>{
     var context = new ObservationSecurityContext(
         "DOMAIN\\user5",
