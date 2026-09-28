@@ -81,6 +81,30 @@ Test("VS01-UNIT-002 SubmitObservation rejects non-DRAFT without mutation",()=>{
     }
 });
 
+Test("VS01-UNIT-005 existing active G01 assignment is reused",()=>{
+    var observation = new Observation("OBS-TEST-005", "نمونه", ObservationStatus.SubmittedForG01, 2);
+    var existing = new G01WorkAssignment("G01-OBS-TEST-005", observation.Id, "INTAKE_STEWARD", G01WorkAssignmentStatus.Pending);
+    var service = new ObservationSubmissionService();
+
+    var result = service.SubmitObservationWithG01Assignment(observation, existing);
+
+    Assert(result.Assignment.Id == existing.Id,
+        "VS01 RED: an existing active G01 assignment must be reused.");
+});
+
+Test("VS01-UNIT-006 G01 assignment lifecycle accepts then starts",()=>{
+    var assignment = new G01WorkAssignment("G01-OBS-TEST-006", "OBS-TEST-006", "INTAKE_STEWARD", G01WorkAssignmentStatus.Pending);
+    var service = new ObservationSubmissionService();
+
+    var accepted = service.AcceptG01Assignment(assignment);
+    var started = service.StartG01Assignment(accepted);
+
+    Assert(accepted.Status == G01WorkAssignmentStatus.Accepted,
+        "VS01 RED: PENDING assignment must transition to ACCEPTED.");
+    Assert(started.Status == G01WorkAssignmentStatus.InProgress,
+        "VS01 RED: ACCEPTED assignment must transition to IN_PROGRESS.");
+});
+
 Console.WriteLine($"RESULT {passed}/{passed+failed} PASS");
 Environment.ExitCode=failed==0?0:1;
 
