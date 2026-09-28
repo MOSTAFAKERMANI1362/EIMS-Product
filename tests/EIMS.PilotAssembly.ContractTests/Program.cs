@@ -309,10 +309,31 @@ Test("VS01-APP-004 atomic submit returns observation and exactly one G01 assignm
         "VS01 RED: the created G01 assignment must be PENDING.");
 });
 
+Test("VS01-APP-005 submit-to-G01 executes inside an application transaction boundary",()=>{
+    var context = new ObservationSecurityContext(
+        "DOMAIN\\user5",
+        new[] { "SUBMITTER" },
+        new[] { "CREATE" },
+        new[] { "OWNED_RECORD" });
+    var observation = new Observation("OBS-APP-005", "نمونه", ObservationStatus.Draft, 1);
+    var transaction = new RecordingObservationTransaction();
+    var service = new ObservationApplicationService(transaction: transaction);
+
+    var result = service.SubmitObservationWithG01Assignment(
+        observation,
+        context,
+        "OWNED_RECORD");
+
+    Assert(result.Observation.Status == ObservationStatus.SubmittedForG01,
+        "VS01 RED: transaction-wrapped command must still submit the observation.");
+    Assert(transaction.State == ObservationTransactionState.Committed,
+        "VS01 RED: successful submit-to-G01 must commit the application transaction.");
+});
+
 Console.WriteLine($"RESULT {passed}/{passed+failed} PASS");
 Environment.ExitCode=failed==0?0:1;
 
 PilotBindingSnapshot Snapshot(string p4Path,string p4ExpectedHash,bool p1,bool oracle,bool live)=>new(
     p1, live&&p1, p1?"P1-PACKAGE":"",
     oracle?"APPROVED_VERSION":"",oracle?"APPROVED_PROVIDER":"",oracle?"APPROVED_CONNECTION":"",oracle?"EIMS_SVC":"",oracle?"EIMS":"",live&&oracle,
-    "IIS_WINDOWS_AUTH",true,false,live,true,true,live,p4Path,p4ExpectedHash,live,live,live,live,live);
+    "IIS_WINDOWS_AUTH",true,false,live,true,true,live,p4Path,p4ExpectedHash,live,live,live,live,live);\n\n// VS01 RED helper: implementation must provide the transaction boundary contract.\nsealed class RecordingObservationTransaction : IObservationTransaction\n{\n    public ObservationTransactionState State { get; private set; }\n\n    public T Execute<T>(Func<T> operation)\n    {\n        State = ObservationTransactionState.Active;\n        try\n        {\n            var result = operation();\n            State = ObservationTransactionState.Committed;\n            return result;\n        }\n        catch\n        {\n            State = ObservationTransactionState.RolledBack;\n            throw;\n        }\n    }\n}\n
