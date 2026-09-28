@@ -6,6 +6,7 @@ public sealed class ObservationApplicationService
     private readonly ObservationSubmissionService _domain;
     private readonly IObservationTransaction _transaction;
     private readonly IObservationAuditSink _auditSink;
+    private readonly IObservationRepository _repository;
     private readonly Dictionary<string, IdempotencyRecord> _idempotencyRecords = new(StringComparer.Ordinal);
     private readonly object _idempotencyLock = new();
 
@@ -13,12 +14,14 @@ public sealed class ObservationApplicationService
         ObservationAuthorizationService? authorization = null,
         ObservationSubmissionService? domain = null,
         IObservationTransaction? transaction = null,
-        IObservationAuditSink? auditSink = null)
+        IObservationAuditSink? auditSink = null,
+        IObservationRepository? repository = null)
     {
         _authorization = authorization ?? new ObservationAuthorizationService();
         _domain = domain ?? new ObservationSubmissionService();
         _transaction = transaction ?? new ObservationTransaction();
         _auditSink = auditSink ?? new InMemoryObservationAuditSink();
+        _repository = repository ?? new InMemoryObservationRepository();
     }
 
     public Observation SubmitObservation(
@@ -103,7 +106,23 @@ public sealed class ObservationApplicationService
                 "The observation version does not match expectedVersion.");
         }
 
-        return _domain.SubmitObservationWithG01Assignment(observation);
+        var result = _domain.SubmitObservationWithG01Assignment(observation);
+
+        if (expectedVersion.HasValue)
+        {
+            if (!_repository.SaveIfVersion(result.Observation, expectedVersion.Value))
+            {
+                throw new ObservationDomainException(
+                    "EIMS_CONCURRENCY_CONFLICT",
+                    "The stored observation version does not match expectedVersion.");
+            }
+        }
+        else
+        {
+            _repository.Save(result.Observation);
+        }
+
+        return result;
     }
 
     private void AppendSuccessAudit(
