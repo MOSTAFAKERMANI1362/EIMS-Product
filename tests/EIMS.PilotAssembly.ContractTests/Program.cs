@@ -444,6 +444,63 @@ Test("VS01-CON-002 stale expected version rejects without mutation",()=>{
         "VS01 RED: stale concurrency rejection must not mutate the observation.");
 });
 
+Test("VS01-PERSIST-001 successful submit persists the new observation version",()=>{
+    var context = new ObservationSecurityContext(
+        "DOMAIN\\persist-user1",
+        new[] { "SUBMITTER" },
+        new[] { "CREATE" },
+        new[] { "OWNED_RECORD" });
+    var observation = new Observation("OBS-PERSIST-001", "نمونه", ObservationStatus.Draft, 1);
+    IObservationRepository repository = new InMemoryObservationRepository();
+    repository.Save(observation);
+    var service = new ObservationApplicationService(repository: repository);
+
+    var result = service.SubmitObservationWithG01Assignment(
+        observation,
+        context,
+        "OWNED_RECORD",
+        expectedVersion: 1);
+
+    Assert(repository.GetById(observation.Id) == result.Observation,
+        "VS01 RED: successful submit must persist the resulting observation through the repository.");
+});
+
+Test("VS01-PERSIST-002 repository version conflict rejects before success audit",()=>{
+    var context = new ObservationSecurityContext(
+        "DOMAIN\\persist-user2",
+        new[] { "SUBMITTER" },
+        new[] { "CREATE" },
+        new[] { "OWNED_RECORD" });
+    var commandObservation = new Observation("OBS-PERSIST-002", "نمونه", ObservationStatus.Draft, 1);
+    IObservationRepository repository = new InMemoryObservationRepository();
+    repository.Save(new Observation(commandObservation.Id, commandObservation.Title, ObservationStatus.Draft, 2));
+    var audit = new InMemoryObservationAuditSink();
+    var service = new ObservationApplicationService(
+        repository: repository,
+        auditSink: audit);
+
+    var failed = false;
+    try
+    {
+        service.SubmitObservationWithG01Assignment(
+            commandObservation,
+            context,
+            "OWNED_RECORD",
+            expectedVersion: 1);
+    }
+    catch (ObservationDomainException ex)
+    {
+        failed = ex.Code == "EIMS_CONCURRENCY_CONFLICT";
+    }
+
+    Assert(failed,
+        "VS01 RED: repository version conflict must raise EIMS_CONCURRENCY_CONFLICT.");
+    Assert(repository.GetById(commandObservation.Id)?.Version == 2,
+        "VS01 RED: repository conflict must preserve the current stored version.");
+    Assert(audit.Records.Count == 0,
+        "VS01 RED: repository conflict must not append a SUCCESS audit.");
+});
+
 Test("VS01-IDEMP-001 same idempotency key and semantic request returns same result",()=>{
     var context = new ObservationSecurityContext(
         "DOMAIN\\\\idemp1",
