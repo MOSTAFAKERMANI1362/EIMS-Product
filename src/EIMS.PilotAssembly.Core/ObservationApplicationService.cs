@@ -86,9 +86,9 @@ public sealed class ObservationApplicationService
                 }
             }
 
-            var result = ExecuteSubmitToG01(observation, expectedVersion);
-            AppendSuccessAudit(result, securityContext);
-            return result;
+            var submittedResult = ExecuteSubmitToG01(observation, expectedVersion);
+            AppendSuccessAudit(submittedResult, securityContext);
+            return submittedResult;
         });
     }
 
