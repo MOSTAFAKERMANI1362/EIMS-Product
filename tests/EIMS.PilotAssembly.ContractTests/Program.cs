@@ -503,6 +503,42 @@ Test("VS01-PERSIST-002 repository version conflict rejects before success audit"
         "VS01 RED: repository conflict must not append a SUCCESS audit.");
 });
 
+Test("VS01-TX-001 audit failure must not leave persisted observation mutation",()=>{
+    var context = new ObservationSecurityContext(
+        "DOMAIN\\tx-user1",
+        new[] { "SUBMITTER" },
+        new[] { "CREATE" },
+        new[] { "OWNED_RECORD" });
+    var observation = new Observation("OBS-TX-001", "نمونه", ObservationStatus.Draft, 1);
+    IObservationRepository repository = new InMemoryObservationRepository();
+    repository.Save(observation);
+    var audit = new ThrowingObservationAuditSink();
+    var service = new ObservationApplicationService(
+        repository: repository,
+        auditSink: audit);
+
+    var failed = false;
+    try
+    {
+        service.SubmitObservationWithG01Assignment(
+            observation,
+            context,
+            "OWNED_RECORD",
+            expectedVersion: 1);
+    }
+    catch (InvalidOperationException ex)
+    {
+        failed = ex.Message == "AUDIT_FAILURE";
+    }
+
+    Assert(failed,
+        "VS01 RED: audit failure must propagate from the sensitive command.");
+    Assert(repository.GetById(observation.Id)?.Status == ObservationStatus.Draft,
+        "VS01 RED: audit failure must not leave a persisted submitted observation.");
+    Assert(repository.GetById(observation.Id)?.Version == 1,
+        "VS01 RED: audit failure must preserve the persisted observation version.");
+});
+
 Test("VS01-IDEMP-001 same idempotency key and semantic request returns same result",()=>{
     var context = new ObservationSecurityContext(
         "DOMAIN\\\\idemp1",
