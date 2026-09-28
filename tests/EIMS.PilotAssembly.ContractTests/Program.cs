@@ -401,7 +401,9 @@ Test("VS01-CON-001 matching expected version succeeds and increments version",()
         new[] { "CREATE" },
         new[] { "OWNED_RECORD" });
     var observation = new Observation("OBS-CON-001", "نمونه", ObservationStatus.Draft, 7);
-    var service = new ObservationApplicationService();
+    IObservationRepository repository = new InMemoryObservationRepository();
+    repository.Save(observation);
+    var service = new ObservationApplicationService(repository: repository);
 
     var result = service.SubmitObservationWithG01Assignment(
         observation,
