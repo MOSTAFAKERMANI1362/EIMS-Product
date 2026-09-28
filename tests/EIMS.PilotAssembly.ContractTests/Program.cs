@@ -43,6 +43,24 @@ Test("VS01-UNIT-001 SubmitObservation valid transitions DRAFT to SUBMITTED_FOR_G
         "VS01 RED: successful submission must increment version.");
 });
 
+Test("VS01-UNIT-003 SubmitObservation creates exactly one pending G01 assignment",()=>{
+    var observation = new Observation("OBS-TEST-003", "نمونه", ObservationStatus.Draft, 1);
+    var service = new ObservationSubmissionService();
+    var result = service.SubmitObservationWithG01Assignment(observation);
+    Assert(result.Assignment.Status == G01WorkAssignmentStatus.Pending, "VS01 RED: successful submission must create a PENDING G01 work assignment.");
+    Assert(result.Assignment.ObservationId == observation.Id, "VS01 RED: G01 assignment must reference the submitted observation.");
+    Assert(result.Assignment.AssigneeRole == "INTAKE_STEWARD", "VS01 RED: G01 assignment must route to INTAKE_STEWARD.");
+});
+
+Test("VS01-UNIT-004 repeated G01 assignment is idempotent",()=>{
+    var observation = new Observation("OBS-TEST-004", "نمونه", ObservationStatus.Draft, 1);
+    var service = new ObservationSubmissionService();
+    var first = service.SubmitObservationWithG01Assignment(observation);
+    var second = service.SubmitObservationWithG01Assignment(first.Observation);
+    Assert(first.Assignment.Id == second.Assignment.Id, "VS01 RED: repeated submission must not create a second active G01 assignment.");
+    Assert(second.Assignment.Status == G01WorkAssignmentStatus.Pending, "VS01 RED: idempotent result must preserve the active assignment.");
+});
+
 Test("VS01-UNIT-002 SubmitObservation rejects non-DRAFT without mutation",()=>{
     var observation = new Observation("OBS-TEST-002", "نمونه", ObservationStatus.SubmittedForG01, 2);
     var service = new ObservationSubmissionService();
