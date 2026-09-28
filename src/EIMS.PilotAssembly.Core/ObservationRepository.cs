@@ -7,6 +7,8 @@ public interface IObservationRepository
     void Save(Observation observation);
 
     bool SaveIfVersion(Observation observation, long expectedVersion);
+
+    void Restore(string observationId, Observation? previousObservation);
 }
 
 public sealed class InMemoryObservationRepository : IObservationRepository
@@ -33,6 +35,22 @@ public sealed class InMemoryObservationRepository : IObservationRepository
         lock (_lock)
         {
             _observations[observation.Id] = observation;
+        }
+    }
+
+    public void Restore(string observationId, Observation? previousObservation)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(observationId);
+
+        lock (_lock)
+        {
+            if (previousObservation is null)
+            {
+                _observations.Remove(observationId);
+                return;
+            }
+
+            _observations[observationId] = previousObservation;
         }
     }
 
