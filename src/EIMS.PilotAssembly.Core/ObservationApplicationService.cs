@@ -31,4 +31,23 @@ public sealed class ObservationApplicationService
 
         return _domain.SubmitObservation(observation);
     }
+
+    public ObservationSubmissionWithG01Result SubmitObservationWithG01Assignment(
+        Observation observation,
+        ObservationSecurityContext securityContext,
+        string requiredScope,
+        string? clientRole = null,
+        string? clientCapability = null)
+    {
+        ArgumentNullException.ThrowIfNull(observation);
+        ArgumentNullException.ThrowIfNull(securityContext);
+
+        _authorization.AuthorizeSubmit(
+            securityContext,
+            requiredScope,
+            clientRole,
+            clientCapability);
+
+        return _domain.SubmitObservationWithG01Assignment(observation);
+    }
 }
