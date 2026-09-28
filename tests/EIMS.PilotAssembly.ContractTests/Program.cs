@@ -759,3 +759,12 @@ sealed class RecordingObservationTransaction : IObservationTransaction
         }
     }
 }
+
+
+sealed class ThrowingObservationAuditSink : IObservationAuditSink
+{
+    public void Append(ObservationAuditRecord record)
+    {
+        throw new InvalidOperationException("AUDIT_FAILURE");
+    }
+}
