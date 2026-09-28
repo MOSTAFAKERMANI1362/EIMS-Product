@@ -5,17 +5,20 @@ public sealed class ObservationApplicationService
     private readonly ObservationAuthorizationService _authorization;
     private readonly ObservationSubmissionService _domain;
     private readonly IObservationTransaction _transaction;
+    private readonly IObservationAuditSink _auditSink;
     private readonly Dictionary<string, IdempotencyRecord> _idempotencyRecords = new(StringComparer.Ordinal);
     private readonly object _idempotencyLock = new();
 
     public ObservationApplicationService(
         ObservationAuthorizationService? authorization = null,
         ObservationSubmissionService? domain = null,
-        IObservationTransaction? transaction = null)
+        IObservationTransaction? transaction = null,
+        IObservationAuditSink? auditSink = null)
     {
         _authorization = authorization ?? new ObservationAuthorizationService();
         _domain = domain ?? new ObservationSubmissionService();
         _transaction = transaction ?? new ObservationTransaction();
+        _auditSink = auditSink ?? new InMemoryObservationAuditSink();
     }
 
     public Observation SubmitObservation(
@@ -77,12 +80,15 @@ public sealed class ObservationApplicationService
                     }
 
                     var result = ExecuteSubmitToG01(observation, expectedVersion);
+                    AppendSuccessAudit(result, securityContext);
                     _idempotencyRecords[key] = new IdempotencyRecord(fingerprint!, result);
                     return result;
                 }
             }
 
-            return ExecuteSubmitToG01(observation, expectedVersion);
+            var result = ExecuteSubmitToG01(observation, expectedVersion);
+            AppendSuccessAudit(result, securityContext);
+            return result;
         });
     }
 
@@ -98,6 +104,19 @@ public sealed class ObservationApplicationService
         }
 
         return _domain.SubmitObservationWithG01Assignment(observation);
+    }
+
+    private void AppendSuccessAudit(
+        ObservationSubmissionWithG01Result result,
+        ObservationSecurityContext securityContext)
+    {
+        _auditSink.Append(new ObservationAuditRecord(
+            $"AUD-{result.Observation.Id}-{result.Observation.Version}",
+            securityContext.PrincipalId,
+            "OBSERVATION_SUBMIT",
+            result.Observation.Id,
+            "SUCCESS",
+            result.Observation.Version));
     }
 
     private static string CreateSemanticFingerprint(
