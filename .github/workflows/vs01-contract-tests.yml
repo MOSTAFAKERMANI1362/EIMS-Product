@@ -1,0 +1,33 @@
+name: VS-01 Contract Tests
+
+on:
+  push:
+    branches:
+      - "feature/vs01-observation-g01"
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  contract-tests:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.302"
+
+      - name: Restore
+        run: dotnet restore EIMS.P5.PilotAssembly.sln
+
+      - name: Build
+        run: dotnet build EIMS.P5.PilotAssembly.sln --configuration Release --no-restore
+
+      - name: Run VS-01 contract tests
+        run: dotnet run --project tests/EIMS.PilotAssembly.ContractTests/EIMS.PilotAssembly.ContractTests.csproj --configuration Release --no-build
