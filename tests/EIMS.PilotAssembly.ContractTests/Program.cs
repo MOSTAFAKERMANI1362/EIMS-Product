@@ -605,6 +605,18 @@ Test("VS01-REPO-002 repository saves submitted observation with expected version
     Assert(repository.GetById(observation.Id) == submitted, "VS01 RED: successful repository update must persist the new version/state.");
 });
 
+Test("VS01-REPO-004 rollback restore must not overwrite a newer repository version",()=>{
+    IObservationRepository repository = new InMemoryObservationRepository();
+    var original = new Observation("OBS-REPO-004", "نمونه", ObservationStatus.Draft, 1);
+    repository.Save(original);
+    var submitted = new Observation(original.Id, original.Title, ObservationStatus.SubmittedForG01, 2);
+    Assert(repository.SaveIfVersion(submitted, expectedVersion: 1), "VS01 RED: setup must persist the submitted version.");
+    var newer = new Observation(original.Id, original.Title, ObservationStatus.SubmittedForG01, 3);
+    Assert(repository.SaveIfVersion(newer, expectedVersion: 2), "VS01 RED: setup must persist the newer concurrent version.");
+    Assert(!repository.RestoreIfVersion(original.Id, original, expectedCurrentVersion: 2), "VS01 RED: rollback must refuse to overwrite a newer repository version.");
+    Assert(repository.GetById(original.Id) == newer, "VS01 RED: refused rollback must preserve the newer repository state.");
+});
+
 Test("VS01-REPO-003 stale repository version rejects without overwrite",()=>{
     IObservationRepository repository = new InMemoryObservationRepository();
     var current = new Observation("OBS-REPO-003", "نمونه", ObservationStatus.SubmittedForG01, 5);
