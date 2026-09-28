@@ -21,7 +21,8 @@ public sealed class ObservationApplicationService
         ObservationSecurityContext securityContext,
         string requiredScope,
         string? clientRole = null,
-        string? clientCapability = null)
+        string? clientCapability = null,
+        long? expectedVersion = null)
     {
         ArgumentNullException.ThrowIfNull(observation);
         ArgumentNullException.ThrowIfNull(securityContext);
@@ -52,6 +53,15 @@ public sealed class ObservationApplicationService
             clientCapability);
 
         return _transaction.Execute(() =>
-            _domain.SubmitObservationWithG01Assignment(observation));
+        {
+            if (expectedVersion.HasValue && observation.Version != expectedVersion.Value)
+            {
+                throw new ObservationDomainException(
+                    "EIMS_CONCURRENCY_CONFLICT",
+                    "The observation version does not match expectedVersion.");
+            }
+
+            return _domain.SubmitObservationWithG01Assignment(observation);
+        });
     }
 }
