@@ -310,6 +310,90 @@ Test("VS01-APP-004 atomic submit returns observation and exactly one G01 assignm
         "VS01 RED: the created G01 assignment must be PENDING.");
 });
 
+Test("VS01-AUDIT-ENF-001 successful submit appends a server-derived audit record",()=>{
+    var context = new ObservationSecurityContext(
+        "DOMAIN\\audit-user",
+        new[] { "SUBMITTER" },
+        new[] { "CREATE" },
+        new[] { "OWNED_RECORD" });
+    var observation = new Observation("OBS-AUD-ENF-001", "نمونه", ObservationStatus.Draft, 1);
+    var audit = new InMemoryObservationAuditSink();
+    var service = new ObservationApplicationService(auditSink: audit);
+
+    var result = service.SubmitObservationWithG01Assignment(
+        observation,
+        context,
+        "OWNED_RECORD");
+
+    Assert(audit.Records.Count == 1,
+        "VS01 RED: successful sensitive submission must append exactly one audit record.");
+    Assert(audit.Records[0].ActorPrincipalId == context.PrincipalId,
+        "VS01 RED: audit actor must come from authenticated security context.");
+    Assert(audit.Records[0].CommandName == "OBSERVATION_SUBMIT",
+        "VS01 RED: audit must identify the business command.");
+    Assert(audit.Records[0].EntityId == result.Observation.Id,
+        "VS01 RED: audit must identify the submitted observation.");
+    Assert(audit.Records[0].Outcome == "SUCCESS",
+        "VS01 RED: successful submission must produce a SUCCESS audit outcome.");
+    Assert(audit.Records[0].ResultingVersion == result.Observation.Version,
+        "VS01 RED: audit must capture the resulting observation version.");
+});
+
+Test("VS01-AUDIT-ENF-002 forbidden submit does not append audit",()=>{
+    var context = new ObservationSecurityContext(
+        "DOMAIN\\audit-user2",
+        new[] { "SUBMITTER" },
+        Array.Empty<string>(),
+        new[] { "OWNED_RECORD" });
+    var observation = new Observation("OBS-AUD-ENF-002", "نمونه", ObservationStatus.Draft, 1);
+    var audit = new InMemoryObservationAuditSink();
+    var service = new ObservationApplicationService(auditSink: audit);
+
+    try
+    {
+        service.SubmitObservationWithG01Assignment(
+            observation,
+            context,
+            "OWNED_RECORD");
+        throw new Exception("VS01 RED: forbidden sensitive submission must fail.");
+    }
+    catch (ObservationAuthorizationException ex)
+    {
+        Assert(ex.Code == "EIMS_FORBIDDEN",
+            "VS01 RED: authorization must fail before audit is appended.");
+        Assert(audit.Records.Count == 0,
+            "VS01 RED: rejected command must not append a SUCCESS audit record.");
+    }
+});
+
+Test("VS01-AUDIT-ENF-003 failed concurrency does not append success audit",()=>{
+    var context = new ObservationSecurityContext(
+        "DOMAIN\\audit-user3",
+        new[] { "SUBMITTER" },
+        new[] { "CREATE" },
+        new[] { "OWNED_RECORD" });
+    var observation = new Observation("OBS-AUD-ENF-003", "نمونه", ObservationStatus.Draft, 5);
+    var audit = new InMemoryObservationAuditSink();
+    var service = new ObservationApplicationService(auditSink: audit);
+
+    try
+    {
+        service.SubmitObservationWithG01Assignment(
+            observation,
+            context,
+            "OWNED_RECORD",
+            expectedVersion: 4);
+        throw new Exception("VS01 RED: stale expectedVersion must fail.");
+    }
+    catch (ObservationDomainException ex)
+    {
+        Assert(ex.Code == "EIMS_CONCURRENCY_CONFLICT",
+            "VS01 RED: stale expectedVersion must remain a concurrency conflict.");
+        Assert(audit.Records.Count == 0,
+            "VS01 RED: failed sensitive command must not append a SUCCESS audit record.");
+    }
+});
+
 Test("VS01-CON-001 matching expected version succeeds and increments version",()=>{
     var context = new ObservationSecurityContext(
         "DOMAIN\\user6",
