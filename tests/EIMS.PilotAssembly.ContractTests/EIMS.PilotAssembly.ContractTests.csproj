@@ -2,5 +2,6 @@
   <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/EIMS.PilotAssembly.Core/EIMS.PilotAssembly.Core.csproj" />
+    <ProjectReference Include="../../src/EIMS.PilotAssembly.Host/EIMS.PilotAssembly.Host.csproj" />
   </ItemGroup>
 </Project>
