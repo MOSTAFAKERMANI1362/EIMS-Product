@@ -105,6 +105,38 @@ Test("VS01-UNIT-006 G01 assignment lifecycle accepts then starts",()=>{
         "VS01 RED: ACCEPTED assignment must transition to IN_PROGRESS.");
 });
 
+Test("VS01-UNIT-007 cannot start G01 assignment directly from PENDING",()=>{
+    var assignment = new G01WorkAssignment("G01-OBS-TEST-007", "OBS-TEST-007", "INTAKE_STEWARD", G01WorkAssignmentStatus.Pending);
+    var service = new ObservationSubmissionService();
+
+    try
+    {
+        service.StartG01Assignment(assignment);
+        throw new Exception("VS01 RED: PENDING assignment must not transition directly to IN_PROGRESS.");
+    }
+    catch (ObservationDomainException ex)
+    {
+        Assert(ex.Code == "EIMS_INVALID_TRANSITION",
+            "VS01 RED: invalid lifecycle transition must produce EIMS_INVALID_TRANSITION.");
+    }
+});
+
+Test("VS01-UNIT-008 completed G01 assignment cannot be accepted again",()=>{
+    var assignment = new G01WorkAssignment("G01-OBS-TEST-008", "OBS-TEST-008", "INTAKE_STEWARD", G01WorkAssignmentStatus.Completed);
+    var service = new ObservationSubmissionService();
+
+    try
+    {
+        service.AcceptG01Assignment(assignment);
+        throw new Exception("VS01 RED: COMPLETED assignment must not be accepted again.");
+    }
+    catch (ObservationDomainException ex)
+    {
+        Assert(ex.Code == "EIMS_INVALID_TRANSITION",
+            "VS01 RED: accepting a terminal assignment must produce EIMS_INVALID_TRANSITION.");
+    }
+});
+
 Console.WriteLine($"RESULT {passed}/{passed+failed} PASS");
 Environment.ExitCode=failed==0?0:1;
 
