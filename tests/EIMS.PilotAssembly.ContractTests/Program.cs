@@ -30,6 +30,12 @@ Test("P5-CT-13 config-only assembly cannot claim Network Pilot READY",()=>{var g
 Test("P5-CT-14 complete live evidence can satisfy readiness contract",()=>{var g=PilotReadinessEvaluator.Evaluate(Snapshot(p4Fixture,p4FixtureHash,true,true,true));Assert(PilotReadinessEvaluator.IsNetworkPilotReady(g));});
 Test("P5-CT-15 fail-closed command gateway never mutates state",()=>{var r=new FailClosedCommandGateway().ExecuteAsync(new CommandAttempt("g01/decide","DOMAIN\\user1","c1",1,"i1","{}")).GetAwaiter().GetResult();Assert(r.HttpStatus==503);Assert(!r.StateMutated);});
 
+// VS-01 TDD RED: the current assembly has no Observation submission contract yet.
+Test("VS01-UNIT-001 SubmitObservation valid transitions DRAFT to SUBMITTED_FOR_G01",()=>{
+    var observationSubmissionService = typeof(PilotBaseline).Assembly.GetType("EIMS.PilotAssembly.Core.ObservationSubmissionService");
+    Assert(observationSubmissionService is not null, "VS01 RED: ObservationSubmissionService contract is not implemented.");
+});
+
 Console.WriteLine($"RESULT {passed}/{passed+failed} PASS");
 Environment.ExitCode=failed==0?0:1;
 
