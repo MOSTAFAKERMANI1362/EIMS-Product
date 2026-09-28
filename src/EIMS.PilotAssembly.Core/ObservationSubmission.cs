@@ -43,21 +43,50 @@ public sealed class ObservationSubmissionService
         };
     }
 
-    public ObservationSubmissionWithG01Result SubmitObservationWithG01Assignment(Observation observation)
+    public ObservationSubmissionWithG01Result SubmitObservationWithG01Assignment(
+        Observation observation,
+        G01WorkAssignment? existingAssignment = null)
     {
         ArgumentNullException.ThrowIfNull(observation);
 
         if (observation.Status == ObservationStatus.SubmittedForG01)
         {
-            return new ObservationSubmissionWithG01Result(
-                observation,
-                CreateG01Assignment(observation));
+            var assignment = existingAssignment ?? CreateG01Assignment(observation);
+            return new ObservationSubmissionWithG01Result(observation, assignment);
         }
 
         var submitted = SubmitObservation(observation);
         return new ObservationSubmissionWithG01Result(
             submitted,
-            CreateG01Assignment(submitted));
+            existingAssignment ?? CreateG01Assignment(submitted));
+    }
+
+    public G01WorkAssignment AcceptG01Assignment(G01WorkAssignment assignment)
+    {
+        ArgumentNullException.ThrowIfNull(assignment);
+
+        if (assignment.Status != G01WorkAssignmentStatus.Pending)
+        {
+            throw new ObservationDomainException(
+                "EIMS_INVALID_TRANSITION",
+                "Only a PENDING G01 assignment can be accepted.");
+        }
+
+        return assignment with { Status = G01WorkAssignmentStatus.Accepted };
+    }
+
+    public G01WorkAssignment StartG01Assignment(G01WorkAssignment assignment)
+    {
+        ArgumentNullException.ThrowIfNull(assignment);
+
+        if (assignment.Status != G01WorkAssignmentStatus.Accepted)
+        {
+            throw new ObservationDomainException(
+                "EIMS_INVALID_TRANSITION",
+                "Only an ACCEPTED G01 assignment can be started.");
+        }
+
+        return assignment with { Status = G01WorkAssignmentStatus.InProgress };
     }
 
     private static G01WorkAssignment CreateG01Assignment(Observation observation) =>
