@@ -212,6 +212,76 @@ Test("VS01-AUTH-004 client role and scope values do not override security contex
     }
 });
 
+Test("VS01-APP-001 authorized submit delegates to domain and returns submitted observation",()=>{
+    var context = new ObservationSecurityContext(
+        "DOMAIN\\user1",
+        new[] { "SUBMITTER" },
+        new[] { "CREATE" },
+        new[] { "OWNED_RECORD" });
+    var observation = new Observation("OBS-APP-001", "نمونه", ObservationStatus.Draft, 1);
+    var service = new ObservationApplicationService();
+
+    var result = service.SubmitObservation(observation, context, "OWNED_RECORD");
+
+    Assert(result.Status == ObservationStatus.SubmittedForG01,
+        "VS01 RED: authorized application command must submit the observation.");
+    Assert(result.Version == 2,
+        "VS01 RED: successful application command must preserve domain version transition.");
+});
+
+Test("VS01-APP-002 forbidden submit does not mutate observation",()=>{
+    var context = new ObservationSecurityContext(
+        "DOMAIN\\user2",
+        new[] { "SUBMITTER" },
+        Array.Empty<string>(),
+        new[] { "OWNED_RECORD" });
+    var observation = new Observation("OBS-APP-002", "نمونه", ObservationStatus.Draft, 1);
+    var service = new ObservationApplicationService();
+
+    try
+    {
+        service.SubmitObservation(observation, context, "OWNED_RECORD");
+        throw new Exception("VS01 RED: forbidden application command must fail before domain mutation.");
+    }
+    catch (ObservationAuthorizationException ex)
+    {
+        Assert(ex.Code == "EIMS_FORBIDDEN",
+            "VS01 RED: missing capability must remain EIMS_FORBIDDEN at application boundary.");
+        Assert(observation.Status == ObservationStatus.Draft,
+            "VS01 RED: forbidden command must not mutate observation state.");
+        Assert(observation.Version == 1,
+            "VS01 RED: forbidden command must not mutate observation version.");
+    }
+});
+
+Test("VS01-APP-003 application command ignores client authorization claims",()=>{
+    var context = new ObservationSecurityContext(
+        "DOMAIN\\user3",
+        new[] { "SUBMITTER" },
+        new[] { "CREATE" },
+        new[] { "OWNED_RECORD" });
+    var observation = new Observation("OBS-APP-003", "نمونه", ObservationStatus.Draft, 1);
+    var service = new ObservationApplicationService();
+
+    try
+    {
+        service.SubmitObservation(
+            observation,
+            context,
+            "GLOBAL",
+            clientRole: "ADMIN",
+            clientCapability: "ROLE_ADMIN");
+        throw new Exception("VS01 RED: client authorization claims must not alter application authorization.");
+    }
+    catch (ObservationAuthorizationException ex)
+    {
+        Assert(ex.Code == "EIMS_SCOPE_VIOLATION",
+            "VS01 RED: application authorization must use server-derived scope only.");
+        Assert(observation.Status == ObservationStatus.Draft,
+            "VS01 RED: rejected client scope must not mutate observation state.");
+    }
+});
+
 Console.WriteLine($"RESULT {passed}/{passed+failed} PASS");
 Environment.ExitCode=failed==0?0:1;
 
