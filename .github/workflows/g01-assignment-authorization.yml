@@ -1,0 +1,38 @@
+name: G01 Assignment Authorization Contract
+
+on:
+  push:
+    branches:
+      - feature/vs01-observation-g01
+    paths:
+      - 'src/EIMS.PilotAssembly.Core/**'
+      - 'tests/EIMS.G01.AssignmentAuthorization.ContractTests/**'
+      - '.github/workflows/g01-assignment-authorization.yml'
+  pull_request:
+    paths:
+      - 'src/EIMS.PilotAssembly.Core/**'
+      - 'tests/EIMS.G01.AssignmentAuthorization.ContractTests/**'
+      - '.github/workflows/g01-assignment-authorization.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  contract-test:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10.0.302
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.302'
+
+      - name: Build G01 assignment authorization contract tests
+        shell: pwsh
+        run: dotnet build .\tests\EIMS.G01.AssignmentAuthorization.ContractTests\EIMS.G01.AssignmentAuthorization.ContractTests.csproj -c Release
+
+      - name: Run G01 assignment authorization contract tests
+        shell: pwsh
+        run: dotnet run --project .\tests\EIMS.G01.AssignmentAuthorization.ContractTests\EIMS.G01.AssignmentAuthorization.ContractTests.csproj -c Release --no-build
