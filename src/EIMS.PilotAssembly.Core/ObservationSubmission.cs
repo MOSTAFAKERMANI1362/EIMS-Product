@@ -10,7 +10,8 @@ public sealed record Observation(
     string Id,
     string Title,
     ObservationStatus Status,
-    long Version);
+    long Version,
+    string? SubmittedByPersonId = null);
 
 public sealed class ObservationDomainException : Exception
 {
@@ -25,7 +26,9 @@ public sealed class ObservationDomainException : Exception
 
 public sealed class ObservationSubmissionService
 {
-    public Observation SubmitObservation(Observation observation)
+    public Observation SubmitObservation(
+        Observation observation,
+        string? submittedByPersonId = null)
     {
         ArgumentNullException.ThrowIfNull(observation);
 
@@ -39,13 +42,17 @@ public sealed class ObservationSubmissionService
         return observation with
         {
             Status = ObservationStatus.SubmittedForG01,
-            Version = checked(observation.Version + 1)
+            Version = checked(observation.Version + 1),
+            SubmittedByPersonId = string.IsNullOrWhiteSpace(submittedByPersonId)
+                ? observation.SubmittedByPersonId
+                : submittedByPersonId.Trim()
         };
     }
 
     public ObservationSubmissionWithG01Result SubmitObservationWithG01Assignment(
         Observation observation,
-        G01WorkAssignment? existingAssignment = null)
+        G01WorkAssignment? existingAssignment = null,
+        string? submittedByPersonId = null)
     {
         ArgumentNullException.ThrowIfNull(observation);
 
@@ -55,13 +62,18 @@ public sealed class ObservationSubmissionService
             return new ObservationSubmissionWithG01Result(observation, assignment);
         }
 
-        var submitted = SubmitObservation(observation);
+        var submitted = SubmitObservation(observation, submittedByPersonId);
         return new ObservationSubmissionWithG01Result(
             submitted,
             existingAssignment ?? CreateG01Assignment(submitted));
     }
 
-    public G01WorkAssignment AcceptG01Assignment(G01WorkAssignment assignment)
+    public G01WorkAssignment AcceptG01Assignment(G01WorkAssignment assignment) =>
+        AcceptG01Assignment(assignment, null);
+
+    public G01WorkAssignment AcceptG01Assignment(
+        G01WorkAssignment assignment,
+        string? acceptingPrincipalId)
     {
         ArgumentNullException.ThrowIfNull(assignment);
 
@@ -72,10 +84,23 @@ public sealed class ObservationSubmissionService
                 "Only a PENDING G01 assignment can be accepted.");
         }
 
-        return assignment with { Status = G01WorkAssignmentStatus.Accepted };
+        var principal = string.IsNullOrWhiteSpace(acceptingPrincipalId)
+            ? assignment.AssignedPrincipalId
+            : acceptingPrincipalId.Trim();
+
+        return assignment with
+        {
+            Status = G01WorkAssignmentStatus.Accepted,
+            AssignedPrincipalId = principal
+        };
     }
 
-    public G01WorkAssignment StartG01Assignment(G01WorkAssignment assignment)
+    public G01WorkAssignment StartG01Assignment(G01WorkAssignment assignment) =>
+        StartG01Assignment(assignment, null);
+
+    public G01WorkAssignment StartG01Assignment(
+        G01WorkAssignment assignment,
+        string? startingPrincipalId)
     {
         ArgumentNullException.ThrowIfNull(assignment);
 
@@ -84,6 +109,17 @@ public sealed class ObservationSubmissionService
             throw new ObservationDomainException(
                 "EIMS_INVALID_TRANSITION",
                 "Only an ACCEPTED G01 assignment can be started.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(startingPrincipalId)
+            && !string.Equals(
+                assignment.AssignedPrincipalId,
+                startingPrincipalId.Trim(),
+                StringComparison.Ordinal))
+        {
+            throw new ObservationDomainException(
+                "EIMS_G01_ASSIGNMENT_PRINCIPAL_MISMATCH",
+                "Only the server-bound assignment principal can start the assignment.");
         }
 
         return assignment with { Status = G01WorkAssignmentStatus.InProgress };
