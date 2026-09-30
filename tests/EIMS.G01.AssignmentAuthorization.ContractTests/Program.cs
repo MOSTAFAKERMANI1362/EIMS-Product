@@ -9,7 +9,10 @@ var tests = new List<(string Name, Action Run)>
     ("G01-ASG-RED-05 role alone is insufficient without G01.DECIDE", CapabilityRequired),
     ("G01-ASG-RED-06 submitter cannot be decision actor", SubmitterCannotDecide),
     ("G01-ASG-RED-07 client actor cannot replace server principal", ServerPrincipalOnly),
-    ("G01-ASG-RED-08 valid assignment + authority context authorizes decision", ValidAuthorization)
+    ("G01-ASG-RED-08 valid assignment + authority context authorizes decision", ValidAuthorization),
+    ("G01-ASG-RED-09 accepting principal becomes server-owned assignment principal", AcceptBindsPrincipal),
+    ("G01-ASG-RED-10 different principal cannot start accepted assignment", StartRequiresOwner),
+    ("G01-ASG-RED-11 bound principal can start assignment", OwnerCanStart)
 };
 
 var passed = 0;
@@ -105,4 +108,31 @@ static void ServerPrincipalOnly() =>
 static void ValidAuthorization()
 {
     AssertAuthorized(Context(), Submitted(), Assignment());
+}
+
+
+static void AcceptBindsPrincipal()
+{
+    var pending = Assignment(status: G01WorkAssignmentStatus.Pending, principal: null);
+    var accepted = new ObservationSubmissionService().AcceptG01Assignment(pending, "P-REVIEWER");
+    if (accepted.AssignedPrincipalId != "P-REVIEWER")
+        throw new Exception("Accept must bind the server-supplied principal.");
+}
+
+static void StartRequiresOwner()
+{
+    var pending = Assignment(status: G01WorkAssignmentStatus.Pending, principal: null);
+    var accepted = new ObservationSubmissionService().AcceptG01Assignment(pending, "P-REVIEWER");
+    AssertDenied(
+        () => new ObservationSubmissionService().StartG01Assignment(accepted, "P-OTHER"),
+        "EIMS_G01_ASSIGNMENT_PRINCIPAL_MISMATCH");
+}
+
+static void OwnerCanStart()
+{
+    var pending = Assignment(status: G01WorkAssignmentStatus.Pending, principal: null);
+    var accepted = new ObservationSubmissionService().AcceptG01Assignment(pending, "P-REVIEWER");
+    var started = new ObservationSubmissionService().StartG01Assignment(accepted, "P-REVIEWER");
+    if (started.Status != G01WorkAssignmentStatus.InProgress)
+        throw new Exception("The bound assignment principal must be able to start the assignment.");
 }
