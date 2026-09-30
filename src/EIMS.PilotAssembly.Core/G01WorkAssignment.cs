@@ -16,7 +16,8 @@ public sealed record G01WorkAssignment(
     string Id,
     string ObservationId,
     string AssigneeRole,
-    G01WorkAssignmentStatus Status);
+    G01WorkAssignmentStatus Status,
+    string? AssignedPrincipalId = null);
 
 public sealed record ObservationSubmissionWithG01Result(
     Observation Observation,
