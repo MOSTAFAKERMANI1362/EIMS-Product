@@ -116,7 +116,9 @@ public sealed class ObservationApplicationService
                 "The observation version does not match expectedVersion.");
         }
 
-        var result = _domain.SubmitObservationWithG01Assignment(observation);
+        var result = _domain.SubmitObservationWithG01Assignment(
+            observation,
+            submittedByPersonId: securityContext.PrincipalId);
 
         if (expectedVersion.HasValue)
         {
