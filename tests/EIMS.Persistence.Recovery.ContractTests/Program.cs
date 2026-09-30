@@ -25,7 +25,12 @@ var tests = new List<(string Name, Func<Task> Run)>
     ("P2-CT-20 concurrent exact same key becomes one commit plus replay", ConcurrentIdempotencyRace),
     ("P2-CT-21 cancellation before persistence causes no mutation", CancellationNoMutation),
     ("P2-CT-22 Oracle binding contract exposes no secret-bearing field", BindingContractHasNoSecrets),
-    ("P2-CT-23 correlation mismatch is rejected before mutation", CorrelationMismatch)
+    ("P2-CT-23 correlation mismatch is rejected before mutation", CorrelationMismatch),
+    ("G01-IDEMP-RED-01 same key and fingerprint replays original committed result", G01IdempotentReplay),
+    ("G01-IDEMP-RED-02 same key with different fingerprint conflicts without mutation", G01IdempotencyConflict),
+    ("G01-IDEMP-RED-03 concurrent same-key decision has one logical commit", G01ConcurrentIdempotency),
+    ("G01-IDEMP-RED-04 failed transaction leaves no successful decision idempotency outcome", G01FailedTransactionLeavesNoIdempotency),
+    ("G01-IDEMP-RED-05 submission and decision idempotency remain independent", G01SubmissionDecisionIdempotencyIndependent)
 };
 
 var passed = 0;
@@ -336,6 +341,125 @@ static Task BindingContractHasNoSecrets()
     False(PersistenceContractDescriptor.RecoveryBaseline().ConnectionSecretsAllowedInContract);
     return Task.CompletedTask;
 }
+
+
+static async Task G01IdempotentReplay()
+{
+    var store = Store();
+    var before = Aggregate();
+    var command = CommandNamed("g01.decide", key: "G01-RED-01", body: "{\"outcome\":\"APPROVE\"}");
+    var request = Request(command, before);
+    var commit = Commit(before, command);
+    var first = await store.CommitAsync(request, commit);
+    var replay = await store.CommitAsync(request, commit);
+
+    Eq(200, first.HttpStatus);
+    True(first.StateMutated);
+    True(replay.IdempotentReplay);
+    False(replay.StateMutated);
+    Eq(first.NewVersion, replay.NewVersion);
+    Eq(1, store.IdempotencyRecords.Count);
+    Eq(1, store.DomainDecisions.Count);
+    Eq(1, store.AuditLog.Count);
+    Eq(1, store.Outbox.Count);
+}
+
+static async Task G01IdempotencyConflict()
+{
+    var store = Store();
+    var before = Aggregate();
+    var first = CommandNamed("g01.decide", key: "G01-RED-02", body: "{\"outcome\":\"APPROVE\"}");
+    await store.CommitAsync(Request(first, before), Commit(before, first));
+
+    var conflicting = CommandNamed("g01.decide", key: "G01-RED-02", body: "{\"outcome\":\"RETURN\"}");
+    var result = await store.CommitAsync(
+        Request(conflicting, before),
+        Commit(before, conflicting, "AUD-G01-RED-02", "MSG-G01-RED-02"));
+
+    Eq(409, result.HttpStatus);
+    Eq("P2_IDEMPOTENCY_CONFLICT", result.Code);
+    Eq(2L, (await store.GetAggregateAsync("AGG-1"))!.Version);
+    Eq(1, store.IdempotencyRecords.Count);
+    Eq(1, store.DomainDecisions.Count);
+    Eq(1, store.AuditLog.Count);
+    Eq(1, store.Outbox.Count);
+}
+
+static async Task G01ConcurrentIdempotency()
+{
+    var store = Store();
+    var before = Aggregate();
+    var command = CommandNamed("g01.decide", key: "G01-RED-03", corr: "G01-RED-03-RACE");
+    var request = Request(command, before);
+    var commit = Commit(before, command, "AUD-G01-RED-03", "MSG-G01-RED-03");
+
+    var results = await Task.WhenAll(
+        Task.Run(() => store.CommitAsync(request, commit).AsTask()),
+        Task.Run(() => store.CommitAsync(request, commit).AsTask()));
+
+    Eq(1, results.Count(x => x.StateMutated));
+    Eq(1, results.Count(x => x.IdempotentReplay));
+    Eq(1, store.IdempotencyRecords.Count);
+    Eq(1, store.DomainDecisions.Count);
+    Eq(1, store.AuditLog.Count);
+    Eq(1, store.Outbox.Count);
+}
+
+static async Task G01FailedTransactionLeavesNoIdempotency()
+{
+    var store = Store();
+    store.FaultPoint = PersistenceFaultPoint.AfterIdempotencyStaged;
+    var before = Aggregate();
+    var command = CommandNamed("g01.decide", key: "G01-RED-04");
+
+    var threw = false;
+    try
+    {
+        await store.CommitAsync(Request(command, before), Commit(before, command));
+    }
+    catch (PersistenceAtomicityException)
+    {
+        threw = true;
+    }
+
+    True(threw);
+    Eq(1L, (await store.GetAggregateAsync("AGG-1"))!.Version);
+    Eq(0, store.IdempotencyRecords.Count);
+    Eq(0, store.DomainDecisions.Count);
+    Eq(0, store.AuditLog.Count);
+    Eq(0, store.Outbox.Count);
+}
+
+static async Task G01SubmissionDecisionIdempotencyIndependent()
+{
+    var store = Store();
+    var submissionBefore = Aggregate();
+    var submission = CommandNamed("observation.submit", key: "SHARED-G01-RED-05", corr: "SUBMIT-G01-RED-05");
+    var submissionResult = await store.CommitAsync(
+        Request(submission, submissionBefore),
+        Commit(submissionBefore, submission, "AUD-G01-SUBMIT-05", "MSG-G01-SUBMIT-05"));
+    Eq(200, submissionResult.HttpStatus);
+
+    var decisionBefore = (await store.GetAggregateAsync("AGG-1"))!;
+    var decision = CommandNamed("g01.decide", key: "SHARED-G01-RED-05", corr: "DECIDE-G01-RED-05");
+    var decisionResult = await store.CommitAsync(
+        Request(decision, decisionBefore),
+        Commit(decisionBefore, decision, "AUD-G01-DECIDE-05", "MSG-G01-DECIDE-05"));
+
+    Eq(200, decisionResult.HttpStatus);
+    False(decisionResult.IdempotentReplay);
+    Eq(2, store.IdempotencyRecords.Count);
+    True(store.IdempotencyRecords.Any(x => x.CommandName == "observation.submit" && x.IdempotencyKey == "SHARED-G01-RED-05"));
+    True(store.IdempotencyRecords.Any(x => x.CommandName == "g01.decide" && x.IdempotencyKey == "SHARED-G01-RED-05"));
+}
+
+static AuthorityCommand CommandNamed(
+    string commandName,
+    string key = "KEY-1",
+    long expected = 1,
+    string body = "{}",
+    string corr = "CORR-1") =>
+    new(commandName, "AGG-1", expected, key, corr, body, "UNIT:RND");
 
 static async Task CorrelationMismatch()
 {
