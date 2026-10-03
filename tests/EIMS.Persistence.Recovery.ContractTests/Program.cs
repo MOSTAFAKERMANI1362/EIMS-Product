@@ -66,13 +66,11 @@ static CommandPolicy Policy() =>
 static MutationRequest Request(AuthorityCommand command, AggregateSnapshot before) =>
     new(command, Actor(), before, Policy(), AuthorityKernel.Fingerprint(command));
 
-static MutationCommit Commit(AggregateSnapshot before, AuthorityCommand command, string auditId = "AUD-1", string messageId = "MSG-1")
+static MutationCommit Commit(AggregateSnapshot before, AuthorityCommand command, string auditId = "AUD-1", string messageId = "MSG-1", bool includeDecision = false)
 {
     var after = before with { Version = before.Version + 1 };
     var now = DateTimeOffset.UtcNow;
-    return new MutationCommit(
-        after,
-        new AuditEnvelope(
+    var audit = new AuditEnvelope(
             auditId,
             "P-001",
             "DOMAIN\\user",
@@ -85,13 +83,38 @@ static MutationCommit Commit(AggregateSnapshot before, AuthorityCommand command,
             now,
             command.CorrelationId,
             command.CommandName),
+    var decisions = includeDecision
+        ? new[]
+        {
+            new DomainDecisionEnvelope(
+                $"DEC-{command.IdempotencyKey}",
+                command.CommandName,
+                command.RawBody.Contains("\"outcome\":\"RETURN\"", StringComparison.Ordinal) ? "RETURN" : "APPROVE",
+                after.AggregateId,
+                after.Version,
+                "P-001",
+                "ASG-001",
+                now,
+                command.CorrelationId,
+                Facts: new Dictionary<string, string>
+                {
+                    ["RuleSetId"] = "G01-INQ",
+                    ["RuleSetVersion"] = "1.0"
+                })
+        }
+        : Array.Empty<DomainDecisionEnvelope>();
+
+    return new MutationCommit(
+        after,
+        audit,
         new OutboxEnvelope(
             messageId,
             "TestCommitted.v1",
             after.AggregateId,
             after.Version,
             command.CorrelationId,
-            now));
+            now),
+        decisions);
 }
 
 static TransactionalAuthorityStore Store() =>
@@ -349,7 +372,7 @@ static async Task G01IdempotentReplay()
     var before = Aggregate();
     var command = CommandNamed("g01.decide", key: "G01-RED-01", body: "{\"outcome\":\"APPROVE\"}");
     var request = Request(command, before);
-    var commit = Commit(before, command);
+    var commit = Commit(before, command, includeDecision: true);
     var first = await store.CommitAsync(request, commit);
     var replay = await store.CommitAsync(request, commit);
 
@@ -369,12 +392,12 @@ static async Task G01IdempotencyConflict()
     var store = Store();
     var before = Aggregate();
     var first = CommandNamed("g01.decide", key: "G01-RED-02", body: "{\"outcome\":\"APPROVE\"}");
-    await store.CommitAsync(Request(first, before), Commit(before, first));
+    await store.CommitAsync(Request(first, before), Commit(before, first, includeDecision: true));
 
     var conflicting = CommandNamed("g01.decide", key: "G01-RED-02", body: "{\"outcome\":\"RETURN\"}");
     var result = await store.CommitAsync(
         Request(conflicting, before),
-        Commit(before, conflicting, "AUD-G01-RED-02", "MSG-G01-RED-02"));
+        Commit(before, conflicting, "AUD-G01-RED-02", "MSG-G01-RED-02", includeDecision: true));
 
     Eq(409, result.HttpStatus);
     Eq("P2_IDEMPOTENCY_CONFLICT", result.Code);
@@ -391,7 +414,7 @@ static async Task G01ConcurrentIdempotency()
     var before = Aggregate();
     var command = CommandNamed("g01.decide", key: "G01-RED-03", corr: "G01-RED-03-RACE");
     var request = Request(command, before);
-    var commit = Commit(before, command, "AUD-G01-RED-03", "MSG-G01-RED-03");
+    var commit = Commit(before, command, "AUD-G01-RED-03", "MSG-G01-RED-03", includeDecision: true);
 
     var results = await Task.WhenAll(
         Task.Run(() => store.CommitAsync(request, commit).AsTask()),
@@ -441,10 +464,10 @@ static async Task G01SubmissionDecisionIdempotencyIndependent()
     Eq(200, submissionResult.HttpStatus);
 
     var decisionBefore = (await store.GetAggregateAsync("AGG-1"))!;
-    var decision = CommandNamed("g01.decide", key: "SHARED-G01-RED-05", corr: "DECIDE-G01-RED-05");
+    var decision = CommandNamed("g01.decide", key: "SHARED-G01-RED-05", expected: 2, corr: "DECIDE-G01-RED-05");
     var decisionResult = await store.CommitAsync(
         Request(decision, decisionBefore),
-        Commit(decisionBefore, decision, "AUD-G01-DECIDE-05", "MSG-G01-DECIDE-05"));
+        Commit(decisionBefore, decision, "AUD-G01-DECIDE-05", "MSG-G01-DECIDE-05", includeDecision: true));
 
     Eq(200, decisionResult.HttpStatus);
     False(decisionResult.IdempotentReplay);
