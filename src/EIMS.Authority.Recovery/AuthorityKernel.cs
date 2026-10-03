@@ -22,7 +22,8 @@ public sealed class AuthorityKernel(
     IAuthorityStore store,
     IRuleEvaluator rules,
     ISodEvaluator sod,
-    ICommandMutationPlanner planner)
+    ICommandMutationPlanner planner,
+    G01RuleExecutionComposer? g01RuleComposer = null)
 {
     public async ValueTask<AuthorityResult> ExecuteAsync(
         AuthorityCommand command,
@@ -100,8 +101,37 @@ public sealed class AuthorityKernel(
         if (!sodResult.Passed)
             return AuthorityResult.Deny(403, sodResult.Code, command.CorrelationId, sodResult.Detail);
         var ruleResult = await rules.EvaluateAsync(command, actor, aggregate, policy, cancellationToken);
-        if (!ruleResult.Passed)
+        IReadOnlyCollection<G01RuleExecutionSnapshot>? g01RuleExecutions = null;
+        string? g01GateOutcome = null;
+        if (string.Equals(command.CommandName, "g01.decide", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!ruleResult.Passed
+                && !IsG01RuleExecutionFailure(ruleResult.Code))
+                return AuthorityResult.Deny(422, ruleResult.Code, command.CorrelationId, ruleResult.Detail);
+
+            try
+            {
+                var composer = g01RuleComposer ?? new G01RuleExecutionComposer(rules);
+                g01RuleExecutions = await composer.ComposeAsync(
+                    command, actor, aggregate, policy, cancellationToken);
+            }
+            catch (System.Text.Json.JsonException)
+            {
+                return AuthorityResult.Deny(422, "G01_DECISION_PAYLOAD_INVALID", command.CorrelationId,
+                    "G01 decision payload must be valid JSON.");
+            }
+
+            g01GateOutcome = G01GateAggregator.Aggregate(g01RuleExecutions);
+            var requestedOutcome = ReadG01Outcome(command.RawBody);
+            if (string.Equals(requestedOutcome, "APPROVE", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(g01GateOutcome, "G01_COMPLETE", StringComparison.Ordinal))
+                return AuthorityResult.Deny(422, "G01_APPROVE_REQUIRES_COMPLETE", command.CorrelationId,
+                    $"APPROVE requires authoritative G01_COMPLETE; actual '{g01GateOutcome}'.");
+        }
+        else if (!ruleResult.Passed)
+        {
             return AuthorityResult.Deny(422, ruleResult.Code, command.CorrelationId, ruleResult.Detail);
+        }
 
         var plan = await planner.PlanAsync(command, actor, aggregate, policy, cancellationToken);
         if (plan is null)
@@ -202,10 +232,34 @@ public sealed class AuthorityKernel(
                 intent.Note, SnapshotFacts(intent.Facts)))
             .ToArray();
 
+        G01DecisionSnapshotEnvelope? decisionSnapshot = null;
+        if (g01RuleExecutions is not null && decisions.Length == 1 && g01GateOutcome is not null)
+        {
+            decisionSnapshot = G01DecisionSnapshotFactory.Create(
+                command, actor, aggregate, policy, decisions[0],
+                g01GateOutcome, g01RuleExecutions, now);
+        }
+
         return await store.CommitAsync(
             new MutationRequest(command, actor, aggregate, policy, fingerprint),
-            new MutationCommit(after, audit, outbox, decisions, evaluationPlan, evaluationAssignments),
+            new MutationCommit(
+                after, audit, outbox, decisions, evaluationPlan, evaluationAssignments, decisionSnapshot),
             cancellationToken);
+    }
+
+    private static bool IsG01RuleExecutionFailure(string code) =>
+        code.StartsWith("G01_R02_", StringComparison.OrdinalIgnoreCase)
+        || code.StartsWith("G01_R03_", StringComparison.OrdinalIgnoreCase)
+        || code.StartsWith("G01_R04_", StringComparison.OrdinalIgnoreCase)
+        || code.StartsWith("G01_R05_", StringComparison.OrdinalIgnoreCase);
+
+    private static string? ReadG01Outcome(string rawBody)
+    {
+        using var document = System.Text.Json.JsonDocument.Parse(rawBody);
+        return document.RootElement.TryGetProperty("outcome", out var outcome)
+            && outcome.ValueKind == System.Text.Json.JsonValueKind.String
+            ? outcome.GetString()
+            : null;
     }
 
     public static string Fingerprint(AuthorityCommand command)
