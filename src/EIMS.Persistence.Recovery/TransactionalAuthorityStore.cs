@@ -730,8 +730,7 @@ public sealed class TransactionalAuthorityStore : IEvaluationWorkflowStore, IPer
         var comment = ReadString(root, "comment") ?? decision.Note;
         var createdAt = commit.Audit.Timestamp;
         var snapshotId = $"SNAP-{decision.DecisionId}";
-        var fingerprintMaterial = string.Join("
-", new[]
+        var fingerprintMaterial = string.Join("\n", new[]
         {
             snapshotId, decision.DecisionId, commit.After.AggregateId,
             observationVersion.ToString(CultureInfo.InvariantCulture), ruleSetId, ruleSetVersion,
