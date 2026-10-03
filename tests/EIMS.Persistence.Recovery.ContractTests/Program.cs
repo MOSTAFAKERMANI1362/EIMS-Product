@@ -57,6 +57,8 @@ var tests = new List<(string Name, Func<Task> Run)>
     ("G01-R05-RED-03 description < 15 maps to FAIL", G01R05ShortDescriptionFail),
 };
 
+tests.Insert(0, ("G01-AGG-RED-01 frozen truth table maps PASS/FAIL/ERROR/WARNING/NOT_APPLICABLE", G01AggregationTruthTable));
+
 var passed = 0;
 foreach (var (name, run) in tests)
 {
