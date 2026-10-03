@@ -36,7 +36,7 @@ internal static class Program
     {
         var tests = new List<(string Name, Func<Task> Run)>
         {
-            ("P1P5-W12-01 contract rebaselines to twenty-nine recovered mutations", ContractRebaseline),
+            ("P1P5-W12-01 contract rebaselines to thirty-two recovered mutations", ContractRebaseline),
             ("P1P5-W12-02 Wave11 catalog exposes nine Execution and eight Benefit mutations", CatalogCounts),
             ("P1P5-W12-03 all nine Execution commands dispatch through Execution executor", ExecutionDispatches),
             ("P1P5-W12-04 Execution envelope maps optional lifecycle fields exactly", ExecutionFieldsMap),
@@ -78,8 +78,8 @@ internal static class Program
 
     private static Task ContractRebaseline()
     {
-        Equal("P1P5-1.2.0", P1P5BindingContract.Version);
-        Equal(29, P1P5BindingContract.RecoveredMutationCommandCount);
+        Equal("P1P5-1.3.0", P1P5BindingContract.Version);
+        Equal(32, P1P5BindingContract.RecoveredMutationCommandCount);
         Equal(6, P1P5BindingContract.PortfolioUserCommandCount);
         Equal(9, P1P5BindingContract.ExecutionUserCommandCount);
         Equal(8, P1P5BindingContract.BenefitUserCommandCount);
