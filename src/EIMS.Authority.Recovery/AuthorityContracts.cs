@@ -162,6 +162,34 @@ public sealed record DomainDecisionEnvelope(
     string? Note = null,
     IReadOnlyDictionary<string, string>? Facts = null);
 
+public sealed record G01RuleExecutionSnapshot(
+    string RuleId,
+    string Outcome);
+
+public sealed record G01DecisionAuthorizationContext(
+    string PrincipalId,
+    string Role,
+    string Capability,
+    string Scope,
+    string AssignmentId);
+
+public sealed record G01DecisionSnapshotEnvelope(
+    string SnapshotId,
+    string DecisionId,
+    string ObservationId,
+    long ObservationVersion,
+    string RuleSetId,
+    string RuleSetVersion,
+    string GateOutcome,
+    IReadOnlyCollection<G01RuleExecutionSnapshot> RuleExecutions,
+    G01DecisionAuthorizationContext AuthorizationContext,
+    string DecisionOutcome,
+    string? ReasonCode,
+    string? Comment,
+    DateTimeOffset CreatedAt,
+    string SchemaVersion,
+    string Fingerprint);
+
 public sealed record EvaluationPlanEnvelope(
     string PlanId,
     string IdeaId,
@@ -290,7 +318,8 @@ public sealed record MutationCommit(
     OutboxEnvelope Outbox,
     IReadOnlyCollection<DomainDecisionEnvelope>? Decisions = null,
     EvaluationPlanEnvelope? EvaluationPlan = null,
-    IReadOnlyCollection<EvaluationAssignmentEnvelope>? EvaluationAssignments = null);
+    IReadOnlyCollection<EvaluationAssignmentEnvelope>? EvaluationAssignments = null,
+    G01DecisionSnapshotEnvelope? DecisionSnapshot = null);
 
 public sealed record AuditEnvelope(
     string AuditId,
