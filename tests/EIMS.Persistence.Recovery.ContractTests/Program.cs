@@ -82,7 +82,7 @@ static MutationCommit Commit(AggregateSnapshot before, AuthorityCommand command,
             "TEST-RULESET-1.0",
             now,
             command.CorrelationId,
-            command.CommandName),
+            command.CommandName);
     var decisions = includeDecision
         ? new[]
         {
