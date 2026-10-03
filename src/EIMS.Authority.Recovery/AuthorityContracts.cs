@@ -414,6 +414,15 @@ public sealed class PassRuleEvaluator : IRuleEvaluator
                     "G01_REASON_CODE_REQUIRED",
                     $"ReasonCode is required for G01 outcome '{outcome}'."));
 
+            if (root.TryGetProperty("ruleResults", out var ruleResults)
+                && ruleResults.ValueKind == System.Text.Json.JsonValueKind.Object
+                && ruleResults.TryGetProperty("R03", out var r03Result)
+                && r03Result.ValueKind == System.Text.Json.JsonValueKind.Null
+                && !root.TryGetProperty("r03Review", out _))
+                return ValueTask.FromResult(RuleEvaluation.Fail(
+                    "G01_R03_REVIEW_REQUIRED",
+                    "R03 requires a completed human duplicate-history review."));
+
             if (root.TryGetProperty("r03Review", out var r03Review)
                 && r03Review.ValueKind == System.Text.Json.JsonValueKind.Object)
             {
