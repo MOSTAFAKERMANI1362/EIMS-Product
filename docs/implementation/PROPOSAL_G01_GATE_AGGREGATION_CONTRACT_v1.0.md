@@ -23,6 +23,19 @@ The current approved G01 contract establishes:
 The sources do NOT explicitly define the complete aggregation truth table for
 G01_COMPLETE / G01_INCOMPLETE / G01_BLOCKED.
 
+
+## 1A. Confirmed G01 Decision Outcome
+
+Project-owner clarification confirms that the G01 Decision has exactly three outcomes:
+
+- APPROVE — تأیید
+- RETURN — بازگشت جهت اصلاحات
+- REJECT — رد
+
+HOLD is not a G01 outcome. This clarification is consistent with the approved G01 contract and does not introduce an additional Decision outcome.
+
+The aggregation values G01_COMPLETE / G01_INCOMPLETE / G01_BLOCKED are gate-evaluation states, not additional Decision outcomes.
+
 ## 2. Proposal
 
 Bind G01 aggregation as a pure deterministic gate function over the four
