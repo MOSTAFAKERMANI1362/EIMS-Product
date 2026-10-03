@@ -248,10 +248,10 @@ public sealed class AuthorityKernel(
     }
 
     private static bool IsG01RuleExecutionFailure(string code) =>
-        code.StartsWith("G01_R02_", StringComparison.OrdinalIgnoreCase)
-        || code.StartsWith("G01_R03_", StringComparison.OrdinalIgnoreCase)
-        || code.StartsWith("G01_R04_", StringComparison.OrdinalIgnoreCase)
-        || code.StartsWith("G01_R05_", StringComparison.OrdinalIgnoreCase);
+        string.Equals(code, "G01_R02_FAIL", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(code, "G01_R03_FAIL", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(code, "G01_R04_FAIL", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(code, "G01_R05_FAIL", StringComparison.OrdinalIgnoreCase);
 
     private static string? ReadG01Outcome(string rawBody)
     {
