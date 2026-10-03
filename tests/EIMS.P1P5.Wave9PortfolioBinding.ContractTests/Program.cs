@@ -56,8 +56,8 @@ internal static class Program
 
     private static Task ContractCompatibility()
     {
-        Equal("P1P5-1.2.0", P1P5BindingContract.Version);
-        Equal(29, P1P5BindingContract.RecoveredMutationCommandCount);
+        Equal("P1P5-1.3.0", P1P5BindingContract.Version);
+        Equal(32, P1P5BindingContract.RecoveredMutationCommandCount);
         Equal(6, P1P5BindingContract.PortfolioUserCommandCount);
         False(P1P5BindingContract.SystemPortfolioEligibilityExposedAsUserCommand);
         return Task.CompletedTask;
