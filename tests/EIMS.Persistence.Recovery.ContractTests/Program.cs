@@ -31,6 +31,11 @@ var tests = new List<(string Name, Func<Task> Run)>
     ("G01-IDEMP-RED-03 concurrent same-key decision has one logical commit", G01ConcurrentIdempotency),
     ("G01-IDEMP-RED-04 failed transaction leaves no successful decision idempotency outcome", G01FailedTransactionLeavesNoIdempotency),
     ("G01-IDEMP-RED-05 submission and decision idempotency remain independent", G01SubmissionDecisionIdempotencyIndependent),
+    ("G01-RC-RED-01 APPROVE without ReasonCode is allowed", G01ReasonCodeApproveOptional),
+    ("G01-RC-RED-02 RETURN without ReasonCode is rejected", G01ReasonCodeReturnRequired),
+    ("G01-RC-RED-03 RETURN with ReasonCode is allowed", G01ReasonCodeReturnPresent),
+    ("G01-RC-RED-04 REJECT without ReasonCode is rejected", G01ReasonCodeRejectRequired),
+    ("G01-RC-RED-05 REJECT with ReasonCode is allowed", G01ReasonCodeRejectPresent),
     ("G01-SNAPSHOT-RED-01 APPROVE snapshot is complete", G01SnapshotApproveCompleteness),
     ("G01-SNAPSHOT-RED-02 RETURN snapshot captures ReasonCode", G01SnapshotReturnReasonCode),
     ("G01-SNAPSHOT-RED-03 REJECT snapshot captures ReasonCode", G01SnapshotRejectReasonCode),
@@ -482,6 +487,68 @@ static async Task G01SubmissionDecisionIdempotencyIndependent()
 }
 
 
+static async Task G01ReasonCodeApproveOptional()
+{
+    var store = Store();
+    var before = Aggregate();
+    var command = CommandNamed("g01.decide", key: "G01-RC-RED-01",
+        body: "{\"outcome\":\"APPROVE\",\"observationVersion\":1,\"gateOutcome\":\"G01_COMPLETE\",\"ruleResults\":{\"R02\":\"PASS\",\"R03\":\"PASS\",\"R04\":\"PASS\",\"R05\":\"PASS\"}}");
+    var result = await ExecuteG01RuleValidationOnly(store, command, before);
+    Eq(200, result.HttpStatus);
+}
+
+static async Task G01ReasonCodeReturnRequired()
+{
+    var store = Store();
+    var before = Aggregate();
+    var command = CommandNamed("g01.decide", key: "G01-RC-RED-02",
+        body: "{\"outcome\":\"RETURN\",\"observationVersion\":1,\"gateOutcome\":\"G01_INCOMPLETE\",\"ruleResults\":{\"R02\":\"PASS\",\"R03\":\"PASS\",\"R04\":\"PASS\",\"R05\":\"WARNING\"}}");
+    var result = await ExecuteG01RuleValidationOnly(store, command, before);
+    Eq(422, result.HttpStatus);
+}
+
+static async Task G01ReasonCodeReturnPresent()
+{
+    var store = Store();
+    var before = Aggregate();
+    var command = CommandNamed("g01.decide", key: "G01-RC-RED-03",
+        body: "{\"outcome\":\"RETURN\",\"reasonCode\":\"RC-CORRECTION\",\"observationVersion\":1,\"gateOutcome\":\"G01_INCOMPLETE\",\"ruleResults\":{\"R02\":\"PASS\",\"R03\":\"PASS\",\"R04\":\"PASS\",\"R05\":\"WARNING\"}}");
+    var result = await ExecuteG01RuleValidationOnly(store, command, before);
+    Eq(200, result.HttpStatus);
+}
+
+static async Task G01ReasonCodeRejectRequired()
+{
+    var store = Store();
+    var before = Aggregate();
+    var command = CommandNamed("g01.decide", key: "G01-RC-RED-04",
+        body: "{\"outcome\":\"REJECT\",\"observationVersion\":1,\"gateOutcome\":\"G01_COMPLETE\",\"ruleResults\":{\"R02\":\"PASS\",\"R03\":\"PASS\",\"R04\":\"FAIL\",\"R05\":\"PASS\"}}");
+    var result = await ExecuteG01RuleValidationOnly(store, command, before);
+    Eq(422, result.HttpStatus);
+}
+
+static async Task G01ReasonCodeRejectPresent()
+{
+    var store = Store();
+    var before = Aggregate();
+    var command = CommandNamed("g01.decide", key: "G01-RC-RED-05",
+        body: "{\"outcome\":\"REJECT\",\"reasonCode\":\"RC-NOT-WORTHY\",\"observationVersion\":1,\"gateOutcome\":\"G01_COMPLETE\",\"ruleResults\":{\"R02\":\"PASS\",\"R03\":\"PASS\",\"R04\":\"FAIL\",\"R05\":\"PASS\"}}");
+    var result = await ExecuteG01RuleValidationOnly(store, command, before);
+    Eq(200, result.HttpStatus);
+}
+
+static async Task<AuthorityResult> ExecuteG01RuleValidationOnly(
+    TransactionalAuthorityStore store, AuthorityCommand command, AggregateSnapshot before)
+{
+    var kernel = new AuthorityKernel(
+        new SinglePolicyCatalog(new CommandPolicy("g01.decide", new[] { "TEST_ROLE" }, new[] { "READY" }, "G01-INQ", "G01.Decided.v1")),
+        store,
+        new G01ReasonCodeRedRuleEvaluator(),
+        new BaselineSodEvaluator(),
+        new IncrementPlanner());
+    return await kernel.ExecuteAsync(command, Actor());
+}
+
 static async Task G01SnapshotApproveCompleteness()
 {
     var store = Store();
@@ -686,6 +753,31 @@ sealed class SinglePolicyCatalog(CommandPolicy policy) : ICommandPolicyCatalog
         }
         found = null!;
         return false;
+    }
+}
+
+sealed class G01ReasonCodeRedRuleEvaluator : IRuleEvaluator
+{
+    public ValueTask<RuleEvaluation> EvaluateAsync(
+        AuthorityCommand command,
+        AuthorityActor actor,
+        AggregateSnapshot aggregate,
+        CommandPolicy policy,
+        CancellationToken cancellationToken = default)
+    {
+        using var document = System.Text.Json.JsonDocument.Parse(command.RawBody);
+        var root = document.RootElement;
+        var outcome = root.TryGetProperty("outcome", out var outcomeValue) && outcomeValue.ValueKind == System.Text.Json.JsonValueKind.String
+            ? outcomeValue.GetString()?.Trim().ToUpperInvariant()
+            : null;
+        var hasReasonCode = root.TryGetProperty("reasonCode", out var reasonCode)
+            && reasonCode.ValueKind == System.Text.Json.JsonValueKind.String
+            && !string.IsNullOrWhiteSpace(reasonCode.GetString());
+
+        if ((outcome == "RETURN" || outcome == "REJECT") && !hasReasonCode)
+            return ValueTask.FromResult(RuleEvaluation.Fail("G01_REASON_CODE_REQUIRED"));
+
+        return ValueTask.FromResult(RuleEvaluation.Pass());
     }
 }
 
