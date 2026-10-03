@@ -94,7 +94,7 @@ static MutationCommit Commit(AggregateSnapshot before, AuthorityCommand command,
             new DomainDecisionEnvelope(
                 $"DEC-{command.IdempotencyKey}",
                 command.CommandName,
-                command.RawBody.Contains("\"outcome\":\"RETURN\"", StringComparison.Ordinal) ? "RETURN" : "APPROVE",
+                command.RawBody.Contains("\"outcome\":\"RETURN\"", StringComparison.Ordinal) ? "RETURN" : command.RawBody.Contains("\"outcome\":\"REJECT\"", StringComparison.Ordinal) ? "REJECT" : "APPROVE",
                 after.AggregateId,
                 after.Version,
                 "P-001",
@@ -560,8 +560,8 @@ static async Task G01SnapshotImmutability()
 
 static async Task G01SnapshotObservationVersion()
 {
-    var store = Store();
     var before = Aggregate(version: 7);
+    var store = new TransactionalAuthorityStore(PersistenceContractDescriptor.RecoveryBaseline(), before);
     var command = CommandNamed(
         "g01.decide",
         key: "G01-SNAPSHOT-RED-05",
