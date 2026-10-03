@@ -414,6 +414,38 @@ public sealed class PassRuleEvaluator : IRuleEvaluator
                     "G01_REASON_CODE_REQUIRED",
                     $"ReasonCode is required for G01 outcome '{outcome}'."));
 
+            if (root.TryGetProperty("r03Review", out var r03Review)
+                && r03Review.ValueKind == System.Text.Json.JsonValueKind.Object)
+            {
+                var reviewPerformed = r03Review.TryGetProperty("reviewPerformed", out var performedProperty)
+                    && performedProperty.ValueKind == System.Text.Json.JsonValueKind.True
+                    && performedProperty.GetBoolean();
+
+                if (!reviewPerformed)
+                    return ValueTask.FromResult(RuleEvaluation.Fail(
+                        "G01_R03_REVIEW_REQUIRED",
+                        "R03 requires a completed human duplicate-history review."));
+
+                var reviewResult = r03Review.TryGetProperty("reviewResult", out var resultProperty)
+                    ? resultProperty.GetString()
+                    : null;
+
+                if (string.Equals(reviewResult, "DIFFERENT", StringComparison.OrdinalIgnoreCase))
+                    return ValueTask.FromResult(RuleEvaluation.Pass("G01_R03_PASS"));
+
+                if (string.Equals(reviewResult, "DUPLICATE", StringComparison.OrdinalIgnoreCase))
+                    return ValueTask.FromResult(RuleEvaluation.Fail(
+                        "G01_R03_FAIL",
+                        "R03 human review identified a duplicate."));
+
+                if (string.Equals(reviewResult, "UNKNOWN", StringComparison.OrdinalIgnoreCase))
+                    return ValueTask.FromResult(RuleEvaluation.Pass("G01_R03_WARNING"));
+
+                return ValueTask.FromResult(RuleEvaluation.Fail(
+                    "G01_R03_REVIEW_RESULT_INVALID",
+                    "R03 reviewResult must be DIFFERENT, DUPLICATE, or UNKNOWN."));
+            }
+
             return ValueTask.FromResult(RuleEvaluation.Pass("G01_REASON_CODE_VALID"));
         }
         catch (System.Text.Json.JsonException)
