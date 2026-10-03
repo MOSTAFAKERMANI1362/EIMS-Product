@@ -616,7 +616,7 @@ static async Task G01ReasonCodeApproveOptional()
     var store = Store();
     var before = Aggregate();
     var command = CommandNamed("g01.decide", key: "G01-RC-RED-01",
-        body: "{\"outcome\":\"APPROVE\",\"observationVersion\":1,\"gateOutcome\":\"G01_COMPLETE\",\"ruleResults\":{\"R02\":\"PASS\",\"R03\":\"PASS\",\"R04\":\"PASS\",\"R05\":\"PASS\"}}");
+        body: "{\"outcome\":\"APPROVE\",\"observationVersion\":1,\"gateOutcome\":\"G01_COMPLETE\",\"ruleResults\":{\"R02\":\"PASS\",\"R03\":\"PASS\",\"R04\":\"PASS\",\"R05\":\"PASS\"},\"originChannel\":\"MEETING\",\"sourceType\":\"INTERNAL\",\"unit\":\"UNIT:RND\",\"title\":\"Observation\",\"desc\":\"This description has fifteen chars\",\"r03Review\":{\"reviewPerformed\":true,\"reviewResult\":\"DIFFERENT\"}}");
     var result = await ExecuteG01RuleValidationOnly(store, command, before);
     Eq(200, result.HttpStatus);
 }
