@@ -97,8 +97,8 @@ Test("VS01-UNIT-006 G01 assignment lifecycle accepts then starts",()=>{
     var assignment = new G01WorkAssignment("G01-OBS-TEST-006", "OBS-TEST-006", "INTAKE_STEWARD", G01WorkAssignmentStatus.Pending);
     var service = new ObservationSubmissionService();
 
-    var accepted = service.AcceptG01Assignment(assignment);
-    var started = service.StartG01Assignment(accepted);
+    var accepted = service.AcceptG01Assignment(assignment, "DOMAIN\\user6");
+    var started = service.StartG01Assignment(accepted, "DOMAIN\\user6");
 
     Assert(accepted.Status == G01WorkAssignmentStatus.Accepted,
         "VS01 RED: PENDING assignment must transition to ACCEPTED.");
