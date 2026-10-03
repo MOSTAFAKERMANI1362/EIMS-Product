@@ -385,8 +385,44 @@ public interface ISodEvaluator
 
 public sealed class PassRuleEvaluator : IRuleEvaluator
 {
-    public ValueTask<RuleEvaluation> EvaluateAsync(AuthorityCommand command, AuthorityActor actor, AggregateSnapshot aggregate, CommandPolicy policy, CancellationToken cancellationToken = default) =>
-        ValueTask.FromResult(RuleEvaluation.Pass());
+    public ValueTask<RuleEvaluation> EvaluateAsync(
+        AuthorityCommand command,
+        AuthorityActor actor,
+        AggregateSnapshot aggregate,
+        CommandPolicy policy,
+        CancellationToken cancellationToken = default)
+    {
+        if (!string.Equals(command.CommandName, "g01.decide", StringComparison.OrdinalIgnoreCase))
+            return ValueTask.FromResult(RuleEvaluation.Pass());
+
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(command.RawBody);
+            var root = document.RootElement;
+
+            var outcome = root.TryGetProperty("outcome", out var outcomeProperty)
+                ? outcomeProperty.GetString()
+                : null;
+            var reasonCode = root.TryGetProperty("reasonCode", out var reasonCodeProperty)
+                ? reasonCodeProperty.GetString()
+                : null;
+
+            if ((string.Equals(outcome, "RETURN", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(outcome, "REJECT", StringComparison.OrdinalIgnoreCase))
+                && string.IsNullOrWhiteSpace(reasonCode))
+                return ValueTask.FromResult(RuleEvaluation.Fail(
+                    "G01_REASON_CODE_REQUIRED",
+                    $"ReasonCode is required for G01 outcome '{outcome}'."));
+
+            return ValueTask.FromResult(RuleEvaluation.Pass("G01_REASON_CODE_VALID"));
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return ValueTask.FromResult(RuleEvaluation.Fail(
+                "G01_DECISION_PAYLOAD_INVALID",
+                "G01 decision payload must be valid JSON."));
+        }
+    }
 }
 
 public sealed class BaselineSodEvaluator : ISodEvaluator
