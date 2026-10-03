@@ -36,6 +36,10 @@ var tests = new List<(string Name, Func<Task> Run)>
     ("G01-RC-RED-03 RETURN with ReasonCode is allowed", G01ReasonCodeReturnPresent),
     ("G01-RC-RED-04 REJECT without ReasonCode is rejected", G01ReasonCodeRejectRequired),
     ("G01-RC-RED-05 REJECT with ReasonCode is allowed", G01ReasonCodeRejectPresent),
+    ("G01-R03-RED-01 DIFFERENT maps to PASS", G01R03DifferentPass),
+    ("G01-R03-RED-02 DUPLICATE maps to FAIL", G01R03DuplicateFail),
+    ("G01-R03-RED-03 UNKNOWN maps to WARNING", G01R03UnknownWarning),
+    ("G01-R03-RED-04 missing human review is not a canonical positive/negative result", G01R03MissingReview),
     ("G01-SNAPSHOT-RED-01 APPROVE snapshot is complete", G01SnapshotApproveCompleteness),
     ("G01-SNAPSHOT-RED-02 RETURN snapshot captures ReasonCode", G01SnapshotReturnReasonCode),
     ("G01-SNAPSHOT-RED-03 REJECT snapshot captures ReasonCode", G01SnapshotRejectReasonCode),
@@ -535,6 +539,54 @@ static async Task G01ReasonCodeRejectPresent()
         body: "{\"outcome\":\"REJECT\",\"reasonCode\":\"RC-NOT-WORTHY\",\"observationVersion\":1,\"gateOutcome\":\"G01_COMPLETE\",\"ruleResults\":{\"R02\":\"PASS\",\"R03\":\"PASS\",\"R04\":\"FAIL\",\"R05\":\"PASS\"}}");
     var result = await ExecuteG01RuleValidationOnly(store, command, before);
     Eq(200, result.HttpStatus);
+}
+
+static async Task G01R03DifferentPass()
+{
+    var store = Store();
+    var command = CommandNamed(
+        "g01.decide",
+        key: "G01-R03-RED-01",
+        body: "{\"outcome\":\"APPROVE\",\"observationVersion\":1,\"gateOutcome\":\"G01_COMPLETE\",\"ruleResults\":{\"R02\":\"PASS\",\"R03\":\"DIFFERENT\",\"R04\":\"PASS\",\"R05\":\"PASS\"},\"r03Review\":{\"reviewPerformed\":true,\"reviewResult\":\"DIFFERENT\",\"evidenceReference\":\"EVID-R03-01\"}}");
+    var result = await ExecuteG01RuleValidationOnly(store, command, Aggregate());
+    Eq(200, result.HttpStatus);
+    Eq("G01_R03_PASS", result.Code);
+}
+
+static async Task G01R03DuplicateFail()
+{
+    var store = Store();
+    var command = CommandNamed(
+        "g01.decide",
+        key: "G01-R03-RED-02",
+        body: "{\"outcome\":\"RETURN\",\"reasonCode\":\"RC-DUPLICATE\",\"observationVersion\":1,\"gateOutcome\":\"G01_INCOMPLETE\",\"ruleResults\":{\"R02\":\"PASS\",\"R03\":\"DUPLICATE\",\"R04\":\"PASS\",\"R05\":\"PASS\"},\"r03Review\":{\"reviewPerformed\":true,\"reviewResult\":\"DUPLICATE\",\"evidenceReference\":\"EVID-R03-02\"}}");
+    var result = await ExecuteG01RuleValidationOnly(store, command, Aggregate());
+    Eq(422, result.HttpStatus);
+    Eq("G01_R03_FAIL", result.Code);
+}
+
+static async Task G01R03UnknownWarning()
+{
+    var store = Store();
+    var command = CommandNamed(
+        "g01.decide",
+        key: "G01-R03-RED-03",
+        body: "{\"outcome\":\"RETURN\",\"reasonCode\":\"RC-REVIEW\",\"observationVersion\":1,\"gateOutcome\":\"G01_INCOMPLETE\",\"ruleResults\":{\"R02\":\"PASS\",\"R03\":\"UNKNOWN\",\"R04\":\"PASS\",\"R05\":\"PASS\"},\"r03Review\":{\"reviewPerformed\":true,\"reviewResult\":\"UNKNOWN\",\"evidenceReference\":\"EVID-R03-03\"}}");
+    var result = await ExecuteG01RuleValidationOnly(store, command, Aggregate());
+    Eq(200, result.HttpStatus);
+    Eq("G01_R03_WARNING", result.Code);
+}
+
+static async Task G01R03MissingReview()
+{
+    var store = Store();
+    var command = CommandNamed(
+        "g01.decide",
+        key: "G01-R03-RED-04",
+        body: "{\"outcome\":\"RETURN\",\"reasonCode\":\"RC-REVIEW\",\"observationVersion\":1,\"gateOutcome\":\"G01_INCOMPLETE\",\"ruleResults\":{\"R02\":\"PASS\",\"R03\":null,\"R04\":\"PASS\",\"R05\":\"PASS\"}}");
+    var result = await ExecuteG01RuleValidationOnly(store, command, Aggregate());
+    Eq(422, result.HttpStatus);
+    Eq("G01_R03_REVIEW_REQUIRED", result.Code);
 }
 
 static async Task<AuthorityResult> ExecuteG01RuleValidationOnly(
