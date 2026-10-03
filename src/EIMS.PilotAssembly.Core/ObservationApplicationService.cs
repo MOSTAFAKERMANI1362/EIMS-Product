@@ -86,14 +86,14 @@ public sealed class ObservationApplicationService
                         return existing.Result;
                     }
 
-                    var result = ExecuteSubmitToG01(observation, expectedVersion);
+                    var result = ExecuteSubmitToG01(observation, securityContext, expectedVersion);
                     AppendSuccessAudit(result, securityContext);
                     _idempotencyRecords[key] = new IdempotencyRecord(fingerprint!, result);
                     return result;
                 }
             }
 
-                var submittedResult = ExecuteSubmitToG01(observation, expectedVersion);
+                var submittedResult = ExecuteSubmitToG01(observation, securityContext, expectedVersion);
                 AppendSuccessAudit(submittedResult, securityContext);
                 return submittedResult;
             }
@@ -107,6 +107,7 @@ public sealed class ObservationApplicationService
 
     private ObservationSubmissionWithG01Result ExecuteSubmitToG01(
         Observation observation,
+        ObservationSecurityContext securityContext,
         long? expectedVersion)
     {
         if (expectedVersion.HasValue && observation.Version != expectedVersion.Value)
