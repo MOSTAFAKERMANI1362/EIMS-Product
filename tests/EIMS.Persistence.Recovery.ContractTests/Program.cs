@@ -78,6 +78,22 @@ Console.WriteLine($"RESULT {passed}/{tests.Count} PASS");
 return passed == tests.Count ? 0 : 1;
 
 
+static Task G01AggregationTruthTable()
+{
+    var pass = new G01RuleExecutionSnapshot("R", "PASS");
+    var fail = new G01RuleExecutionSnapshot("R", "FAIL");
+    var error = new G01RuleExecutionSnapshot("R", "ERROR");
+    var warning = new G01RuleExecutionSnapshot("R", "WARNING");
+    var na = new G01RuleExecutionSnapshot("R", "NOT_APPLICABLE");
+
+    Eq("G01_COMPLETE", G01GateAggregator.Aggregate(new[] { pass, pass, pass, pass }));
+    Eq("G01_INCOMPLETE", G01GateAggregator.Aggregate(new[] { pass, fail, pass, pass }));
+    Eq("G01_BLOCKED", G01GateAggregator.Aggregate(new[] { pass, error, pass, pass }));
+    Eq("G01_INCOMPLETE", G01GateAggregator.Aggregate(new[] { pass, warning, pass, pass }));
+    Eq("G01_INCOMPLETE", G01GateAggregator.Aggregate(new[] { pass, na, pass, pass }));
+    return Task.CompletedTask;
+}
+
 static async Task G01R02NonContextualPass() => await AssertG01RuleCode("G01_R02_PASS", "{\"originChannel\":\"MEETING\"}");
 static async Task G01R02ContextualWithDetailPass() => await AssertG01RuleCode("G01_R02_PASS", "{\"originChannel\":\"FIELD_VISIT\",\"originDetail\":\"site review\"}");
 static async Task G01R02ContextualMissingDetailFail() => await AssertG01RuleCode("G01_R02_FAIL", "{\"originChannel\":\"FIELD_VISIT\"}");
