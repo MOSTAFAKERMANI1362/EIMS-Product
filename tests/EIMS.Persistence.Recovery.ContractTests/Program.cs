@@ -59,6 +59,7 @@ var tests = new List<(string Name, Func<Task> Run)>
 
 tests.Insert(0, ("G01-AGG-RED-01 frozen truth table maps PASS/FAIL/ERROR/WARNING/NOT_APPLICABLE", G01AggregationTruthTable));
 tests.Insert(1, ("G01-RUNTIME-RED-01 authoritative composition produces four R02-R05 executions for one decision", G01AuthoritativeRuleComposition));
+tests.Insert(2, ("G01-RUNTIME-GREEN-01 decision path uses server aggregation and snapshot", G01AuthoritativeDecisionPath));
 
 var passed = 0;
 foreach (var (name, run) in tests)
@@ -110,6 +111,53 @@ static async Task G01AuthoritativeRuleComposition()
     Eq("PASS", executions.Single(x => x.RuleId == "R04").Outcome);
     Eq("PASS", executions.Single(x => x.RuleId == "R05").Outcome);
     Eq("G01_INCOMPLETE", G01GateAggregator.Aggregate(executions));
+}
+
+static async Task G01AuthoritativeDecisionPath()
+{
+    var body = "{\"outcome\":\"RETURN\",\"reasonCode\":\"RC-REVIEW\",\"originChannel\":\"MEETING\",\"sourceType\":\"INTERNAL\",\"unit\":\"UNIT:RND\",\"title\":\"Observation\",\"desc\":\"This description has fifteen chars\",\"r03Review\":{\"reviewPerformed\":true,\"reviewResult\":\"UNKNOWN\"},\"gateOutcome\":\"G01_COMPLETE\",\"ruleResults\":{\"R02\":\"PASS\",\"R03\":\"PASS\",\"R04\":\"PASS\",\"R05\":\"PASS\"}}";
+    var store = Store();
+    var command = CommandNamed("g01.decide", key: "G01-RUNTIME-GREEN-01", body: body);
+    var kernel = new AuthorityKernel(
+        new SinglePolicyCatalog(new CommandPolicy("g01.decide", new[] { "TEST_ROLE" }, new[] { "READY" }, "G01-INQ", "G01.Decided.v1")),
+        store,
+        new PassRuleEvaluator(),
+        new BaselineSodEvaluator(),
+        new IncrementPlanner());
+
+    var result = await kernel.ExecuteAsync(command, Actor());
+
+    Eq(200, result.HttpStatus);
+    Eq(2L, result.NewVersion!.Value);
+    Eq(1, store.DomainDecisions.Count);
+    Eq(1, store.DecisionSnapshots.Count);
+    var snapshot = store.DecisionSnapshots.Single();
+    Eq("G01_INCOMPLETE", snapshot.GateOutcome);
+    Eq("RETURN", snapshot.DecisionOutcome);
+    Eq(4, snapshot.RuleExecutions.Count);
+    Eq("WARNING", snapshot.RuleExecutions.Single(x => x.RuleId == "R03").Outcome);
+    Eq("PASS", snapshot.RuleExecutions.Single(x => x.RuleId == "R02").Outcome);
+
+    var approveStore = Store();
+    var approve = command with
+    {
+        IdempotencyKey = "G01-RUNTIME-GREEN-01-APPROVE",
+        CorrelationId = "G01-RUNTIME-GREEN-01-APPROVE",
+        RawBody = body.Replace("\"outcome\":\"RETURN\"", "\"outcome\":\"APPROVE\"", StringComparison.Ordinal)
+    };
+    var approveKernel = new AuthorityKernel(
+        new SinglePolicyCatalog(new CommandPolicy("g01.decide", new[] { "TEST_ROLE" }, new[] { "READY" }, "G01-INQ", "G01.Decided.v1")),
+        approveStore,
+        new PassRuleEvaluator(),
+        new BaselineSodEvaluator(),
+        new IncrementPlanner());
+    var approveResult = await approveKernel.ExecuteAsync(approve, Actor());
+
+    Eq(422, approveResult.HttpStatus);
+    Eq("G01_APPROVE_REQUIRES_COMPLETE", approveResult.Code);
+    Eq(1L, (await approveStore.GetAggregateAsync("AGG-1"))!.Version);
+    Eq(0, approveStore.DomainDecisions.Count);
+    Eq(0, approveStore.DecisionSnapshots.Count);
 }
 
 static async Task G01R02NonContextualPass() => await AssertG01RuleCode("G01_R02_PASS", "{\"originChannel\":\"MEETING\"}");
@@ -894,8 +942,24 @@ sealed class IncrementPlanner : ICommandMutationPlanner
         AuthorityActor actor,
         AggregateSnapshot aggregate,
         CommandPolicy policy,
-        CancellationToken cancellationToken = default) =>
-        ValueTask.FromResult<MutationPlan?>(new MutationPlan(
+        CancellationToken cancellationToken = default)
+    {
+        IReadOnlyCollection<DecisionIntent>? decisions = null;
+        if (string.Equals(command.CommandName, "g01.decide", StringComparison.OrdinalIgnoreCase))
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(command.RawBody);
+            var outcome = document.RootElement.TryGetProperty("outcome", out var value)
+                ? value.GetString() ?? "APPROVE"
+                : "APPROVE";
+            decisions = new[]
+            {
+                new DecisionIntent("G01.Decision", outcome)
+            };
+        }
+
+        return ValueTask.FromResult<MutationPlan?>(new MutationPlan(
             aggregate with { Version = aggregate.Version + 1 },
-            policy.EventName));
+            policy.EventName,
+            decisions));
+    }
 }
