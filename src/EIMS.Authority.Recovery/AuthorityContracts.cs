@@ -455,6 +455,57 @@ public sealed class PassRuleEvaluator : IRuleEvaluator
                     "R03 reviewResult must be DIFFERENT, DUPLICATE, or UNKNOWN."));
             }
 
+            if (root.TryGetProperty("originChannel", out var originChannelProperty))
+            {
+                var originChannel = originChannelProperty.GetString();
+                if (string.IsNullOrWhiteSpace(originChannel))
+                    return ValueTask.FromResult(RuleEvaluation.Fail("G01_R02_FAIL"));
+
+                var contextualOrigin = string.Equals(originChannel, "FIELD_VISIT", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(originChannel, "CUSTOMER_VISIT", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(originChannel, "AUDIT", StringComparison.OrdinalIgnoreCase);
+
+                if (contextualOrigin
+                    && (!root.TryGetProperty("originDetail", out var originDetailProperty)
+                        || string.IsNullOrWhiteSpace(originDetailProperty.GetString())))
+                    return ValueTask.FromResult(RuleEvaluation.Fail("G01_R02_FAIL"));
+
+                return ValueTask.FromResult(RuleEvaluation.Pass("G01_R02_PASS"));
+            }
+            else
+            {
+                return ValueTask.FromResult(RuleEvaluation.Fail("G01_R02_FAIL"));
+            }
+
+            if (root.TryGetProperty("sourceType", out var sourceTypeProperty)
+                || root.TryGetProperty("unit", out var unitProperty))
+            {
+                var hasSourceType = root.TryGetProperty("sourceType", out sourceTypeProperty)
+                    && !string.IsNullOrWhiteSpace(sourceTypeProperty.GetString());
+                var hasUnit = root.TryGetProperty("unit", out unitProperty)
+                    && !string.IsNullOrWhiteSpace(unitProperty.GetString());
+
+                if (!hasSourceType || !hasUnit)
+                    return ValueTask.FromResult(RuleEvaluation.Fail("G01_R04_FAIL"));
+
+                return ValueTask.FromResult(RuleEvaluation.Pass("G01_R04_PASS"));
+            }
+
+            if (root.TryGetProperty("title", out var titleProperty)
+                || root.TryGetProperty("desc", out var descProperty))
+            {
+                var hasTitle = root.TryGetProperty("title", out titleProperty)
+                    && !string.IsNullOrWhiteSpace(titleProperty.GetString());
+                var description = root.TryGetProperty("desc", out descProperty)
+                    ? descProperty.GetString()
+                    : null;
+
+                if (!hasTitle || string.IsNullOrWhiteSpace(description) || description.Length < 15)
+                    return ValueTask.FromResult(RuleEvaluation.Fail("G01_R05_FAIL"));
+
+                return ValueTask.FromResult(RuleEvaluation.Pass("G01_R05_PASS"));
+            }
+
             return ValueTask.FromResult(RuleEvaluation.Pass("G01_REASON_CODE_VALID"));
         }
         catch (System.Text.Json.JsonException)
