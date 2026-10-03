@@ -30,7 +30,12 @@ var tests = new List<(string Name, Func<Task> Run)>
     ("G01-IDEMP-RED-02 same key with different fingerprint conflicts without mutation", G01IdempotencyConflict),
     ("G01-IDEMP-RED-03 concurrent same-key decision has one logical commit", G01ConcurrentIdempotency),
     ("G01-IDEMP-RED-04 failed transaction leaves no successful decision idempotency outcome", G01FailedTransactionLeavesNoIdempotency),
-    ("G01-IDEMP-RED-05 submission and decision idempotency remain independent", G01SubmissionDecisionIdempotencyIndependent)
+    ("G01-IDEMP-RED-05 submission and decision idempotency remain independent", G01SubmissionDecisionIdempotencyIndependent),
+    ("G01-SNAPSHOT-RED-01 APPROVE snapshot is complete", G01SnapshotApproveCompleteness),
+    ("G01-SNAPSHOT-RED-02 RETURN snapshot captures ReasonCode", G01SnapshotReturnReasonCode),
+    ("G01-SNAPSHOT-RED-03 REJECT snapshot captures ReasonCode", G01SnapshotRejectReasonCode),
+    ("G01-SNAPSHOT-RED-04 snapshot remains immutable after commit", G01SnapshotImmutability),
+    ("G01-SNAPSHOT-RED-05 snapshot binds evaluated Observation business version", G01SnapshotObservationVersion)
 };
 
 var passed = 0;
@@ -474,6 +479,163 @@ static async Task G01SubmissionDecisionIdempotencyIndependent()
     Eq(2, store.IdempotencyRecords.Count);
     True(store.IdempotencyRecords.Any(x => x.CommandName == "observation.submit" && x.IdempotencyKey == "SHARED-G01-RED-05"));
     True(store.IdempotencyRecords.Any(x => x.CommandName == "g01.decide" && x.IdempotencyKey == "SHARED-G01-RED-05"));
+}
+
+
+static async Task G01SnapshotApproveCompleteness()
+{
+    var store = Store();
+    var before = Aggregate();
+    var command = CommandNamed(
+        "g01.decide",
+        key: "G01-SNAPSHOT-RED-01",
+        body: "{\"outcome\":\"APPROVE\",\"observationVersion\":1,\"gateOutcome\":\"G01_COMPLETE\",\"ruleResults\":{\"R02\":\"PASS\",\"R03\":\"PASS\",\"R04\":\"PASS\",\"R05\":\"PASS\"}}");
+    var result = await store.CommitAsync(Request(command, before), Commit(before, command, includeDecision: true));
+    Eq(200, result.HttpStatus);
+
+    var snapshot = RequireSingleDecisionSnapshot(store);
+    Eq("G01-INQ", Read(snapshot, "RuleSetId"));
+    Eq("1.0", Read(snapshot, "RuleSetVersion"));
+    Eq("G01_COMPLETE", Read(snapshot, "GateOutcome"));
+    Eq("1", Read(snapshot, "ObservationVersion"));
+    Eq("APPROVE", Read(snapshot, "DecisionOutcome"));
+    True(HasFourRuleExecutions(snapshot));
+    True(HasAuthorizationEvidence(snapshot));
+}
+
+static async Task G01SnapshotReturnReasonCode()
+{
+    var store = Store();
+    var before = Aggregate();
+    var command = CommandNamed(
+        "g01.decide",
+        key: "G01-SNAPSHOT-RED-02",
+        body: "{\"outcome\":\"RETURN\",\"reasonCode\":\"RC-CORRECTION\",\"observationVersion\":1,\"gateOutcome\":\"G01_INCOMPLETE\",\"ruleResults\":{\"R02\":\"PASS\",\"R03\":\"PASS\",\"R04\":\"PASS\",\"R05\":\"WARNING\"}}");
+    await store.CommitAsync(Request(command, before), Commit(before, command, includeDecision: true));
+
+    var snapshot = RequireSingleDecisionSnapshot(store);
+    Eq("RETURN", Read(snapshot, "DecisionOutcome"));
+    Eq("RC-CORRECTION", Read(snapshot, "ReasonCode"));
+}
+
+static async Task G01SnapshotRejectReasonCode()
+{
+    var store = Store();
+    var before = Aggregate();
+    var command = CommandNamed(
+        "g01.decide",
+        key: "G01-SNAPSHOT-RED-03",
+        body: "{\"outcome\":\"REJECT\",\"reasonCode\":\"RC-NOT-WORTHY\",\"observationVersion\":1,\"gateOutcome\":\"G01_COMPLETE\",\"ruleResults\":{\"R02\":\"PASS\",\"R03\":\"PASS\",\"R04\":\"FAIL\",\"R05\":\"PASS\"}}");
+    await store.CommitAsync(Request(command, before), Commit(before, command, includeDecision: true));
+
+    var snapshot = RequireSingleDecisionSnapshot(store);
+    Eq("REJECT", Read(snapshot, "DecisionOutcome"));
+    Eq("RC-NOT-WORTHY", Read(snapshot, "ReasonCode"));
+}
+
+static async Task G01SnapshotImmutability()
+{
+    var store = Store();
+    var before = Aggregate();
+    var command = CommandNamed(
+        "g01.decide",
+        key: "G01-SNAPSHOT-RED-04",
+        body: "{\"outcome\":\"RETURN\",\"reasonCode\":\"RC-IMMUTABLE\",\"observationVersion\":1,\"gateOutcome\":\"G01_INCOMPLETE\",\"ruleResults\":{\"R02\":\"PASS\",\"R03\":\"PASS\",\"R04\":\"PASS\",\"R05\":\"WARNING\"}}");
+    await store.CommitAsync(Request(command, before), Commit(before, command, includeDecision: true));
+
+    var snapshotBefore = RequireSingleDecisionSnapshot(store);
+    var fingerprintBefore = Read(snapshotBefore, "Fingerprint");
+    var decisionBefore = Read(snapshotBefore, "DecisionOutcome");
+    var reasonBefore = Read(snapshotBefore, "ReasonCode");
+
+    var later = (await store.GetAggregateAsync("AGG-1"))!;
+    var followUp = CommandNamed("observation.followup", key: "G01-SNAPSHOT-RED-04-FOLLOWUP", expected: later.Version);
+    await store.CommitAsync(Request(followUp, later), Commit(later, followUp));
+
+    var snapshotAfter = RequireSingleDecisionSnapshot(store);
+    Eq(fingerprintBefore, Read(snapshotAfter, "Fingerprint"));
+    Eq(decisionBefore, Read(snapshotAfter, "DecisionOutcome"));
+    Eq(reasonBefore, Read(snapshotAfter, "ReasonCode"));
+}
+
+static async Task G01SnapshotObservationVersion()
+{
+    var store = Store();
+    var before = Aggregate(version: 7);
+    var command = CommandNamed(
+        "g01.decide",
+        key: "G01-SNAPSHOT-RED-05",
+        expected: 7,
+        body: "{\"outcome\":\"APPROVE\",\"observationVersion\":7,\"gateOutcome\":\"G01_COMPLETE\",\"ruleResults\":{\"R02\":\"PASS\",\"R03\":\"PASS\",\"R04\":\"PASS\",\"R05\":\"PASS\"}}");
+    await store.CommitAsync(Request(command, before), Commit(before, command, includeDecision: true));
+
+    var snapshot = RequireSingleDecisionSnapshot(store);
+    Eq("7", Read(snapshot, "ObservationVersion"));
+}
+
+static object RequireSingleDecisionSnapshot(TransactionalAuthorityStore store)
+{
+    var snapshotCollection = store.GetType()
+        .GetProperties(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public)
+        .Select(property => property.GetValue(store))
+        .Where(value => value is System.Collections.IEnumerable && value is not string)
+        .SelectMany(value => ((System.Collections.IEnumerable)value!).Cast<object>())
+        .Where(item => HasProperty(item, "SnapshotId")
+            && HasProperty(item, "DecisionId")
+            && HasProperty(item, "ObservationId")
+            && HasProperty(item, "ObservationVersion")
+            && HasProperty(item, "RuleSetId")
+            && HasProperty(item, "RuleSetVersion")
+            && HasProperty(item, "GateOutcome")
+            && HasProperty(item, "RuleExecutions")
+            && HasProperty(item, "AuthorizationContext")
+            && HasProperty(item, "DecisionOutcome")
+            && HasProperty(item, "CreatedAt")
+            && HasProperty(item, "SchemaVersion")
+            && HasProperty(item, "Fingerprint"))
+        .ToArray();
+
+    if (snapshotCollection.Length != 1)
+        throw new InvalidOperationException($"Expected one committed Decision Snapshot evidence record, actual '{snapshotCollection.Length}'.");
+
+    return snapshotCollection[0];
+}
+
+static bool HasProperty(object value, string name) =>
+    value.GetType().GetProperty(name, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public) is not null;
+
+static string Read(object value, string name)
+{
+    var property = value.GetType().GetProperty(name, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public);
+    if (property is null)
+        throw new InvalidOperationException($"Expected Snapshot property '{name}'.");
+    return Convert.ToString(property.GetValue(value)) ?? "";
+}
+
+static bool HasFourRuleExecutions(object snapshot)
+{
+    var property = snapshot.GetType().GetProperty("RuleExecutions");
+    if (property?.GetValue(snapshot) is not System.Collections.IEnumerable rules)
+        return false;
+    return rules.Cast<object>().Count() == 4;
+}
+
+static bool HasAuthorizationEvidence(object snapshot)
+{
+    var property = snapshot.GetType().GetProperty("AuthorizationContext");
+    var value = property?.GetValue(snapshot);
+    if (value is null)
+        return false;
+
+    var names = value.GetType().GetProperties()
+        .Select(property => property.Name)
+        .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    return names.Contains("Principal")
+        || names.Contains("PrincipalId")
+        || names.Contains("AuthenticatedPrincipal")
+        || names.Contains("Assignment")
+        || names.Contains("AssignmentId");
 }
 
 static AuthorityCommand CommandNamed(
