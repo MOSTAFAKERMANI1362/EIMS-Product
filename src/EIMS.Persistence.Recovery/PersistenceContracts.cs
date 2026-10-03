@@ -108,6 +108,7 @@ public interface IPersistenceEvidenceSource
     IReadOnlyCollection<OutboxEnvelope> Outbox { get; }
     IReadOnlyCollection<IdempotencyRecord> IdempotencyRecords { get; }
     IReadOnlyCollection<DomainDecisionEnvelope> DomainDecisions { get; }
+    IReadOnlyCollection<G01DecisionSnapshotEnvelope> DecisionSnapshots { get; }
     IReadOnlyCollection<EvaluationPlanEnvelope> EvaluationPlans { get; }
     IReadOnlyCollection<EvaluationAssignmentEnvelope> EvaluationAssignments { get; }
     IReadOnlyCollection<AssessmentSnapshotEnvelope> AssessmentSnapshots { get; }
