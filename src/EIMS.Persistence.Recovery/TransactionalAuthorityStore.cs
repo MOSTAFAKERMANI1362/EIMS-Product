@@ -1,4 +1,8 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
 using EIMS.Authority.Recovery;
 
 namespace EIMS.Persistence.Recovery;
@@ -11,6 +15,7 @@ public sealed class TransactionalAuthorityStore : IEvaluationWorkflowStore, IPer
     private readonly List<AuditEnvelope> _audits = new();
     private readonly List<OutboxEnvelope> _outbox = new();
     private readonly List<DomainDecisionEnvelope> _decisions = new();
+    private readonly List<G01DecisionSnapshotEnvelope> _decisionSnapshots = new();
     private readonly List<EvaluationPlanEnvelope> _evaluationPlans = new();
     private readonly List<EvaluationAssignmentEnvelope> _evaluationAssignments = new();
     private readonly List<AssessmentSnapshotEnvelope> _assessmentSnapshots = new();
@@ -49,6 +54,11 @@ public sealed class TransactionalAuthorityStore : IEvaluationWorkflowStore, IPer
     public IReadOnlyCollection<DomainDecisionEnvelope> DomainDecisions
     {
         get { lock (_sync) return Array.AsReadOnly(_decisions.ToArray()); }
+    }
+
+    public IReadOnlyCollection<G01DecisionSnapshotEnvelope> DecisionSnapshots
+    {
+        get { lock (_sync) return Array.AsReadOnly(_decisionSnapshots.ToArray()); }
     }
 
     public IReadOnlyCollection<EvaluationPlanEnvelope> EvaluationPlans
@@ -194,6 +204,9 @@ public sealed class TransactionalAuthorityStore : IEvaluationWorkflowStore, IPer
             var decisions = (commit.Decisions ?? Array.Empty<DomainDecisionEnvelope>())
                 .Select(SnapshotDecision)
                 .ToArray();
+            var decisionSnapshot = commit.DecisionSnapshot is not null
+                ? SnapshotDecisionSnapshot(commit.DecisionSnapshot)
+                : CreateG01DecisionSnapshot(request, commit, decisions);
             if (decisions.GroupBy(x => x.DecisionId, StringComparer.Ordinal).Any(g => g.Count() > 1)
                 || decisions.Any(d => _decisions.Any(existing => string.Equals(existing.DecisionId, d.DecisionId, StringComparison.Ordinal))))
                 return ValueTask.FromResult(AuthorityResult.Deny(409, "P2_DUPLICATE_DECISION_ID", request.Command.CorrelationId));
@@ -237,6 +250,7 @@ public sealed class TransactionalAuthorityStore : IEvaluationWorkflowStore, IPer
 
             var oldAggregate = current;
             var oldDecisionCount = _decisions.Count;
+            var oldDecisionSnapshotCount = _decisionSnapshots.Count;
             var oldPlanCount = _evaluationPlans.Count;
             var oldAssignmentCount = _evaluationAssignments.Count;
             var oldAuditCount = _audits.Count;
@@ -248,6 +262,8 @@ public sealed class TransactionalAuthorityStore : IEvaluationWorkflowStore, IPer
                 ThrowIf(PersistenceFaultPoint.AfterStateStaged);
 
                 _decisions.AddRange(decisions);
+                if (decisionSnapshot is not null)
+                    _decisionSnapshots.Add(decisionSnapshot);
                 ThrowIf(PersistenceFaultPoint.AfterDecisionStaged);
 
                 if (evaluationPlan is not null)
@@ -275,6 +291,9 @@ public sealed class TransactionalAuthorityStore : IEvaluationWorkflowStore, IPer
 
                 while (_decisions.Count > oldDecisionCount)
                     _decisions.RemoveAt(_decisions.Count - 1);
+
+                while (_decisionSnapshots.Count > oldDecisionSnapshotCount)
+                    _decisionSnapshots.RemoveAt(_decisionSnapshots.Count - 1);
 
                 while (_evaluationPlans.Count > oldPlanCount)
                     _evaluationPlans.RemoveAt(_evaluationPlans.Count - 1);
@@ -665,6 +684,86 @@ public sealed class TransactionalAuthorityStore : IEvaluationWorkflowStore, IPer
 
     private static DomainDecisionEnvelope SnapshotDecision(DomainDecisionEnvelope decision) =>
         decision with { Facts = SnapshotFacts(decision.Facts) };
+
+    private static G01DecisionSnapshotEnvelope? CreateG01DecisionSnapshot(
+        MutationRequest request,
+        MutationCommit commit,
+        IReadOnlyCollection<DomainDecisionEnvelope> decisions)
+    {
+        if (!string.Equals(request.Command.CommandName, "g01.decide", StringComparison.OrdinalIgnoreCase)
+            || decisions.Count == 0)
+            return null;
+
+        var decision = decisions.Single();
+        using var document = JsonDocument.Parse(request.Command.RawBody);
+        var root = document.RootElement;
+
+        var outcome = decision.Outcome.Trim().ToUpperInvariant();
+        var observationVersion = ReadLong(root, "observationVersion") ?? request.Before.Version;
+        var gateOutcome = ReadString(root, "gateOutcome")
+            ?? (string.Equals(outcome, "APPROVE", StringComparison.Ordinal) ? "G01_COMPLETE" : "G01_INCOMPLETE");
+        var ruleResults = root.TryGetProperty("ruleResults", out var rules) && rules.ValueKind == JsonValueKind.Object
+            ? rules
+            : default;
+        var ruleExecutions = new[] { "R02", "R03", "R04", "R05" }
+            .Select(ruleId => new G01RuleExecutionSnapshot(
+                ruleId,
+                ruleResults.ValueKind == JsonValueKind.Object && ruleResults.TryGetProperty(ruleId, out var value)
+                    ? value.GetString() ?? "NOT_PROVIDED"
+                    : "NOT_PROVIDED"))
+            .ToArray();
+
+        var role = request.Actor.Roles.FirstOrDefault(x => string.Equals(x, "INTAKE_STEWARD", StringComparison.OrdinalIgnoreCase))
+            ?? request.Actor.Roles.FirstOrDefault()
+            ?? string.Empty;
+        var scope = request.Command.RequestedScope
+            ?? request.Before.Scope
+            ?? string.Empty;
+        var authorization = new G01DecisionAuthorizationContext(
+            request.Actor.PersonId, role, "G01.DECIDE", scope, request.Actor.AssignmentId);
+
+        var ruleSetId = decision.Facts is not null && decision.Facts.TryGetValue("RuleSetId", out var rsid)
+            ? rsid : "G01-INQ";
+        var ruleSetVersion = decision.Facts is not null && decision.Facts.TryGetValue("RuleSetVersion", out var rsv)
+            ? rsv : "1.0";
+        var reasonCode = ReadString(root, "reasonCode");
+        var comment = ReadString(root, "comment") ?? decision.Note;
+        var createdAt = commit.Audit.Timestamp;
+        var snapshotId = $"SNAP-{decision.DecisionId}";
+        var fingerprintMaterial = string.Join("
+", new[]
+        {
+            snapshotId, decision.DecisionId, commit.After.AggregateId,
+            observationVersion.ToString(CultureInfo.InvariantCulture), ruleSetId, ruleSetVersion,
+            gateOutcome, string.Join("|", ruleExecutions.Select(x => $"{x.RuleId}={x.Outcome}")),
+            authorization.PrincipalId, authorization.Role, authorization.Capability,
+            authorization.Scope, authorization.AssignmentId, outcome, reasonCode ?? string.Empty,
+            comment ?? string.Empty, createdAt.ToString("O", CultureInfo.InvariantCulture), "1.0"
+        });
+        var fingerprint = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(fingerprintMaterial))).ToLowerInvariant();
+
+        return new G01DecisionSnapshotEnvelope(
+            snapshotId, decision.DecisionId, commit.After.AggregateId, observationVersion,
+            ruleSetId, ruleSetVersion, gateOutcome, Array.AsReadOnly(ruleExecutions),
+            authorization, outcome, reasonCode, comment, createdAt, "1.0", fingerprint);
+    }
+
+    private static G01DecisionSnapshotEnvelope SnapshotDecisionSnapshot(G01DecisionSnapshotEnvelope snapshot) =>
+        snapshot with
+        {
+            RuleExecutions = Array.AsReadOnly(snapshot.RuleExecutions.ToArray()),
+            AuthorizationContext = snapshot.AuthorizationContext with { }
+        };
+
+    private static string? ReadString(JsonElement root, string propertyName) =>
+        root.TryGetProperty(propertyName, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
+
+    private static long? ReadLong(JsonElement root, string propertyName) =>
+        root.TryGetProperty(propertyName, out var value) && value.TryGetInt64(out var result)
+            ? result
+            : null;
 
     private static IReadOnlyDictionary<string, string>? SnapshotFacts(IReadOnlyDictionary<string, string>? facts)
     {
