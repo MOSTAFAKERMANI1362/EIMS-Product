@@ -357,7 +357,7 @@ static async Task G01IdempotentReplay()
     True(first.StateMutated);
     True(replay.IdempotentReplay);
     False(replay.StateMutated);
-    Eq(first.NewVersion, replay.NewVersion);
+    Eq(first.NewVersion!.Value, replay.NewVersion!.Value);
     Eq(1, store.IdempotencyRecords.Count);
     Eq(1, store.DomainDecisions.Count);
     Eq(1, store.AuditLog.Count);
