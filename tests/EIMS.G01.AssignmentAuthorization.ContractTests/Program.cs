@@ -70,6 +70,18 @@ static void AssertDenied(Action action, string expectedCode)
     }
 }
 
+static void AssertStartDenied(Action action, string expectedCode)
+{
+    try
+    {
+        action();
+        throw new Exception($"Expected denial {expectedCode}.");
+    }
+    catch (ObservationDomainException ex) when (ex.Code == expectedCode)
+    {
+    }
+}
+
 static void AssignmentPrincipalRequired() =>
     AssertDenied(
         () => AssertAuthorized(Context(), Submitted(), Assignment(principal: null)),
@@ -110,7 +122,6 @@ static void ValidAuthorization()
     AssertAuthorized(Context(), Submitted(), Assignment());
 }
 
-
 static void AcceptBindsPrincipal()
 {
     var pending = Assignment(status: G01WorkAssignmentStatus.Pending, principal: null);
@@ -123,7 +134,7 @@ static void StartRequiresOwner()
 {
     var pending = Assignment(status: G01WorkAssignmentStatus.Pending, principal: null);
     var accepted = new ObservationSubmissionService().AcceptG01Assignment(pending, "P-REVIEWER");
-    AssertDenied(
+    AssertStartDenied(
         () => new ObservationSubmissionService().StartG01Assignment(accepted, "P-OTHER"),
         "EIMS_G01_ASSIGNMENT_PRINCIPAL_MISMATCH");
 }
