@@ -96,7 +96,7 @@ public sealed class ObservationSubmissionService
     }
 
     public G01WorkAssignment StartG01Assignment(G01WorkAssignment assignment) =>
-        StartG01Assignment(assignment, null);
+        StartG01Assignment(assignment, assignment?.AssignedPrincipalId);
 
     public G01WorkAssignment StartG01Assignment(
         G01WorkAssignment assignment,
@@ -111,11 +111,17 @@ public sealed class ObservationSubmissionService
                 "Only an ACCEPTED G01 assignment can be started.");
         }
 
-        if (!string.IsNullOrWhiteSpace(startingPrincipalId)
-            && !string.Equals(
-                assignment.AssignedPrincipalId,
-                startingPrincipalId.Trim(),
-                StringComparison.Ordinal))
+        if (string.IsNullOrWhiteSpace(startingPrincipalId))
+        {
+            throw new ObservationDomainException(
+                "EIMS_G01_ASSIGNMENT_PRINCIPAL_REQUIRED",
+                "A server-bound assignment principal is required to start the assignment.");
+        }
+
+        if (!string.Equals(
+            assignment.AssignedPrincipalId,
+            startingPrincipalId.Trim(),
+            StringComparison.Ordinal))
         {
             throw new ObservationDomainException(
                 "EIMS_G01_ASSIGNMENT_PRINCIPAL_MISMATCH",
