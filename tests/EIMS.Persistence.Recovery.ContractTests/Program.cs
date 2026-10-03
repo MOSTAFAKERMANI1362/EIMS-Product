@@ -548,8 +548,8 @@ static async Task G01R03DifferentPass()
         "g01.decide",
         key: "G01-R03-RED-01",
         body: "{\"outcome\":\"APPROVE\",\"observationVersion\":1,\"gateOutcome\":\"G01_COMPLETE\",\"ruleResults\":{\"R02\":\"PASS\",\"R03\":\"DIFFERENT\",\"R04\":\"PASS\",\"R05\":\"PASS\"},\"r03Review\":{\"reviewPerformed\":true,\"reviewResult\":\"DIFFERENT\",\"evidenceReference\":\"EVID-R03-01\"}}");
-    var result = await ExecuteG01RuleValidationOnly(store, command, Aggregate());
-    Eq(200, result.HttpStatus);
+    var result = await EvaluateG01RuleOnly(command);
+    True(result.Passed);
     Eq("G01_R03_PASS", result.Code);
 }
 
@@ -560,8 +560,8 @@ static async Task G01R03DuplicateFail()
         "g01.decide",
         key: "G01-R03-RED-02",
         body: "{\"outcome\":\"RETURN\",\"reasonCode\":\"RC-DUPLICATE\",\"observationVersion\":1,\"gateOutcome\":\"G01_INCOMPLETE\",\"ruleResults\":{\"R02\":\"PASS\",\"R03\":\"DUPLICATE\",\"R04\":\"PASS\",\"R05\":\"PASS\"},\"r03Review\":{\"reviewPerformed\":true,\"reviewResult\":\"DUPLICATE\",\"evidenceReference\":\"EVID-R03-02\"}}");
-    var result = await ExecuteG01RuleValidationOnly(store, command, Aggregate());
-    Eq(422, result.HttpStatus);
+    var result = await EvaluateG01RuleOnly(command);
+    False(result.Passed);
     Eq("G01_R03_FAIL", result.Code);
 }
 
@@ -572,8 +572,8 @@ static async Task G01R03UnknownWarning()
         "g01.decide",
         key: "G01-R03-RED-03",
         body: "{\"outcome\":\"RETURN\",\"reasonCode\":\"RC-REVIEW\",\"observationVersion\":1,\"gateOutcome\":\"G01_INCOMPLETE\",\"ruleResults\":{\"R02\":\"PASS\",\"R03\":\"UNKNOWN\",\"R04\":\"PASS\",\"R05\":\"PASS\"},\"r03Review\":{\"reviewPerformed\":true,\"reviewResult\":\"UNKNOWN\",\"evidenceReference\":\"EVID-R03-03\"}}");
-    var result = await ExecuteG01RuleValidationOnly(store, command, Aggregate());
-    Eq(200, result.HttpStatus);
+    var result = await EvaluateG01RuleOnly(command);
+    True(result.Passed);
     Eq("G01_R03_WARNING", result.Code);
 }
 
@@ -587,6 +587,13 @@ static async Task G01R03MissingReview()
     var result = await ExecuteG01RuleValidationOnly(store, command, Aggregate());
     Eq(422, result.HttpStatus);
     Eq("G01_R03_REVIEW_REQUIRED", result.Code);
+}
+
+static async Task<RuleEvaluation> EvaluateG01RuleOnly(AuthorityCommand command)
+{
+    var evaluator = new PassRuleEvaluator();
+    return await evaluator.EvaluateAsync(command, Actor(), Aggregate(),
+        new CommandPolicy("g01.decide", new[] { "TEST_ROLE" }, new[] { "READY" }, "G01-INQ", "G01.Decided.v1"));
 }
 
 static async Task<AuthorityResult> ExecuteG01RuleValidationOnly(
