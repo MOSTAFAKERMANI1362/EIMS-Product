@@ -44,7 +44,17 @@ var tests = new List<(string Name, Func<Task> Run)>
     ("G01-SNAPSHOT-RED-02 RETURN snapshot captures ReasonCode", G01SnapshotReturnReasonCode),
     ("G01-SNAPSHOT-RED-03 REJECT snapshot captures ReasonCode", G01SnapshotRejectReasonCode),
     ("G01-SNAPSHOT-RED-04 snapshot remains immutable after commit", G01SnapshotImmutability),
-    ("G01-SNAPSHOT-RED-05 snapshot binds evaluated Observation business version", G01SnapshotObservationVersion)
+    ("G01-SNAPSHOT-RED-05 snapshot binds evaluated Observation business version", G01SnapshotObservationVersion),
+    ("G01-R02-RED-01 non-contextual origin maps to PASS", G01R02NonContextualPass),
+    ("G01-R02-RED-02 contextual origin with detail maps to PASS", G01R02ContextualWithDetailPass),
+    ("G01-R02-RED-03 contextual origin without detail maps to FAIL", G01R02ContextualMissingDetailFail),
+    ("G01-R02-RED-04 missing origin channel maps to FAIL", G01R02MissingChannelFail),
+    ("G01-R04-RED-01 type and unit present map to PASS", G01R04PresencePass),
+    ("G01-R04-RED-02 missing type maps to FAIL", G01R04MissingTypeFail),
+    ("G01-R04-RED-03 missing unit maps to FAIL", G01R04MissingUnitFail),
+    ("G01-R05-RED-01 title and description >= 15 map to PASS", G01R05ValidPass),
+    ("G01-R05-RED-02 missing title maps to FAIL", G01R05MissingTitleFail),
+    ("G01-R05-RED-03 description < 15 maps to FAIL", G01R05ShortDescriptionFail),
 };
 
 var passed = 0;
@@ -64,6 +74,32 @@ foreach (var (name, run) in tests)
 
 Console.WriteLine($"RESULT {passed}/{tests.Count} PASS");
 return passed == tests.Count ? 0 : 1;
+
+
+static async Task G01R02NonContextualPass() => await AssertG01RuleCode("G01_R02_PASS", "{\"originChannel\":\"MEETING\"}");
+static async Task G01R02ContextualWithDetailPass() => await AssertG01RuleCode("G01_R02_PASS", "{\"originChannel\":\"FIELD_VISIT\",\"originDetail\":\"site review\"}");
+static async Task G01R02ContextualMissingDetailFail() => await AssertG01RuleCode("G01_R02_FAIL", "{\"originChannel\":\"FIELD_VISIT\"}");
+static async Task G01R02MissingChannelFail() => await AssertG01RuleCode("G01_R02_FAIL", "{\"title\":\"x\"}");
+
+static async Task G01R04PresencePass() => await AssertG01RuleCode("G01_R04_PASS", "{\"sourceType\":\"INTERNAL\",\"unit\":\"UNIT:RND\"}");
+static async Task G01R04MissingTypeFail() => await AssertG01RuleCode("G01_R04_FAIL", "{\"unit\":\"UNIT:RND\"}");
+static async Task G01R04MissingUnitFail() => await AssertG01RuleCode("G01_R04_FAIL", "{\"sourceType\":\"INTERNAL\"}");
+
+static async Task G01R05ValidPass() => await AssertG01RuleCode("G01_R05_PASS", "{\"title\":\"Observation\",\"desc\":\"This description has fifteen chars\"}");
+static async Task G01R05MissingTitleFail() => await AssertG01RuleCode("G01_R05_FAIL", "{\"desc\":\"This description has fifteen chars\"}");
+static async Task G01R05ShortDescriptionFail() => await AssertG01RuleCode("G01_R05_FAIL", "{\"title\":\"Observation\",\"desc\":\"short\"}");
+
+static async Task AssertG01RuleCode(string expectedCode, string body)
+{
+    var evaluator = new PassRuleEvaluator();
+    var command = CommandNamed("g01.decide", key: "MAP-" + Guid.NewGuid().ToString("N"), body: body);
+    var result = await evaluator.EvaluateAsync(command, Actor(), Aggregate(), PolicyForG01());
+    Eq(expectedCode, result.Code);
+    Eq(expectedCode.EndsWith("_PASS", StringComparison.Ordinal), result.Passed);
+}
+
+static CommandPolicy PolicyForG01() =>
+    new("g01.decide", new[] { "INTAKE_STEWARD" }, new[] { "SUBMITTED_FOR_G01" }, "G01-INQ", "G01.Decision.v1");
 
 static AggregateSnapshot Aggregate(long version = 1, string state = "READY") =>
     new("AGG-1", "TEST", state, version, "P-OWNER", "TEST_OWNER", "UNIT:RND");
