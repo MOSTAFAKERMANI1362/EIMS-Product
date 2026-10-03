@@ -58,6 +58,7 @@ var tests = new List<(string Name, Func<Task> Run)>
 };
 
 tests.Insert(0, ("G01-AGG-RED-01 frozen truth table maps PASS/FAIL/ERROR/WARNING/NOT_APPLICABLE", G01AggregationTruthTable));
+tests.Insert(1, ("G01-RUNTIME-RED-01 authoritative composition produces four R02-R05 executions for one decision", G01AuthoritativeRuleComposition));
 
 var passed = 0;
 foreach (var (name, run) in tests)
@@ -92,6 +93,23 @@ static Task G01AggregationTruthTable()
     Eq("G01_INCOMPLETE", G01GateAggregator.Aggregate(new[] { pass, warning, pass, pass }));
     Eq("G01_INCOMPLETE", G01GateAggregator.Aggregate(new[] { pass, na, pass, pass }));
     return Task.CompletedTask;
+}
+
+static async Task G01AuthoritativeRuleComposition()
+{
+    var command = CommandNamed(
+        "g01.decide",
+        key: "G01-RUNTIME-RED-01",
+        body: "{\"outcome\":\"RETURN\",\"reasonCode\":\"RC-REVIEW\",\"originChannel\":\"MEETING\",\"sourceType\":\"INTERNAL\",\"unit\":\"UNIT:RND\",\"title\":\"Observation\",\"desc\":\"This description has fifteen chars\",\"r03Review\":{\"reviewPerformed\":true,\"reviewResult\":\"UNKNOWN\"}}");
+    var composer = new G01RuleExecutionComposer(new PassRuleEvaluator());
+    var executions = await composer.ComposeAsync(command, Actor(), Aggregate(), PolicyForG01());
+
+    Eq(4, executions.Count);
+    Eq("PASS", executions.Single(x => x.RuleId == "R02").Outcome);
+    Eq("WARNING", executions.Single(x => x.RuleId == "R03").Outcome);
+    Eq("PASS", executions.Single(x => x.RuleId == "R04").Outcome);
+    Eq("PASS", executions.Single(x => x.RuleId == "R05").Outcome);
+    Eq("G01_INCOMPLETE", G01GateAggregator.Aggregate(executions));
 }
 
 static async Task G01R02NonContextualPass() => await AssertG01RuleCode("G01_R02_PASS", "{\"originChannel\":\"MEETING\"}");
