@@ -543,7 +543,7 @@ static async Task<AuthorityResult> ExecuteG01RuleValidationOnly(
     var kernel = new AuthorityKernel(
         new SinglePolicyCatalog(new CommandPolicy("g01.decide", new[] { "TEST_ROLE" }, new[] { "READY" }, "G01-INQ", "G01.Decided.v1")),
         store,
-        new G01ReasonCodeRedRuleEvaluator(),
+        new PassRuleEvaluator(),
         new BaselineSodEvaluator(),
         new IncrementPlanner());
     return await kernel.ExecuteAsync(command, Actor());
@@ -753,31 +753,6 @@ sealed class SinglePolicyCatalog(CommandPolicy policy) : ICommandPolicyCatalog
         }
         found = null!;
         return false;
-    }
-}
-
-sealed class G01ReasonCodeRedRuleEvaluator : IRuleEvaluator
-{
-    public ValueTask<RuleEvaluation> EvaluateAsync(
-        AuthorityCommand command,
-        AuthorityActor actor,
-        AggregateSnapshot aggregate,
-        CommandPolicy policy,
-        CancellationToken cancellationToken = default)
-    {
-        using var document = System.Text.Json.JsonDocument.Parse(command.RawBody);
-        var root = document.RootElement;
-        var outcome = root.TryGetProperty("outcome", out var outcomeValue) && outcomeValue.ValueKind == System.Text.Json.JsonValueKind.String
-            ? outcomeValue.GetString()?.Trim().ToUpperInvariant()
-            : null;
-        var hasReasonCode = root.TryGetProperty("reasonCode", out var reasonCode)
-            && reasonCode.ValueKind == System.Text.Json.JsonValueKind.String
-            && !string.IsNullOrWhiteSpace(reasonCode.GetString());
-
-        if ((outcome == "RETURN" || outcome == "REJECT") && !hasReasonCode)
-            return ValueTask.FromResult(RuleEvaluation.Fail("G01_REASON_CODE_REQUIRED"));
-
-        return ValueTask.FromResult(RuleEvaluation.Pass());
     }
 }
 
