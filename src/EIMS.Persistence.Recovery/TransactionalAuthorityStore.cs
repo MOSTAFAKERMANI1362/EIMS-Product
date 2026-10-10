@@ -561,7 +561,7 @@ public sealed class TransactionalAuthorityStore : IEvaluationWorkflowStore, IPer
         return null;
     }
 
-    private static string? ValidateCommitShape(MutationRequest request, MutationCommit commit)
+    public static string? ValidateCommitShape(MutationRequest request, MutationCommit commit)
     {
         if (!string.Equals(request.Before.AggregateId, commit.After.AggregateId, StringComparison.Ordinal))
             return "P2_AGGREGATE_ID_MISMATCH";

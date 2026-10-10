@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>EIMS.Persistence.Oracle</AssemblyName>
+    <RootNamespace>EIMS.Persistence.OracleAdapter</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../EIMS.Authority.Recovery/EIMS.Authority.Recovery.csproj" />
+    <ProjectReference Include="../EIMS.Persistence.Recovery/EIMS.Persistence.Recovery.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Oracle.ManagedDataAccess.Core" />
+  </ItemGroup>
+  <!-- Oracle.ManagedDataAccess.Core is added with `dotnet add package` (see README_S2a.md), which pins the resolved version. -->
+</Project>

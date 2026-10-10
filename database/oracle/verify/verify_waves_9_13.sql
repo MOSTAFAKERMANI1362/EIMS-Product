@@ -1,0 +1,151 @@
+SET SERVEROUTPUT ON
+SET VERIFY OFF
+SET FEEDBACK OFF
+
+DECLARE
+  v_cnt NUMBER;
+  v_rows NUMBER;
+  v_port VARCHAR2(64) := 'T-PORT-1';
+  v_mem VARCHAR2(64) := 'T-MEM-1';
+  v_rec VARCHAR2(64) := 'T-REC-1';
+  v_exec VARCHAR2(64) := 'T-EXEC-1';
+  v_ben VARCHAR2(64) := 'T-BEN-1';
+  v_know VARCHAR2(64) := 'T-KNOW-1';
+BEGIN
+  SELECT COUNT(*) INTO v_cnt FROM user_tables WHERE table_name IN (
+    'EIMS_PORTFOLIO_CANDIDATE','EIMS_PORTFOLIO_MEMBERSHIP',
+    'EIMS_EXECUTION_RECOMMENDATION','EIMS_EXECUTION',
+    'EIMS_BENEFIT','EIMS_KNOWLEDGE_ASSET');
+  IF v_cnt = 6 THEN DBMS_OUTPUT.PUT_LINE('PASS 6 downstream tables exist');
+  ELSE DBMS_OUTPUT.PUT_LINE('FAIL expected 6 downstream tables, found '||v_cnt); END IF;
+
+  INSERT INTO EIMS_PORTFOLIO_CANDIDATE
+    (ID,IDEA_ID,IDEA_VERSION,TITLE,ELIGIBILITY_RESULT,ELIGIBILITY_DIMENSIONS,
+     ELIGIBILITY_RULE_REF,ELIGIBILITY_CHECKED_AT,APPROVED_IDEA_VERSION_REF,PRIORITY)
+  VALUES
+    (v_port,'T-IDEA-DOWN',1,'Test Portfolio','PASS','{"approval":true,"evidence":true,"policy":true}',
+     'EP06-ELIGIBILITY-PILOT',SYSTIMESTAMP,'T-IDEA-DOWN@v1','HIGH');
+
+  INSERT INTO EIMS_PORTFOLIO_MEMBERSHIP
+    (ID,PORTFOLIO_ID,CATALOG_ID,STATUS,ASSIGNED_ROLE)
+  VALUES (v_mem,v_port,'PF-PILOT-02','ACCEPTED','PORTFOLIO_MANAGER');
+
+  INSERT INTO EIMS_EXECUTION_RECOMMENDATION
+    (ID,MEMBERSHIP_ID,PORTFOLIO_ID,APPROVED_IDEA_VERSION_REF,STATUS,
+     EXECUTION_DECISION,GOVERNANCE_DECISION_REF,BASELINE_APPROVED,PORTFOLIO_BASELINE,
+     APPROVED_BASELINE_REF,HANDOFF_STATE,REQUESTED_BY_ROLE,THREAD_ID)
+  VALUES
+    (v_rec,v_mem,v_port,'T-IDEA-DOWN@v1','APPROVED','{"documentVersion":1}',
+     'DEC-T',1,'{"documentVersion":1}','BASE-T','NOT_REQUESTED','PORTFOLIO_MANAGER','THREAD-T');
+
+  INSERT INTO EIMS_EXECUTION
+    (ID,RECOMMENDATION_ID,PORTFOLIO_ID,IDEA_ID,TITLE,OWNER_ROLE,STATUS)
+  VALUES
+    (v_exec,v_rec,v_port,'T-IDEA-DOWN','Test Execution','EXECUTION_OWNER','PLANNING');
+
+  INSERT INTO EIMS_BENEFIT
+    (ID,EXECUTION_ID,IDEA_ID,TITLE,STATUS,ACCEPTANCE_DOSSIER)
+  VALUES
+    (v_ben,v_exec,'T-IDEA-DOWN','Test Benefit','OBLIGATION_PENDING_ACCEPTANCE','{"accepted":false}');
+
+  INSERT INTO EIMS_KNOWLEDGE_ASSET
+    (ID,BENEFIT_ID,TITLE,STATUS,AUTHOR_COMPLETED,CONTENT)
+  VALUES
+    (v_know,v_ben,'Test Knowledge','DRAFT',0,'Initial draft');
+
+  SELECT COUNT(*) INTO v_cnt
+  FROM EIMS_PORTFOLIO_MEMBERSHIP m
+  JOIN EIMS_PORTFOLIO_CANDIDATE p ON p.ID=m.PORTFOLIO_ID
+  WHERE m.ID=v_mem AND p.ID=v_port;
+  IF v_cnt=1 THEN DBMS_OUTPUT.PUT_LINE('PASS portfolio membership FK is valid');
+  ELSE DBMS_OUTPUT.PUT_LINE('FAIL portfolio membership FK'); END IF;
+
+  SELECT COUNT(*) INTO v_cnt
+  FROM EIMS_EXECUTION_RECOMMENDATION r
+  JOIN EIMS_PORTFOLIO_MEMBERSHIP m ON m.ID=r.MEMBERSHIP_ID
+  JOIN EIMS_PORTFOLIO_CANDIDATE p ON p.ID=r.PORTFOLIO_ID
+  WHERE r.ID=v_rec AND m.ID=v_mem AND p.ID=v_port;
+  IF v_cnt=1 THEN DBMS_OUTPUT.PUT_LINE('PASS recommendation links membership and portfolio');
+  ELSE DBMS_OUTPUT.PUT_LINE('FAIL recommendation relationship'); END IF;
+
+  SELECT COUNT(*) INTO v_cnt
+  FROM EIMS_EXECUTION e
+  JOIN EIMS_EXECUTION_RECOMMENDATION r ON r.ID=e.RECOMMENDATION_ID
+  WHERE e.ID=v_exec AND r.ID=v_rec;
+  IF v_cnt=1 THEN DBMS_OUTPUT.PUT_LINE('PASS execution links accepted recommendation');
+  ELSE DBMS_OUTPUT.PUT_LINE('FAIL execution recommendation FK'); END IF;
+
+  SELECT COUNT(*) INTO v_cnt
+  FROM EIMS_KNOWLEDGE_ASSET k
+  JOIN EIMS_BENEFIT b ON b.ID=k.BENEFIT_ID
+  JOIN EIMS_EXECUTION e ON e.ID=b.EXECUTION_ID
+  WHERE k.ID=v_know AND b.ID=v_ben AND e.ID=v_exec;
+  IF v_cnt=1 THEN DBMS_OUTPUT.PUT_LINE('PASS benefit -> knowledge continuity is valid');
+  ELSE DBMS_OUTPUT.PUT_LINE('FAIL benefit -> knowledge relationship'); END IF;
+
+  UPDATE EIMS_EXECUTION_RECOMMENDATION
+     SET ENTITY_VERSION=ENTITY_VERSION+1
+   WHERE ID=v_rec AND ENTITY_VERSION=1;
+  v_rows:=SQL%ROWCOUNT;
+  IF v_rows=1 THEN DBMS_OUTPUT.PUT_LINE('PASS optimistic recommendation update with correct version changes 1 row');
+  ELSE DBMS_OUTPUT.PUT_LINE('FAIL optimistic recommendation update changed '||v_rows||' rows'); END IF;
+
+  UPDATE EIMS_EXECUTION_RECOMMENDATION
+     SET ENTITY_VERSION=ENTITY_VERSION+1
+   WHERE ID=v_rec AND ENTITY_VERSION=1;
+  v_rows:=SQL%ROWCOUNT;
+  IF v_rows=0 THEN DBMS_OUTPUT.PUT_LINE('PASS stale recommendation version changes 0 rows (conflict detected)');
+  ELSE DBMS_OUTPUT.PUT_LINE('FAIL stale recommendation version changed '||v_rows||' rows'); END IF;
+
+  BEGIN
+    INSERT INTO EIMS_EXECUTION_RECOMMENDATION
+      (ID,MEMBERSHIP_ID,PORTFOLIO_ID,APPROVED_IDEA_VERSION_REF,STATUS)
+    VALUES
+      ('T-REC-2',v_mem,v_port,'T-IDEA-DOWN@v1','DRAFT');
+    DBMS_OUTPUT.PUT_LINE('FAIL duplicate recommendation for membership accepted');
+  EXCEPTION WHEN DUP_VAL_ON_INDEX THEN
+    DBMS_OUTPUT.PUT_LINE('PASS duplicate recommendation for membership rejected');
+  END;
+
+  BEGIN
+    INSERT INTO EIMS_BENEFIT
+      (ID,EXECUTION_ID,IDEA_ID,TITLE,STATUS)
+    VALUES
+      ('T-BEN-2',v_exec,'T-IDEA-DOWN','Duplicate Benefit','OBLIGATION_PENDING_ACCEPTANCE');
+    DBMS_OUTPUT.PUT_LINE('FAIL duplicate benefit for execution accepted');
+  EXCEPTION WHEN DUP_VAL_ON_INDEX THEN
+    DBMS_OUTPUT.PUT_LINE('PASS duplicate benefit for execution rejected');
+  END;
+
+  BEGIN
+    INSERT INTO EIMS_KNOWLEDGE_ASSET
+      (ID,BENEFIT_ID,TITLE,STATUS)
+    VALUES
+      ('T-KNOW-2',v_ben,'Duplicate Knowledge','DRAFT');
+    DBMS_OUTPUT.PUT_LINE('FAIL duplicate knowledge for benefit accepted');
+  EXCEPTION WHEN DUP_VAL_ON_INDEX THEN
+    DBMS_OUTPUT.PUT_LINE('PASS duplicate knowledge for benefit rejected');
+  END;
+
+  BEGIN
+    UPDATE EIMS_BENEFIT SET STATUS='REALIZED_NOW' WHERE ID=v_ben;
+    DBMS_OUTPUT.PUT_LINE('FAIL invalid Benefit state accepted');
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLCODE IN (-2290) THEN DBMS_OUTPUT.PUT_LINE('PASS invalid Benefit state rejected');
+    ELSE DBMS_OUTPUT.PUT_LINE('FAIL invalid Benefit state raised '||SQLERRM); END IF;
+  END;
+
+  BEGIN
+    INSERT INTO EIMS_KNOWLEDGE_ASSET
+      (ID,BENEFIT_ID,TITLE,STATUS)
+    VALUES
+      ('T-KNOW-BAD',v_ben,'Invalid Knowledge','PUBLISHED');
+    DBMS_OUTPUT.PUT_LINE('FAIL second Knowledge for Benefit accepted');
+  EXCEPTION WHEN DUP_VAL_ON_INDEX THEN
+    DBMS_OUTPUT.PUT_LINE('PASS one Knowledge Asset per Benefit enforced');
+  END;
+
+  ROLLBACK;
+  DBMS_OUTPUT.PUT_LINE('Test rows rolled back.');
+END;
+/

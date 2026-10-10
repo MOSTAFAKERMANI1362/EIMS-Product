@@ -1,0 +1,44 @@
+# EIMS — PROGRESS (give this file at the start of every new chat)
+
+## Rule for every step
+1) one branch `feature/sN-…`  2) short ACR first  3) one green test proves it  4) update Traceability Matrix + this file.
+
+## Steps
+| Step | Goal | Status |
+|---|---|---|
+| S1 | Oracle core schema V001 (5 tables) | **DONE** — verified on pilot Oracle (Oct 2026), all PASS |
+| S1b | V002 evaluation, V003 G04, V004 waves 9–13 (12 tables) + ACR-S1b + conventions check | **DONE** — `dev_rebuild_all.sql`: 46/46 PASS, 17 tables, 4 append-only triggers |
+| S2a | Oracle adapter, kernel commit path (V001 tables) + conformance suite (InMemory vs Oracle) | **DONE** — 16/16 PASS on InMemory and 16/16 PASS on Oracle 26ai Free (incl. rollback at all 6 fault points) |
+| S2b | Evaluation plan/assignments/completion (V002) | **NEXT** |
+| S2c | G04 voting/final decision (V003) | not started |
+| S2d | Portfolio, Execution, Benefit, Knowledge stores (V004) | not started |
+| S3 | Outbox dispatcher | not started |
+| S4 | Bind g01.decide, g02.decide, rewards.decide to gateway + tests | not started |
+| S5 | Query API (worklist, ideas) → migrate UI pages in matrix order | not started |
+
+## Oracle binding evidence (for OracleBindingEvidence)
+- OracleVersion: Oracle AI Database 26ai Free 23.26.3
+- DotNetProvider: Oracle.ManagedDataAccess.Core 23.26.301 (managed)
+- ConnectivityMode: TCP localhost:1521/FREEPDB1
+- ServiceAccountModel: EIMS_APP (DML only) / schema owner EIMS_OWNER
+- EvidenceReference: S2a conformance run, Oct 2026
+
+## Environment (confirmed)
+Oracle AI Database 26ai Free 23.26.3, PDB FREEPDB1, accounts EIMS_OWNER / EIMS_APP.
+
+## Decisions log
+- ACR-S2a: slice the adapter per store; unbound parts fail closed (501); reuse ValidateCommitShape (public static); secrets only via environment.
+- ACR-S1b: dedicated tables are authoritative; EIMS_AGGREGATE only for kernel entities without a table; audit/outbox/decision use soft references (option A).
+- Oracle = reference DB; SQL Server later via same conformance suite.
+- Frozen spec stays untouched; split tree is read-only (spec-tools/split_spec.py).
+- SAP only through outbox + adapter, never DB-level.
+- All VARCHAR2 use CHAR semantics (Persian text is 2 bytes/char).
+
+## Open items
+- **Security:** the dev password for EIMS_APP was shared in a chat; rotate it to a random value before any real pilot. Never commit `EIMS_ORACLE_CONNECTION`.
+- Commit `Directory.Packages.props` (repo root, Oracle.ManagedDataAccess.Core 23.26.301); remove the stray one on Desktop if unused.
+- (done by user?) Commit S1/S1b on branch `feature/s1-oracle-schema`; add `dev_rebuild_output.txt` to .gitignore; tag the commit (schema baseline for S2).
+- SDK 10.0.302 confirmed installed.
+- Schema vs C# records is compared field-by-field in S2 via the conformance suite.
+- ACR-S1b D4: once a pilot DB holds real data, migrations V001–V004 become immutable (changes = new V005+).
+- IP ownership review (COM-LEGAL-001); frozen spec HTML not in repo.
