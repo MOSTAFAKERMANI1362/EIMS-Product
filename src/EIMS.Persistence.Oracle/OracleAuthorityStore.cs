@@ -8,11 +8,11 @@ using Oracle.ManagedDataAccess.Client;
 namespace EIMS.Persistence.OracleAdapter;
 
 /// <summary>
-/// S2a: Oracle implementation of the kernel commit path (aggregate state + decisions + audit + outbox + idempotency)
-/// in ONE database transaction. Evaluation plan/assignment commits are NOT bound yet and fail closed (HTTP 501).
+/// S2a+S2b: Oracle implementation of the kernel commit path (aggregate state + decisions + evaluation plan/assignments + audit + outbox + idempotency)
+/// in ONE database transaction. Evaluation COMPLETION and G04 assessment persistence are bound in S2c and fail closed until then (see OracleAuthorityStore.Evaluation.cs).
 /// The connection string is supplied by the caller (environment/secret store); it never lives in the repository.
 /// </summary>
-public sealed class OracleAuthorityStore : IAuthorityStore, IFaultInjectablePersistence
+public sealed partial class OracleAuthorityStore : IEvaluationWorkflowStore, IFaultInjectablePersistence
 {
     private static readonly Regex SchemaPattern = new("^[A-Za-z][A-Za-z0-9_]{0,29}$", RegexOptions.Compiled);
     private static readonly JsonSerializerOptions Json = new() { PropertyNameCaseInsensitive = true };
@@ -105,9 +105,10 @@ public sealed class OracleAuthorityStore : IAuthorityStore, IFaultInjectablePers
             if (decisions.GroupBy(x => x.DecisionId, StringComparer.Ordinal).Any(g => g.Count() > 1))
                 return AuthorityResult.Deny(409, "P2_DUPLICATE_DECISION_ID", corr);
 
-            if (commit.EvaluationPlan is not null || (commit.EvaluationAssignments?.Count ?? 0) > 0)
-                return AuthorityResult.Deny(501, "P2_ORACLE_EVALUATION_NOT_BOUND", corr,
-                    "Evaluation plan/assignment persistence is bound in step S2b.");
+            var plan = commit.EvaluationPlan;
+            var assignments = (commit.EvaluationAssignments ?? Array.Empty<EvaluationAssignmentEnvelope>()).ToArray();
+            if (assignments.GroupBy(x => x.AssignmentId, StringComparer.Ordinal).Any(g => g.Count() > 1))
+                return AuthorityResult.Deny(409, "P2_DUPLICATE_EVALUATION_ASSIGNMENT_ID", corr);
 
             var result = new AuthorityResult(
                 200, "P2_ATOMIC_COMMIT", Allowed: true, StateMutated: true, IdempotentReplay: false,
@@ -122,7 +123,13 @@ public sealed class OracleAuthorityStore : IAuthorityStore, IFaultInjectablePers
                 foreach (var d in decisions)
                     await InsertDecisionAsync(conn, tx, commit.After, d, cancellationToken);
                 ThrowIf(PersistenceFaultPoint.AfterDecisionStaged);
+
+                if (plan is not null)
+                    await InsertPlanAsync(conn, tx, plan, cancellationToken);
                 ThrowIf(PersistenceFaultPoint.AfterEvaluationPlanStaged);
+
+                foreach (var a in assignments)
+                    await InsertAssignmentAsync(conn, tx, a, cancellationToken);
                 ThrowIf(PersistenceFaultPoint.AfterEvaluationAssignmentsStaged);
 
                 await InsertAuditAsync(conn, tx, commit.After, commit.Audit, cancellationToken);
@@ -144,6 +151,10 @@ public sealed class OracleAuthorityStore : IAuthorityStore, IFaultInjectablePers
                 if (Has(ex, "PK_EIMS_IDEMPOTENCY") && attempt == 0)
                     continue; // concurrent same-key commit won the race: re-read it as replay/conflict
                 if (Has(ex, "PK_EIMS_DECISION")) return AuthorityResult.Deny(409, "P2_DUPLICATE_DECISION_ID", corr);
+                if (Has(ex, "PK_EVALUATION_PLAN") || Has(ex, "UQ_EVAL_PLAN_IDEA_VERSION"))
+                    return AuthorityResult.Deny(409, "P2_DUPLICATE_EVALUATION_PLAN", corr);
+                if (Has(ex, "PK_EVALUATION_ASSIGNMENT"))
+                    return AuthorityResult.Deny(409, "P2_DUPLICATE_EVALUATION_ASSIGNMENT_ID", corr);
                 if (Has(ex, "UQ_EIMS_AUDIT_ID")) return AuthorityResult.Deny(409, "P2_DUPLICATE_AUDIT_ID", corr);
                 if (Has(ex, "UQ_EIMS_OUTBOX_MSG")) return AuthorityResult.Deny(409, "P2_DUPLICATE_OUTBOX_ID", corr);
                 throw;

@@ -89,6 +89,46 @@ foreach (var (name, create) in backends)
         Check($"{name}: fault at {point} -> exception + full rollback",
             threw && aggF?.Version == 1 && aggF.State == "DRAFT" && await bf.Counts(fid) == (0, 0, 0, 0));
     }
+
+    // 8) evaluation plan + assignments are persisted in the same transaction and read back field-for-field
+    var id8 = NewId();
+    var b8 = await create(Seed(id8));
+    var planId8 = "EPLAN-" + id8;
+    var (req8, com8) = BuildWithPlan(id8, 1, "k8", "FP8", "C8", planId8);
+    var r8 = await b8.Store.CommitAsync(req8, com8);
+    Check($"{name}: commit with evaluation plan + 2 assignments succeeds", r8.Allowed && r8.Code == "P2_ATOMIC_COMMIT");
+    var plan8 = await b8.Store.GetEvaluationPlanAsync(planId8);
+    Check($"{name}: plan reads back field-for-field", plan8 == com8.EvaluationPlan);
+    var asg8 = (await b8.Store.GetEvaluationAssignmentsForPlanAsync(planId8)).OrderBy(x => x.AssignmentId, StringComparer.Ordinal).ToArray();
+    var exp8 = com8.EvaluationAssignments!.OrderBy(x => x.AssignmentId, StringComparer.Ordinal).ToArray();
+    Check($"{name}: 2 assignments read back field-for-field", asg8.Length == 2 && asg8.SequenceEqual(exp8));
+    var one8 = await b8.Store.GetEvaluationAssignmentAsync(exp8[0].AssignmentId);
+    Check($"{name}: single assignment lookup works", one8 == exp8[0]);
+
+    // 9) duplicate plan id on the next valid version is rejected and leaves nothing behind
+    var (req9, com9) = BuildWithPlan(id8, 2, "k9", "FP9", "C9", planId8);
+    var r9 = await b8.Store.CommitAsync(req9, com9);
+    Check($"{name}: duplicate plan id -> 409 P2_DUPLICATE_EVALUATION_PLAN", r9.HttpStatus == 409 && r9.Code == "P2_DUPLICATE_EVALUATION_PLAN");
+    Check($"{name}: rejected duplicate plan left aggregate at version 2", (await b8.Store.GetAggregateAsync(id8))?.Version == 2);
+
+    // 10) rollback at the two evaluation fault points
+    foreach (var point in new[] { PersistenceFaultPoint.AfterEvaluationPlanStaged, PersistenceFaultPoint.AfterEvaluationAssignmentsStaged })
+    {
+        var eid = NewId();
+        var be = await create(Seed(eid));
+        var ePlan = "EPLAN-" + eid;
+        var (reqE, comE) = BuildWithPlan(eid, 1, "ke", "FPE", "CE", ePlan);
+        be.Fault.FaultPoint = point;
+        var threwE = false;
+        try { await be.Store.CommitAsync(reqE, comE); }
+        catch (PersistenceAtomicityException) { threwE = true; }
+        be.Fault.FaultPoint = PersistenceFaultPoint.None;
+        Check($"{name}: fault at {point} -> rollback incl. plan and assignments",
+            threwE && (await be.Store.GetAggregateAsync(eid))?.Version == 1
+            && await be.Store.GetEvaluationPlanAsync(ePlan) is null
+            && (await be.Store.GetEvaluationAssignmentsForPlanAsync(ePlan)).Count == 0
+            && await be.Counts(eid) == (0, 0, 0, 0));
+    }
 }
 
 Console.WriteLine(failures == 0 ? "ALL PASS" : $"{failures} FAILURE(S)");
@@ -103,7 +143,8 @@ static (MutationRequest Request, MutationCommit Commit) Build(
     string id, long before, string key, string fingerprint, string corr, string auditId, string outboxId, string decisionId)
 {
     const string command = "ideas.submit-g04";
-    var ts = DateTimeOffset.UtcNow;
+    var now = DateTimeOffset.UtcNow;
+    var ts = new DateTimeOffset(now.Ticks - now.Ticks % 10, TimeSpan.Zero); // Oracle stores microseconds
     var roles = new[] { "IDEA_OWNER" };
     var actor = new AuthorityActor("P1", "DOMAIN\\u1", "TEST", "ASG-1", roles, new[] { "SCOPE-A" });
     var policy = new CommandPolicy(command, roles, new[] { "DRAFT" }, "RS-1.0", "IdeaSubmitted");
@@ -116,9 +157,25 @@ static (MutationRequest Request, MutationCommit Commit) Build(
     return (request, new MutationCommit(afterSnap, audit, outbox, new[] { decision }));
 }
 
+static (MutationRequest Request, MutationCommit Commit) BuildWithPlan(
+    string id, long before, string key, string fingerprint, string corr, string planId)
+{
+    var tag = key + "-" + id;
+    var (request, commit) = Build(id, before, key, fingerprint, corr, "A-" + tag, "O-" + tag, "D-" + tag);
+    var ts = commit.Audit.Timestamp;
+    var version = commit.After.Version;
+    var plan = new EvaluationPlanEnvelope(planId, id, version, 1, "ACTIVE", ts, corr);
+    var assignments = new[]
+    {
+        new EvaluationAssignmentEnvelope("EASG-1-" + tag, planId, id, version, "IDEA_EVALUATOR", "SCOPE-A", true, "PENDING", ts, corr),
+        new EvaluationAssignmentEnvelope("EASG-2-" + tag, planId, id, version, "UNIT_OWNER", "SCOPE-A", false, "PENDING", ts, corr)
+    };
+    return (request, commit with { EvaluationPlan = plan, EvaluationAssignments = assignments });
+}
+
 internal sealed class Backend
 {
-    public required IAuthorityStore Store { get; init; }
+    public required IEvaluationWorkflowStore Store { get; init; }
     public required IFaultInjectablePersistence Fault { get; init; }
     public required Func<string, Task<(int, int, int, int)>> Counts { get; init; }
 
