@@ -92,7 +92,7 @@ Add("IDEASUB-CT-23", "direct and stale evaluator entry fail closed",
     !B(assignment,"directGeneralFormEntryAllowed") && !B(assignment,"staleAssignmentAllowed"));
 Add("IDEASUB-CT-24", "UI role visibility is not authorization", !B(assignment,"roleVisibilityIsAuthorization") && B(assignment,"serverMustValidateAssignmentPersonRoleScopeAndVersion"));
 Add("IDEASUB-CT-25", "stale plan policy protects version consistency",
-    B(stale,"ideaVersionMismatchInvalidatesActivePlan") && !B(stale,"stalePlanMayNotAcceptCompletion") && B(stale,"supersedeOrControlledRepairRequired") && B(stale,"historicalPlanAndAssignmentEvidencePreserved"));
+    B(stale,"ideaVersionMismatchInvalidatesActivePlan") && B(stale,"stalePlanMayNotAcceptCompletion") && B(stale,"supersedeOrControlledRepairRequired") && B(stale,"historicalPlanAndAssignmentEvidencePreserved"));
 
 Add("IDEASUB-CT-26", "G04 handoff waits for all required assignments",
     !B(handoff,"initialSubmissionCreatesG04DecisionAssessment") && B(handoff,"allRequiredAssignmentsMustBeCompleted") && B(handoff,"currentIdeaVersionMustMatchPlanVersion"));
