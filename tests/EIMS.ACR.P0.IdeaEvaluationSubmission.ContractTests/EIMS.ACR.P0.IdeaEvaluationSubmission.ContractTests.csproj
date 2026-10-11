@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>EIMS.ACR.P0.IdeaEvaluationSubmission.ContractTests</AssemblyName>
+    <RootNamespace>EIMS.ACR.P0.IdeaEvaluationSubmission.ContractTests</RootNamespace>
+  </PropertyGroup>
+</Project>
