@@ -9,8 +9,8 @@
 | S1 | Oracle core schema V001 (5 tables) | **DONE** — verified on pilot Oracle (Oct 2026), all PASS |
 | S1b | V002 evaluation, V003 G04, V004 waves 9–13 (12 tables) + ACR-S1b + conventions check | **DONE** — `dev_rebuild_all.sql`: 46/46 PASS, 17 tables, 4 append-only triggers |
 | S2a | Oracle adapter, kernel commit path (V001 tables) + conformance suite | **DONE + MERGED** (PR #112, commit c49e9b7, 13 checks green); 16/16 PASS on InMemory and Oracle |
-| S2b | Evaluation plan/assignments persistence + V002 realigned with C# envelopes (ACR-S2b) | **FILES READY — waiting for `dev_rebuild_all.sql` + conformance output (expect 24 PASS per backend)** |
-| S2c | G04 voting/final decision (V003) | not started |
+| S2b | Evaluation plan/assignments persistence + V002 realigned (ACR-S2b) | **DONE** (conformance 24/24 on InMemory and Oracle; PR pending/merged — see git) |
+| S2c | Evaluation completion + per-assignment snapshot + G04 assessment on Oracle; V002 snapshot and V003 assessment realigned (ACR-S2c) | **FILES READY — waiting for `dev_rebuild_all.sql` + conformance (expect 41 PASS per backend)** |
 | S2d | Portfolio, Execution, Benefit, Knowledge stores (V004) | not started |
 | S3 | Outbox dispatcher | not started |
 | S4 | Bind g01.decide, g02.decide, rewards.decide to gateway + tests | not started |
@@ -27,6 +27,7 @@
 Oracle AI Database 26ai Free 23.26.3, PDB FREEPDB1, accounts EIMS_OWNER / EIMS_APP.
 
 ## Decisions log
+- ACR-S2c: snapshot is per assignment (not per plan/type); G04 assessment table mirrors G04AssessmentEnvelope; plan row is locked FOR UPDATE during completion; ValidateEvaluationCompletionShape made public static.
 - ACR-S2b: V002 was realigned field-by-field with EvaluationPlanEnvelope/EvaluationAssignmentEnvelope; state vocabularies are owned by code, not DB CHECKs (READY_FOR_G04_DECISION would have been rejected).
 - ACR-S2a: slice the adapter per store; unbound parts fail closed (501); reuse ValidateCommitShape (public static); secrets only via environment.
 - ACR-S1b: dedicated tables are authoritative; EIMS_AGGREGATE only for kernel entities without a table; audit/outbox/decision use soft references (option A).

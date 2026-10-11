@@ -1,10 +1,17 @@
--- EIMS S1b-1 v2 verification (run as EIMS_OWNER). Every PASS is a contract assertion; all test rows are rolled back.
+-- EIMS S2c verification of V002 (plan + assignment + per-assignment snapshot). Run as EIMS_OWNER. Rows are rolled back.
 SET SERVEROUTPUT ON
 SET VERIFY OFF
 DECLARE
     v_count NUMBER;
     PROCEDURE rep(p_name VARCHAR2, p_ok BOOLEAN) IS
     BEGIN DBMS_OUTPUT.PUT_LINE(CASE WHEN p_ok THEN 'PASS ' ELSE 'FAIL ' END || p_name); END;
+    PROCEDURE snap(p_id VARCHAR2, p_asg VARCHAR2, p_json VARCHAR2) IS
+    BEGIN
+        INSERT INTO EIMS_EVALUATION_SNAPSHOT (ID, ASSIGNMENT_ID, PLAN_ID, IDEA_ID, IDEA_VERSION, ROLE_CODE, SCOPE_CODE, SCHEMA_ID,
+               SCHEMA_VERSION, OUTCOME, NORMALIZED_JSON, CONTENT_SHA256, PERSON_ID, AUTHORITY_ASSIGNMENT_ID, CORRELATION_ID, CREATED_AT)
+        VALUES (p_id, p_asg, 'TEST-EVPLAN-001', 'TEST-IDEA-001', 3, 'IDEA_EVALUATOR', 'UNIT-1', 'S1', '1.0', 'PASS', p_json,
+               'abc', 'P1', 'ASG-1', 'C-1', SYSTIMESTAMP);
+    END;
 BEGIN
     SELECT COUNT(*) INTO v_count FROM user_tables
      WHERE table_name IN ('EIMS_EVALUATION_PLAN','EIMS_EVALUATION_ASSIGNMENT','EIMS_EVALUATION_SNAPSHOT');
@@ -14,8 +21,9 @@ BEGIN
     VALUES ('TEST-EVPLAN-001', 'TEST-IDEA-001', 3, 1, 'ACTIVE', 'C-1', SYSTIMESTAMP);
     INSERT INTO EIMS_EVALUATION_ASSIGNMENT (ID, PLAN_ID, IDEA_ID, IDEA_VERSION, ROLE_CODE, SCOPE_CODE, STATE, CORRELATION_ID, CREATED_AT)
     VALUES ('TEST-EVASG-001', 'TEST-EVPLAN-001', 'TEST-IDEA-001', 3, 'IDEA_EVALUATOR', 'UNIT-1', 'PENDING', 'C-1', SYSTIMESTAMP);
-    INSERT INTO EIMS_EVALUATION_SNAPSHOT (ID, PLAN_ID, IDEA_ID, IDEA_VERSION, SNAPSHOT_TYPE, PAYLOAD)
-    VALUES ('TEST-EVSNAP-001', 'TEST-EVPLAN-001', 'TEST-IDEA-001', 3, 'PROFILE', '{"scope":"UNIT"}');
+    INSERT INTO EIMS_EVALUATION_ASSIGNMENT (ID, PLAN_ID, IDEA_ID, IDEA_VERSION, ROLE_CODE, SCOPE_CODE, STATE, CORRELATION_ID, CREATED_AT)
+    VALUES ('TEST-EVASG-002', 'TEST-EVPLAN-001', 'TEST-IDEA-001', 3, 'UNIT_OWNER', 'UNIT-1', 'PENDING', 'C-1', SYSTIMESTAMP);
+    snap('TEST-EVSNAP-001', 'TEST-EVASG-001', '{"score":80}');
 
     UPDATE EIMS_EVALUATION_ASSIGNMENT SET STATE='COMPLETED', ENTITY_VERSION=2 WHERE ID='TEST-EVASG-001' AND ENTITY_VERSION=1;
     rep('optimistic assignment update with correct version changes 1 row', SQL%ROWCOUNT = 1);
@@ -28,21 +36,17 @@ BEGIN
         rep('duplicate idea/version plan identity rejected', FALSE);
     EXCEPTION WHEN DUP_VAL_ON_INDEX THEN rep('duplicate idea/version plan identity rejected', TRUE); END;
 
-    BEGIN UPDATE EIMS_EVALUATION_SNAPSHOT SET PAYLOAD='{"changed":true}' WHERE ID='TEST-EVSNAP-001';
+    BEGIN UPDATE EIMS_EVALUATION_SNAPSHOT SET OUTCOME='FAIL' WHERE ID='TEST-EVSNAP-001';
           rep('snapshot UPDATE is blocked', FALSE);
     EXCEPTION WHEN OTHERS THEN rep('snapshot UPDATE is blocked', SQLCODE = -20031); END;
     BEGIN DELETE FROM EIMS_EVALUATION_SNAPSHOT WHERE ID='TEST-EVSNAP-001';
           rep('snapshot DELETE is blocked', FALSE);
     EXCEPTION WHEN OTHERS THEN rep('snapshot DELETE is blocked', SQLCODE = -20031); END;
-    BEGIN
-        INSERT INTO EIMS_EVALUATION_SNAPSHOT (ID, PLAN_ID, IDEA_ID, IDEA_VERSION, SNAPSHOT_TYPE, PAYLOAD)
-        VALUES ('TEST-EVSNAP-002', 'TEST-EVPLAN-001', 'TEST-IDEA-001', 3, 'PROFILE', '{}');
-        rep('duplicate snapshot type per plan rejected', FALSE);
-    EXCEPTION WHEN DUP_VAL_ON_INDEX THEN rep('duplicate snapshot type per plan rejected', TRUE); END;
-    BEGIN
-        INSERT INTO EIMS_EVALUATION_SNAPSHOT (ID, PLAN_ID, IDEA_ID, IDEA_VERSION, SNAPSHOT_TYPE, PAYLOAD)
-        VALUES ('TEST-EVSNAP-003', 'TEST-EVPLAN-001', 'TEST-IDEA-001', 3, 'OTHER', 'not-json');
-        rep('invalid snapshot JSON rejected', FALSE);
+    BEGIN snap('TEST-EVSNAP-002', 'TEST-EVASG-001', '{}');
+          rep('second snapshot for the same assignment rejected', FALSE);
+    EXCEPTION WHEN DUP_VAL_ON_INDEX THEN rep('second snapshot for the same assignment rejected', TRUE); END;
+    BEGIN snap('TEST-EVSNAP-003', 'TEST-EVASG-002', 'not-json');
+          rep('invalid snapshot JSON rejected', FALSE);
     EXCEPTION WHEN OTHERS THEN rep('invalid snapshot JSON rejected', SQLCODE = -2290); END;
     ROLLBACK;
     DBMS_OUTPUT.PUT_LINE('Test rows rolled back.');

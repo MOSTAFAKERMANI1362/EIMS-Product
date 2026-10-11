@@ -6,7 +6,7 @@ using Oracle.ManagedDataAccess.Client;
 namespace EIMS.Persistence.OracleAdapter;
 
 // S2b: evaluation plan + assignment persistence (tables EIMS_EVALUATION_PLAN / EIMS_EVALUATION_ASSIGNMENT).
-// Evaluation COMPLETION and G04 assessment are S2c and fail closed.
+// Evaluation COMPLETION and G04 assessment live in OracleAuthorityStore.Completion.cs (S2c).
 public sealed partial class OracleAuthorityStore
 {
     public async ValueTask<EvaluationPlanEnvelope?> GetEvaluationPlanAsync(string planId, CancellationToken cancellationToken = default)
@@ -39,15 +39,6 @@ public sealed partial class OracleAuthorityStore
         while (await r.ReadAsync(cancellationToken)) list.Add(ReadAssignment(r));
         return list;
     }
-
-    // ---- S2c boundary: fail closed, never silently empty
-    public ValueTask<G04AssessmentEnvelope?> GetG04AssessmentForPlanAsync(string planId, CancellationToken cancellationToken = default) =>
-        throw new NotSupportedException("G04 assessment persistence is bound in step S2c.");
-
-    public ValueTask<AuthorityResult> CommitEvaluationCompletionAsync(
-        EvaluationCompletionRequest request, EvaluationCompletionCommit commit, CancellationToken cancellationToken = default) =>
-        ValueTask.FromResult(AuthorityResult.Deny(501, "P2_ORACLE_EVALUATION_COMPLETION_NOT_BOUND", request.Command.CorrelationId,
-            "Evaluation completion persistence is bound in step S2c."));
 
     // ---- helpers
     private static string Ts(string column) =>
