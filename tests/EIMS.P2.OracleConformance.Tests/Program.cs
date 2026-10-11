@@ -129,6 +129,59 @@ foreach (var (name, create) in backends)
             && (await be.Store.GetEvaluationAssignmentsForPlanAsync(ePlan)).Count == 0
             && await be.Counts(eid) == (0, 0, 0, 0));
     }
+
+    // 11) completion of the only required assignment: assignment + snapshot + plan readiness + G04 assessment in one transaction
+    var s11 = await SetupEvaluationAsync(create);
+    var idea11 = (await s11.B.Store.GetAggregateAsync(s11.IdeaId))!;
+    var (creq, ccom) = BuildCompletion(idea11, s11.Plan, s11.Asg[0], "kc1", "FPC1", "CC1", true);
+    var cres = await s11.B.Store.CommitEvaluationCompletionAsync(creq, ccom);
+    Check($"{name}: completion commit succeeds", cres.Allowed && cres.Code == "P2_EVALUATION_COMPLETION_ATOMIC_COMMIT" && cres.NewVersion == 2);
+    Check($"{name}: plan reads back READY_FOR_G04_DECISION field-for-field", await s11.B.Store.GetEvaluationPlanAsync(s11.Plan.PlanId) == ccom.PlanAfter);
+    Check($"{name}: completed assignment reads back field-for-field", await s11.B.Store.GetEvaluationAssignmentAsync(s11.Asg[0].AssignmentId) == ccom.AssignmentAfter);
+    Check($"{name}: assessment snapshot reads back field-for-field", await s11.B.SnapshotFor(s11.Asg[0].AssignmentId) == ccom.AssessmentSnapshot);
+    Check($"{name}: G04 assessment reads back field-for-field", await s11.B.Store.GetG04AssessmentForPlanAsync(s11.Plan.PlanId) == ccom.G04Assessment);
+    var creplay = await s11.B.Store.CommitEvaluationCompletionAsync(creq, ccom);
+    Check($"{name}: completion replay is idempotent", creplay.IdempotentReplay && !creplay.StateMutated);
+    var (creq2, ccom2) = BuildCompletion(idea11, s11.Plan, s11.Asg[0], "kc2", "FPC2", "CC2", true);
+    var cstale = await s11.B.Store.CommitEvaluationCompletionAsync(creq2, ccom2);
+    Check($"{name}: stale plan version -> 409 P2_EVALUATION_PLAN_VERSION_CONFLICT", cstale.HttpStatus == 409 && cstale.Code == "P2_EVALUATION_PLAN_VERSION_CONFLICT");
+    Check($"{name}: completion evidence = 2 audit, 3 outbox, 1 decision, 2 idempotency", await s11.B.Counts(s11.IdeaId) == (2, 3, 1, 2));
+
+    // 12) completing a non-required assignment leaves the plan ACTIVE and creates no G04 assessment
+    var s12 = await SetupEvaluationAsync(create);
+    var idea12 = (await s12.B.Store.GetAggregateAsync(s12.IdeaId))!;
+    var (nreq, ncom) = BuildCompletion(idea12, s12.Plan, s12.Asg[1], "kn1", "FPN1", "CN1", false);
+    var nres = await s12.B.Store.CommitEvaluationCompletionAsync(nreq, ncom);
+    var plan12 = await s12.B.Store.GetEvaluationPlanAsync(s12.Plan.PlanId);
+    Check($"{name}: non-required completion keeps plan ACTIVE and creates no G04 assessment",
+        nres.Allowed && plan12 is { State: "ACTIVE", PlanVersion: 2 } && await s12.B.Store.GetG04AssessmentForPlanAsync(s12.Plan.PlanId) is null);
+
+    // 13) rollback at every completion fault point
+    var completionPoints = new[]
+    {
+        PersistenceFaultPoint.AfterEvaluationAssignmentCompletionStaged, PersistenceFaultPoint.AfterAssessmentSnapshotStaged,
+        PersistenceFaultPoint.AfterEvaluationPlanReadinessStaged, PersistenceFaultPoint.AfterG04AssessmentStaged,
+        PersistenceFaultPoint.AfterAuditStaged, PersistenceFaultPoint.AfterCompletionOutboxStaged,
+        PersistenceFaultPoint.AfterIdempotencyStaged, PersistenceFaultPoint.BeforeCommitPublish
+    };
+    foreach (var cp in completionPoints)
+    {
+        var sx = await SetupEvaluationAsync(create);
+        var ideaX = (await sx.B.Store.GetAggregateAsync(sx.IdeaId))!;
+        var (xreq, xcom) = BuildCompletion(ideaX, sx.Plan, sx.Asg[0], "kx", "FPX", "CX", true);
+        sx.B.Fault.FaultPoint = cp;
+        var threwX = false;
+        try { await sx.B.Store.CommitEvaluationCompletionAsync(xreq, xcom); }
+        catch (PersistenceAtomicityException) { threwX = true; }
+        sx.B.Fault.FaultPoint = PersistenceFaultPoint.None;
+        var planX = await sx.B.Store.GetEvaluationPlanAsync(sx.Plan.PlanId);
+        var asgX = await sx.B.Store.GetEvaluationAssignmentAsync(sx.Asg[0].AssignmentId);
+        Check($"{name}: completion fault at {cp} -> full rollback",
+            threwX && planX == sx.Plan && asgX == sx.Asg[0]
+            && await sx.B.SnapshotFor(sx.Asg[0].AssignmentId) is null
+            && await sx.B.Store.GetG04AssessmentForPlanAsync(sx.Plan.PlanId) is null
+            && await sx.B.Counts(sx.IdeaId) == (1, 1, 1, 1));
+    }
 }
 
 Console.WriteLine(failures == 0 ? "ALL PASS" : $"{failures} FAILURE(S)");
@@ -157,6 +210,61 @@ static (MutationRequest Request, MutationCommit Commit) Build(
     return (request, new MutationCommit(afterSnap, audit, outbox, new[] { decision }));
 }
 
+async Task<(Backend B, string IdeaId, EvaluationPlanEnvelope Plan, EvaluationAssignmentEnvelope[] Asg)> SetupEvaluationAsync(
+    Func<AggregateSnapshot, Task<Backend>> factory)
+{
+    var id = NewId();
+    var b = await factory(Seed(id));
+    var (req, com) = BuildWithPlan(id, 1, "ks", "FPS", "CS", "EPLAN-" + id);
+    var res = await b.Store.CommitAsync(req, com);
+    if (!res.Allowed) throw new InvalidOperationException("setup commit failed: " + res.Code);
+    return (b, id, com.EvaluationPlan!, com.EvaluationAssignments!.OrderBy(x => x.AssignmentId, StringComparer.Ordinal).ToArray());
+}
+
+static (EvaluationCompletionRequest Request, EvaluationCompletionCommit Commit) BuildCompletion(
+    AggregateSnapshot idea, EvaluationPlanEnvelope plan, EvaluationAssignmentEnvelope assignment,
+    string key, string fingerprint, string corr, bool ready)
+{
+    const string command = "evaluation-assignments.complete";
+    const string json = "{\"score\":80}";
+    var now = DateTimeOffset.UtcNow;
+    var ts = new DateTimeOffset(now.Ticks - now.Ticks % 10, TimeSpan.Zero);
+    var roles = new[] { "IDEA_OWNER" };
+    var actor = new AuthorityActor("P1", "DOMAIN\\u1", "TEST", "ASG-1", roles, new[] { "SCOPE-A" });
+    var tag = key + "-" + assignment.AssignmentId;
+    var after = assignment with
+    {
+        State = "COMPLETED", AssignmentVersion = assignment.AssignmentVersion + 1, CompletedAt = ts,
+        CompletedByPersonId = "P1", AuthorityAssignmentId = "ASG-1",
+        AssessmentSchemaId = "SCHEMA-1", AssessmentSchemaVersion = "1.0", AssessmentOutcome = "PASS"
+    };
+    var planAfter = plan with
+    {
+        PlanVersion = plan.PlanVersion + 1,
+        State = ready ? "READY_FOR_G04_DECISION" : "ACTIVE",
+        ReadyAt = ready ? ts : null
+    };
+    var snapshot = new AssessmentSnapshotEnvelope("SNAP-" + tag, assignment.AssignmentId, plan.PlanId, idea.AggregateId, idea.Version,
+        assignment.Role, assignment.Scope, "SCHEMA-1", "1.0", "PASS", json, new string('a', 64), "P1", "ASG-1", ts, corr);
+    var g04 = ready
+        ? new G04AssessmentEnvelope("G04A-" + plan.PlanId, plan.PlanId, idea.AggregateId, idea.Version, planAfter.PlanVersion,
+            "PENDING", new string('b', 64), ts, corr)
+        : null;
+    var audit = new AuditEnvelope("ACMP-" + tag, "P1", "DOMAIN\\u1", "TEST", roles, "ASG-1", idea.AggregateId, idea.Version,
+        "RS-1.0", ts, corr, command);
+    var events = new List<OutboxEnvelope>
+    {
+        new("OBC1-" + tag, "EvaluationAssignmentCompleted.v1", idea.AggregateId, idea.Version, corr, ts, new Dictionary<string, string> { ["k"] = "v" })
+    };
+    if (ready)
+        events.Add(new OutboxEnvelope("OBC2-" + tag, "G04DecisionAssessmentCreated.v1", idea.AggregateId, idea.Version, corr, ts,
+            new Dictionary<string, string> { ["k"] = "v" }));
+    var cmd = new EvaluationCompletionCommand(idea.AggregateId, idea.Version, plan.PlanId, plan.PlanVersion,
+        assignment.AssignmentId, assignment.AssignmentVersion, key, corr, json);
+    return (new EvaluationCompletionRequest(cmd, actor, idea, plan, assignment, fingerprint),
+        new EvaluationCompletionCommit(after, planAfter, snapshot, g04, audit, events));
+}
+
 static (MutationRequest Request, MutationCommit Commit) BuildWithPlan(
     string id, long before, string key, string fingerprint, string corr, string planId)
 {
@@ -178,6 +286,7 @@ internal sealed class Backend
     public required IEvaluationWorkflowStore Store { get; init; }
     public required IFaultInjectablePersistence Fault { get; init; }
     public required Func<string, Task<(int, int, int, int)>> Counts { get; init; }
+    public required Func<string, Task<AssessmentSnapshotEnvelope?>> SnapshotFor { get; init; }
 
     public static Backend InMemory(AggregateSnapshot seed)
     {
@@ -190,7 +299,8 @@ internal sealed class Backend
                 s.AuditLog.Count(x => x.AggregateId == id),
                 s.Outbox.Count(x => x.AggregateId == id),
                 s.DomainDecisions.Count(x => x.AggregateId == id),
-                s.IdempotencyRecords.Count(x => x.AggregateId == id)))
+                s.IdempotencyRecords.Count(x => x.AggregateId == id))),
+            SnapshotFor = a => Task.FromResult(s.AssessmentSnapshots.FirstOrDefault(x => x.EvaluationAssignmentId == a))
         };
     }
 
@@ -206,7 +316,8 @@ internal sealed class Backend
             {
                 var c = await s.CountEvidenceAsync(id);
                 return (c.Audit, c.Outbox, c.Decisions, c.Idempotency);
-            }
+            },
+            SnapshotFor = a => s.GetAssessmentSnapshotForAssignmentAsync(a)
         };
     }
 }

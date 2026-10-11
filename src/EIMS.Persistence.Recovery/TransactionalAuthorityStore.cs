@@ -445,7 +445,7 @@ public sealed class TransactionalAuthorityStore : IEvaluationWorkflowStore, IPer
         }
     }
 
-    private static string? ValidateEvaluationCompletionShape(
+    public static string? ValidateEvaluationCompletionShape(
         EvaluationCompletionRequest request,
         EvaluationCompletionCommit commit,
         AggregateSnapshot currentIdea,
