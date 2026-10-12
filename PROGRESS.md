@@ -7,11 +7,13 @@
 | Step | Goal | Status |
 |---|---|---|
 | S1 | Oracle core schema V001 (5 tables) | **DONE** — verified on pilot Oracle (Oct 2026), all PASS |
-| S1b | V002 evaluation, V003 G04, V004 waves 9–13 (12 tables) + ACR-S1b + conventions check | **DONE** — `dev_rebuild_all.sql`: 46/46 PASS, 17 tables, 4 append-only triggers |
+| S1b | V002 evaluation, V003 G04, V004 waves 9–13 (12 tables) + ACR-S1b + conventions check | **DONE** — `dev_rebuild_all.sql`: all PASS, 17 tables, 4 append-only triggers (counts changed with S2b/S2c; see S2c row) |
 | S2a | Oracle adapter, kernel commit path (V001 tables) + conformance suite | **DONE + MERGED** (PR #112, commit c49e9b7, 13 checks green); 16/16 PASS on InMemory and Oracle |
-| S2b | Evaluation plan/assignments persistence + V002 realigned (ACR-S2b) | **DONE** (conformance 24/24 on InMemory and Oracle; PR pending/merged — see git) |
-| S2c | Evaluation completion + per-assignment snapshot + G04 assessment on Oracle; V002 snapshot and V003 assessment realigned (ACR-S2c) | **FILES READY — waiting for `dev_rebuild_all.sql` + conformance (expect 41 PASS per backend)** |
-| S2d | Portfolio, Execution, Benefit, Knowledge stores (V004) | not started |
+| S2b | Evaluation plan/assignments persistence + V002 realigned (ACR-S2b) | **DONE + MERGED** — conformance 24/24 on InMemory and Oracle |
+| S2c | Evaluation completion + per-assignment snapshot + G04 assessment on Oracle (ACR-S2c) | **DONE + MERGED** — conformance 41/41 on InMemory and Oracle; DB checks all PASS |
+| S2d | G04 committee voting on Oracle: V003 voting tables replaced by 4 tables mirroring the envelopes (ACR-S2d) | **FILES READY — waiting for `dev_rebuild_all.sql` + conformance (expect 60 PASS per backend, 19 tables)** |
+| S2e | G04 final decision (idea/plan/assessment updates + 40-field evidence record) — compare records with tables FIRST | not started |
+| S2f | Portfolio, Execution, Benefit, Knowledge stores (V004) — compare records with tables FIRST | not started |
 | S3 | Outbox dispatcher | not started |
 | S4 | Bind g01.decide, g02.decide, rewards.decide to gateway + tests | not started |
 | S5 | Query API (worklist, ideas) → migrate UI pages in matrix order | not started |
@@ -27,6 +29,7 @@
 Oracle AI Database 26ai Free 23.26.3, PDB FREEPDB1, accounts EIMS_OWNER / EIMS_APP.
 
 ## Decisions log
+- ACR-S2d: votes reference the G04 assessment as the aggregate; committee snapshot/state/vote revision/effective vote are four tables (19 tables total); assessment row locked FOR UPDATE during a vote; ValidateCommitShape and SameOptionalSnapshot made public static.
 - ACR-S2c: snapshot is per assignment (not per plan/type); G04 assessment table mirrors G04AssessmentEnvelope; plan row is locked FOR UPDATE during completion; ValidateEvaluationCompletionShape made public static.
 - ACR-S2b: V002 was realigned field-by-field with EvaluationPlanEnvelope/EvaluationAssignmentEnvelope; state vocabularies are owned by code, not DB CHECKs (READY_FOR_G04_DECISION would have been rejected).
 - ACR-S2a: slice the adapter per store; unbound parts fail closed (501); reuse ValidateCommitShape (public static); secrets only via environment.
@@ -37,6 +40,8 @@ Oracle AI Database 26ai Free 23.26.3, PDB FREEPDB1, accounts EIMS_OWNER / EIMS_A
 - All VARCHAR2 use CHAR semantics (Persian text is 2 bytes/char).
 
 ## Open items
+- Main moved during S2 (ACR-P0-004 idea-evaluation-submission contract tests added in PR #53): after S2c merges, run those contract tests once against the Oracle-backed flow.
+- Correction: earlier notes said '46/46' DB checks for S1b; the correct count at that time was 41 (7+8+7+12+7). Do not confuse DB checks (verify scripts) with conformance checks (C#).
 - Local git: stash `leftovers-before-pr112` can be dropped (`git stash drop`) once S2b is applied.
 - Stale CI assertions were fixed in PR #112 (binding version >= 1.2.0, mutation count >= 29). Wave 14 test pins the current values.
 - **Security:** the dev password for EIMS_APP was shared in a chat; rotate it to a random value before any real pilot. Never commit `EIMS_ORACLE_CONNECTION`.

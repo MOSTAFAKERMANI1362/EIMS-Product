@@ -286,7 +286,7 @@ public sealed class G04VotingTransactionalStore(
         }
     }
 
-    private static string? ValidateCommitShape(
+    public static string? ValidateCommitShape(
         G04VoteRequest request,
         G04VoteCommit commit,
         G04CommitteeSnapshotEnvelope? currentSnapshot,
@@ -377,7 +377,7 @@ public sealed class G04VotingTransactionalStore(
         return null;
     }
 
-    private static bool SameOptionalSnapshot(G04CommitteeSnapshotEnvelope? left, G04CommitteeSnapshotEnvelope? right) =>
+    public static bool SameOptionalSnapshot(G04CommitteeSnapshotEnvelope? left, G04CommitteeSnapshotEnvelope? right) =>
         left is null ? right is null : right is not null && SameSnapshot(left, right);
 
     private static bool SameOptionalState(G04CommitteeStateEnvelope? left, G04CommitteeStateEnvelope? right) =>
