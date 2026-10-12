@@ -1,3 +1,4 @@
+using System.Text.Json;
 using EIMS.Authority.Recovery;
 using EIMS.Persistence.OracleAdapter;
 using EIMS.Persistence.Recovery;
@@ -182,6 +183,73 @@ foreach (var (name, create) in backends)
             && await sx.B.Store.GetG04AssessmentForPlanAsync(sx.Plan.PlanId) is null
             && await sx.B.Counts(sx.IdeaId) == (1, 1, 1, 1));
     }
+
+    // 14) committee voting: first vote creates the frozen snapshot + state + effective vote in one transaction
+    var g = await SetupG04Async(create);
+    var gPlan = g.Assessment.PlanId;
+    var aid = g.Assessment.AssessmentId;
+    var none = Array.Empty<G04EffectiveVoteEnvelope>();
+    var (vreq1, vcom1) = BuildVote(g.Idea, g.Assessment, gPlan, "kv1", "FPV1", "CV1", "P1", "APPROVE", null, null, none);
+    var vres1 = await g.B.Voting.CommitG04VoteAsync(vreq1, vcom1);
+    Check($"{name}: first committee vote succeeds", vres1.Allowed && vres1.Code == "P2_G04_VOTE_ATOMIC_COMMIT" && vres1.NewVersion == 1);
+    var snap1 = await g.B.Voting.GetCommitteeSnapshotAsync(aid);
+    Check($"{name}: committee snapshot reads back field-for-field", snap1 is not null && JsonSerializer.Serialize(snap1) == JsonSerializer.Serialize(vcom1.SnapshotAfter));
+    Check($"{name}: committee state reads back field-for-field", await g.B.Voting.GetCommitteeStateAsync(aid) == vcom1.StateAfter);
+    var eff1 = await g.B.Voting.GetEffectiveVotesAsync(aid);
+    Check($"{name}: effective vote reads back field-for-field", eff1.Count == 1 && eff1.Single() == vcom1.EffectiveVoteAfter);
+    Check($"{name}: voting evidence = 1 audit, 1 outbox, 0 decision, 1 idempotency", await g.B.VotingCounts(aid) == (1, 1, 0, 1));
+    var vreplay = await g.B.Voting.CommitG04VoteAsync(vreq1, vcom1);
+    Check($"{name}: vote replay is idempotent", vreplay.IdempotentReplay && !vreplay.StateMutated);
+
+    // 15) a member revises own vote (supersedes revision 1); a second member then completes the vote
+    var ctx1 = await ReadVotingContextAsync(g.B.Voting, aid);
+    var (vreq2, vcom2) = BuildVote(g.Idea, g.Assessment, gPlan, "kv2", "FPV2", "CV2", "P1", "REJECT", ctx1.Snapshot, ctx1.State, ctx1.Effective);
+    var vres2 = await g.B.Voting.CommitG04VoteAsync(vreq2, vcom2);
+    Check($"{name}: member can revise own vote (revision 2 supersedes revision 1)", vres2.Allowed && vres2.NewVersion == 2 && vcom2.VoteRevision.RevisionNumber == 2);
+    var ctx2 = await ReadVotingContextAsync(g.B.Voting, aid);
+    var (vreq3, vcom3) = BuildVote(g.Idea, g.Assessment, gPlan, "kv3", "FPV3", "CV3", "P2", "APPROVE", ctx2.Snapshot, ctx2.State, ctx2.Effective);
+    var vres3 = await g.B.Voting.CommitG04VoteAsync(vreq3, vcom3);
+    Check($"{name}: second member vote reaches quorum and completes voting",
+        vres3.Allowed && await g.B.Voting.GetCommitteeStateAsync(aid) is { VotingStageState: "COMPLETED", CommitteeVersion: 3, EffectiveVoteCount: 2 });
+    var effFinal = (await g.B.Voting.GetEffectiveVotesAsync(aid)).OrderBy(x => x.PersonId, StringComparer.Ordinal).ToArray();
+    Check($"{name}: effective votes = P1 REJECT (rev 2) and P2 APPROVE (rev 1)",
+        effFinal.Length == 2 && effFinal[0] == vcom2.EffectiveVoteAfter && effFinal[1] == vcom3.EffectiveVoteAfter);
+
+    // 16) a completed voting stage denies further votes
+    var ctx3 = await ReadVotingContextAsync(g.B.Voting, aid);
+    var (vreq4, vcom4) = BuildVote(g.Idea, g.Assessment, gPlan, "kv4", "FPV4", "CV4", "P1", "APPROVE", ctx3.Snapshot, ctx3.State, ctx3.Effective);
+    var vres4 = await g.B.Voting.CommitG04VoteAsync(vreq4, vcom4);
+    Check($"{name}: vote after completion -> 409 P2_G04_VOTING_STAGE_COMPLETED", vres4.HttpStatus == 409 && vres4.Code == "P2_G04_VOTING_STAGE_COMPLETED");
+
+    // 17) a request built on a stale committee context is rejected
+    var (vreq5, vcom5) = BuildVote(g.Idea, g.Assessment, gPlan, "kv5", "FPV5", "CV5", "P2", "REJECT", null, null, none);
+    var vres5 = await g.B.Voting.CommitG04VoteAsync(vreq5, vcom5);
+    Check($"{name}: stale committee context -> 409 P2_G04_COMMITTEE_CONTEXT_CHANGED", vres5.HttpStatus == 409 && vres5.Code == "P2_G04_COMMITTEE_CONTEXT_CHANGED");
+
+    // 18) rollback at every voting fault point
+    var votingPoints = new[]
+    {
+        G04VotingPersistenceFaultPoint.AfterSnapshotStaged, G04VotingPersistenceFaultPoint.AfterVoteRevisionStaged,
+        G04VotingPersistenceFaultPoint.AfterEffectiveProjectionStaged, G04VotingPersistenceFaultPoint.AfterCommitteeStateStaged,
+        G04VotingPersistenceFaultPoint.AfterAuditStaged, G04VotingPersistenceFaultPoint.AfterOutboxStaged,
+        G04VotingPersistenceFaultPoint.AfterIdempotencyStaged, G04VotingPersistenceFaultPoint.BeforeCommitPublish
+    };
+    foreach (var vp in votingPoints)
+    {
+        var gx = await SetupG04Async(create);
+        var aidX = gx.Assessment.AssessmentId;
+        var (xvreq, xvcom) = BuildVote(gx.Idea, gx.Assessment, gx.Assessment.PlanId, "kvx", "FPVX", "CVX", "P1", "APPROVE", null, null, none);
+        gx.B.SetVotingFault(vp);
+        var threwV = false;
+        try { await gx.B.Voting.CommitG04VoteAsync(xvreq, xvcom); }
+        catch (PersistenceAtomicityException) { threwV = true; }
+        gx.B.SetVotingFault(G04VotingPersistenceFaultPoint.None);
+        Check($"{name}: voting fault at {vp} -> full rollback",
+            threwV && await gx.B.Voting.GetCommitteeSnapshotAsync(aidX) is null
+            && await gx.B.Voting.GetCommitteeStateAsync(aidX) is null
+            && (await gx.B.Voting.GetEffectiveVotesAsync(aidX)).Count == 0
+            && await gx.B.VotingCounts(aidX) == (0, 0, 0, 0));
+    }
 }
 
 Console.WriteLine(failures == 0 ? "ALL PASS" : $"{failures} FAILURE(S)");
@@ -265,6 +333,68 @@ static (EvaluationCompletionRequest Request, EvaluationCompletionCommit Commit) 
         new EvaluationCompletionCommit(after, planAfter, snapshot, g04, audit, events));
 }
 
+async Task<(Backend B, AggregateSnapshot Idea, G04AssessmentEnvelope Assessment)> SetupG04Async(Func<AggregateSnapshot, Task<Backend>> factory)
+{
+    var s = await SetupEvaluationAsync(factory);
+    var idea = (await s.B.Store.GetAggregateAsync(s.IdeaId))!;
+    var (creq, ccom) = BuildCompletion(idea, s.Plan, s.Asg[0], "kg", "FPG", "CG", true);
+    var cres = await s.B.Store.CommitEvaluationCompletionAsync(creq, ccom);
+    if (!cres.Allowed) throw new InvalidOperationException("setup completion failed: " + cres.Code);
+    return (s.B, idea, ccom.G04Assessment!);
+}
+
+static async Task<(G04CommitteeSnapshotEnvelope? Snapshot, G04CommitteeStateEnvelope? State, IReadOnlyCollection<G04EffectiveVoteEnvelope> Effective)> ReadVotingContextAsync(
+    IG04VotingStore voting, string assessmentId) =>
+    (await voting.GetCommitteeSnapshotAsync(assessmentId), await voting.GetCommitteeStateAsync(assessmentId), await voting.GetEffectiveVotesAsync(assessmentId));
+
+static (G04VoteRequest Request, G04VoteCommit Commit) BuildVote(
+    AggregateSnapshot idea, G04AssessmentEnvelope assessment, string planId, string key, string fingerprint, string corr,
+    string personId, string vote, G04CommitteeSnapshotEnvelope? snapshotBefore, G04CommitteeStateEnvelope? stateBefore,
+    IReadOnlyCollection<G04EffectiveVoteEnvelope> effectiveBefore)
+{
+    const string command = "g04.vote";
+    var now = DateTimeOffset.UtcNow;
+    var ts = new DateTimeOffset(now.Ticks - now.Ticks % 10, TimeSpan.Zero);
+    var roles = new[] { "G04_COMMITTEE_MEMBER" };
+    var assignmentId = "ASG-" + personId;
+    var actor = new AuthorityActor(personId, "DOMAIN\\" + personId, "TEST", assignmentId, roles, new[] { "SCOPE-A" });
+    var tag = key + "-" + assessment.AssessmentId + "-" + personId;
+    var snapshot = snapshotBefore ?? new G04CommitteeSnapshotEnvelope(
+        "GSNAP-" + assessment.AssessmentId, assessment.AssessmentId, idea.AggregateId, idea.Version, idea.Scope ?? "SCOPE-A",
+        "G04_COMMITTEE", "GP-1", "1.0", 2, "MAJORITY", "P1", "AUTH-1", "REF-1",
+        new[]
+        {
+            new G04CommitteeMemberEnvelope("P1", "Member One", new[] { "G04_COMMITTEE_MEMBER" }, new[] { "ASG-P1" }),
+            new G04CommitteeMemberEnvelope("P2", "Member Two", new[] { "G04_COMMITTEE_MEMBER" }, new[] { "ASG-P2" })
+        },
+        ts, corr);
+    var nextVersion = (stateBefore?.CommitteeVersion ?? 0) + 1;
+    var prior = effectiveBefore.SingleOrDefault(x => string.Equals(x.PersonId, personId, StringComparison.OrdinalIgnoreCase));
+    var revisionNumber = (prior?.RevisionNumber ?? 0) + 1;
+    var revisionId = "GREV-" + tag;
+    var revision = new G04VoteRevisionEnvelope(revisionId, assessment.AssessmentId, snapshot.SnapshotId, nextVersion, personId, assignmentId,
+        vote, "Reasoned committee note for the vote", revisionNumber, prior?.VoteRevisionId, ts, corr);
+    var effectiveAfter = new G04EffectiveVoteEnvelope(assessment.AssessmentId, personId, revisionId, vote, revisionNumber, ts);
+    var all = effectiveBefore.Where(x => !string.Equals(x.PersonId, personId, StringComparison.OrdinalIgnoreCase)).Append(effectiveAfter).ToList();
+    var approve = all.Count(x => x.Vote == "APPROVE");
+    var reject = all.Count(x => x.Vote == "REJECT");
+    var completed = all.Count >= snapshot.QuorumRequired;
+    var state = new G04CommitteeStateEnvelope(assessment.AssessmentId, snapshot.SnapshotId, nextVersion, completed ? "COMPLETED" : "OPEN",
+        completed, approve > reject, all.Count, approve, reject, ts, corr, completed ? ts : null);
+    var audit = new AuditEnvelope("AV-" + tag, personId, "DOMAIN\\" + personId, "TEST", roles, assignmentId, assessment.AssessmentId,
+        nextVersion, "RS-1.0", ts, corr, command);
+    var events = new List<OutboxEnvelope>
+    {
+        new("OBV1-" + tag, "G04CommitteeVoteRecorded.v1", assessment.AssessmentId, nextVersion, corr, ts, new Dictionary<string, string> { ["k"] = "v" })
+    };
+    if (completed)
+        events.Add(new OutboxEnvelope("OBV2-" + tag, "G04CommitteeVotingCompleted.v1", assessment.AssessmentId, nextVersion, corr, ts,
+            new Dictionary<string, string> { ["k"] = "v" }));
+    var cmd = new G04VoteCommand(planId, assessment.AssessmentId, idea.Version, stateBefore?.CommitteeVersion ?? 0, key, corr, vote, revision.Note);
+    return (new G04VoteRequest(cmd, actor, idea, assessment, snapshotBefore, stateBefore, effectiveBefore, fingerprint),
+        new G04VoteCommit(snapshot, state, revision, effectiveAfter, audit, events));
+}
+
 static (MutationRequest Request, MutationCommit Commit) BuildWithPlan(
     string id, long before, string key, string fingerprint, string corr, string planId)
 {
@@ -287,12 +417,23 @@ internal sealed class Backend
     public required IFaultInjectablePersistence Fault { get; init; }
     public required Func<string, Task<(int, int, int, int)>> Counts { get; init; }
     public required Func<string, Task<AssessmentSnapshotEnvelope?>> SnapshotFor { get; init; }
+    public required IG04VotingStore Voting { get; init; }
+    public required Action<G04VotingPersistenceFaultPoint> SetVotingFault { get; init; }
+    public required Func<string, Task<(int, int, int, int)>> VotingCounts { get; init; }
 
     public static Backend InMemory(AggregateSnapshot seed)
     {
         var s = new TransactionalAuthorityStore(null, seed);
+        var v = new G04VotingTransactionalStore(s);
         return new Backend
         {
+            Voting = v,
+            SetVotingFault = p => v.FaultPoint = p,
+            VotingCounts = id => Task.FromResult((
+                v.VotingAuditLog.Count(x => x.AggregateId == id),
+                v.VotingOutbox.Count(x => x.AggregateId == id),
+                0,
+                v.VotingIdempotencyRecords.Count(x => x.AggregateId == id))),
             Store = s,
             Fault = s,
             Counts = id => Task.FromResult((
@@ -310,6 +451,13 @@ internal sealed class Backend
         await s.SeedAggregateAsync(seed);
         return new Backend
         {
+            Voting = s,
+            SetVotingFault = p => s.VotingFaultPoint = p,
+            VotingCounts = async id =>
+            {
+                var c = await s.CountEvidenceAsync(id);
+                return (c.Audit, c.Outbox, c.Decisions, c.Idempotency);
+            },
             Store = s,
             Fault = s,
             Counts = async id =>
