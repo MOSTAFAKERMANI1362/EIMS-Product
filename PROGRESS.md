@@ -11,8 +11,8 @@
 | S2a | Oracle adapter, kernel commit path (V001 tables) + conformance suite | **DONE + MERGED** (PR #112, commit c49e9b7, 13 checks green); 16/16 PASS on InMemory and Oracle |
 | S2b | Evaluation plan/assignments persistence + V002 realigned (ACR-S2b) | **DONE + MERGED** — conformance 24/24 on InMemory and Oracle |
 | S2c | Evaluation completion + per-assignment snapshot + G04 assessment on Oracle (ACR-S2c) | **DONE + MERGED** — conformance 41/41 on InMemory and Oracle; DB checks all PASS |
-| S2d | G04 committee voting on Oracle: V003 voting tables replaced by 4 tables mirroring the envelopes (ACR-S2d) | **FILES READY — waiting for `dev_rebuild_all.sql` + conformance (expect 60 PASS per backend, 19 tables)** |
-| S2e | G04 final decision (idea/plan/assessment updates + 40-field evidence record) — compare records with tables FIRST | not started |
+| S2d | G04 committee voting on Oracle: V003 voting tables replaced by 4 tables mirroring the envelopes (ACR-S2d) | **DONE** — conformance 60/60 PASS on InMemory and Oracle (PR merge: check git) |
+| S2e | G04 final decision on Oracle: new 41-column immutable evidence table (20 tables), idea+plan+assessment+evidence+audit+outbox+idempotency in one transaction (ACR-S2e) | **FILES READY — waiting for `dev_rebuild_all.sql` + conformance (expect 78 PASS per backend)** |
 | S2f | Portfolio, Execution, Benefit, Knowledge stores (V004) — compare records with tables FIRST | not started |
 | S3 | Outbox dispatcher | not started |
 | S4 | Bind g01.decide, g02.decide, rewards.decide to gateway + tests | not started |
@@ -29,6 +29,7 @@
 Oracle AI Database 26ai Free 23.26.3, PDB FREEPDB1, accounts EIMS_OWNER / EIMS_APP.
 
 ## Decisions log
+- ACR-S2e: final decision evidence is an immutable per-assessment table; idea UPDATE guarded by revision AND technical state-mutation version; assessment/plan rows locked FOR UPDATE; ValidateCommit made public static; MatchesCurrentRequest re-implemented against DB state (only duplicated rule).
 - ACR-S2d: votes reference the G04 assessment as the aggregate; committee snapshot/state/vote revision/effective vote are four tables (19 tables total); assessment row locked FOR UPDATE during a vote; ValidateCommitShape and SameOptionalSnapshot made public static.
 - ACR-S2c: snapshot is per assignment (not per plan/type); G04 assessment table mirrors G04AssessmentEnvelope; plan row is locked FOR UPDATE during completion; ValidateEvaluationCompletionShape made public static.
 - ACR-S2b: V002 was realigned field-by-field with EvaluationPlanEnvelope/EvaluationAssignmentEnvelope; state vocabularies are owned by code, not DB CHECKs (READY_FOR_G04_DECISION would have been rejected).
