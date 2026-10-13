@@ -250,6 +250,66 @@ foreach (var (name, create) in backends)
             && (await gx.B.Voting.GetEffectiveVotesAsync(aidX)).Count == 0
             && await gx.B.VotingCounts(aidX) == (0, 0, 0, 0));
     }
+
+    // 19) G04 final decision: idea + plan + assessment + immutable evidence + audit + outbox + idempotency in one transaction
+    var fd = await SetupFinalAsync(create);
+    var fAid = fd.Assessment.AssessmentId;
+    var fBefore = await fd.F.Counts(fd.Idea.AggregateId, fAid);
+    var (freq1, fcom1) = BuildFinal(fd.Idea, fd.Plan, fd.Assessment, "kf1", "FPF1", "CF1", false);
+    var fres1 = await fd.F.Store.CommitFinalDecisionAsync(freq1, fcom1);
+    Check($"{name}: final decision commit succeeds", fres1.Allowed && fres1.Code == "P1_G04_FINAL_DECISION_COMMITTED" && fres1.NewVersion == fd.Idea.Version);
+    Check($"{name}: idea reads back field-for-field after the decision", await fd.F.Store.GetIdeaAsync(fd.Idea.AggregateId) == fcom1.IdeaAfter);
+    Check($"{name}: plan reads back field-for-field after the decision", await fd.F.Store.GetPlanAsync(fd.Plan.PlanId) == fcom1.PlanAfter);
+    Check($"{name}: assessment reads back DECIDED field-for-field", await fd.F.Store.GetAssessmentAsync(fAid) == fcom1.AssessmentAfter);
+    Check($"{name}: 41-field decision evidence reads back field-for-field", await fd.F.Evidence(fAid) == fcom1.Evidence);
+    Check($"{name}: decision evidence delta = 1 audit, 1 outbox, 1 idempotency, 1 evidence",
+        Delta(fBefore, await fd.F.Counts(fd.Idea.AggregateId, fAid)) == (1, 1, 1, 1));
+    var freplay = await fd.F.Store.CommitFinalDecisionAsync(freq1, fcom1);
+    Check($"{name}: final decision replay is idempotent", freplay.IdempotentReplay && !freplay.StateMutated);
+    var (freq2, fcom2) = BuildFinal(fd.Idea, fd.Plan, fd.Assessment, "kf2", "FPF2", "CF2", false);
+    var fstale = await fd.F.Store.CommitFinalDecisionAsync(freq2, fcom2);
+    Check($"{name}: second decision on a decided assessment -> 409 P1_G04_FINAL_CONCURRENT_CONFLICT",
+        fstale.HttpStatus == 409 && fstale.Code == "P1_G04_FINAL_CONCURRENT_CONFLICT");
+    var (freq3, fcom3) = BuildFinal(fd.Idea, fd.Plan, fd.Assessment, "kf1", "OTHER-FP", "CF3", false);
+    var fconf = await fd.F.Store.CommitFinalDecisionAsync(freq3, fcom3);
+    Check($"{name}: key reuse with different fingerprint -> 409 P1_IDEMPOTENCY_CONFLICT", fconf.HttpStatus == 409 && fconf.Code == "P1_IDEMPOTENCY_CONFLICT");
+
+    // 20) an invalid commit (technical version not advanced by exactly 1) throws before any write
+    var fi = await SetupFinalAsync(create);
+    var (freqI, fcomI) = BuildFinal(fi.Idea, fi.Plan, fi.Assessment, "kfi", "FPFI", "CFI", true);
+    string? invalidMessage = null;
+    try { await fi.F.Store.CommitFinalDecisionAsync(freqI, fcomI); }
+    catch (InvalidOperationException ex) { invalidMessage = ex.Message; }
+    Check($"{name}: invalid technical version -> P1_G04_FINAL_TECHNICAL_VERSION_INVALID and nothing written",
+        invalidMessage == "P1_G04_FINAL_TECHNICAL_VERSION_INVALID"
+        && await fi.F.Store.GetIdeaAsync(fi.Idea.AggregateId) == fi.Idea
+        && await fi.F.Store.GetAssessmentAsync(fi.Assessment.AssessmentId) == fi.Assessment);
+
+    // 21) rollback at every final-decision fault point
+    var finalPoints = new[]
+    {
+        G04FinalDecisionPersistenceFaultPoint.AfterIdeaStaged, G04FinalDecisionPersistenceFaultPoint.AfterPlanStaged,
+        G04FinalDecisionPersistenceFaultPoint.AfterAssessmentStaged, G04FinalDecisionPersistenceFaultPoint.AfterEvidenceStaged,
+        G04FinalDecisionPersistenceFaultPoint.AfterAuditStaged, G04FinalDecisionPersistenceFaultPoint.AfterOutboxStaged,
+        G04FinalDecisionPersistenceFaultPoint.AfterIdempotencyStaged, G04FinalDecisionPersistenceFaultPoint.BeforeCommitPublish
+    };
+    foreach (var fp in finalPoints)
+    {
+        var fx = await SetupFinalAsync(create);
+        var fxBefore = await fx.F.Counts(fx.Idea.AggregateId, fx.Assessment.AssessmentId);
+        var (freqX, fcomX) = BuildFinal(fx.Idea, fx.Plan, fx.Assessment, "kfx", "FPFX", "CFX", false);
+        fx.F.SetFault(fp);
+        var threwF = false;
+        try { await fx.F.Store.CommitFinalDecisionAsync(freqX, fcomX); }
+        catch (PersistenceAtomicityException) { threwF = true; }
+        fx.F.SetFault(G04FinalDecisionPersistenceFaultPoint.None);
+        Check($"{name}: final-decision fault at {fp} -> full rollback",
+            threwF && await fx.F.Store.GetIdeaAsync(fx.Idea.AggregateId) == fx.Idea
+            && await fx.F.Store.GetPlanAsync(fx.Plan.PlanId) == fx.Plan
+            && await fx.F.Store.GetAssessmentAsync(fx.Assessment.AssessmentId) == fx.Assessment
+            && await fx.F.Evidence(fx.Assessment.AssessmentId) is null
+            && Delta(fxBefore, await fx.F.Counts(fx.Idea.AggregateId, fx.Assessment.AssessmentId)) == (0, 0, 0, 0));
+    }
 }
 
 Console.WriteLine(failures == 0 ? "ALL PASS" : $"{failures} FAILURE(S)");
@@ -395,6 +455,48 @@ static (G04VoteRequest Request, G04VoteCommit Commit) BuildVote(
         new G04VoteCommit(snapshot, state, revision, effectiveAfter, audit, events));
 }
 
+async Task<(Backend B, AggregateSnapshot Idea, EvaluationPlanEnvelope Plan, G04AssessmentEnvelope Assessment, FinalHandle F)> SetupFinalAsync(
+    Func<AggregateSnapshot, Task<Backend>> factory)
+{
+    var g = await SetupG04Async(factory);
+    var plan = (await g.B.Store.GetEvaluationPlanAsync(g.Assessment.PlanId))!;
+    return (g.B, g.Idea, plan, g.Assessment, g.B.MakeFinal(g.Idea, plan, g.Assessment));
+}
+
+static (int, int, int, int) Delta((int, int, int, int) before, (int, int, int, int) after) =>
+    (after.Item1 - before.Item1, after.Item2 - before.Item2, after.Item3 - before.Item3, after.Item4 - before.Item4);
+
+static (G04FinalDecisionRequest Request, G04FinalDecisionCommit Commit) BuildFinal(
+    AggregateSnapshot idea, EvaluationPlanEnvelope plan, G04AssessmentEnvelope assessment,
+    string key, string fingerprint, string corr, bool breakTechnicalVersion)
+{
+    const string command = "g04.final-decision";
+    var now = DateTimeOffset.UtcNow;
+    var ts = new DateTimeOffset(now.Ticks - now.Ticks % 10, TimeSpan.Zero);
+    var roles = new[] { "G04_COMMITTEE_CHAIR" };
+    var actor = new AuthorityActor("P-CHAIR", "DOMAIN\\chair", "TEST", "ASG-CHAIR", roles, new[] { "SCOPE-A" });
+    var tag = key + "-" + assessment.AssessmentId;
+    var technical = idea.StateMutationVersion ?? idea.Version;
+    var ideaAfter = idea with { State = "APPROVED", StateMutationVersion = breakTechnicalVersion ? technical : technical + 1 };
+    var planAfter = plan with { PlanVersion = plan.PlanVersion + 1, State = "DECIDED" };
+    var assessmentAfter = assessment with { State = "DECIDED", DecisionVersion = assessment.DecisionVersion + 1 };
+    var decisionId = "GD-" + tag;
+    var evidence = new G04FinalDecisionEvidenceEnvelope(
+        decisionId, assessment.AssessmentId, plan.PlanId, idea.AggregateId, idea.Version, ideaAfter.Version, technical,
+        ideaAfter.StateMutationVersion ?? ideaAfter.Version, assessment.DecisionVersion, assessmentAfter.DecisionVersion,
+        "APPROVED", "R-1", "Decision comment text", null, "P-CHAIR", "ASG-CHAIR", "DOMAIN\\chair", "TEST",
+        "G04_COMMITTEE", "COMMITTEE", "MAJORITY", "GP-1", "1.0", "DP-1", "1.0", "{\"p\":1}", new string('c', 64), "RS-1.0", "HC-1",
+        80, 90, "{\"checks\":\"ok\"}", "none", null, null, null, null, "PASS", null, ts, corr);
+    var audit = new AuditEnvelope("AFD-" + tag, "P-CHAIR", "DOMAIN\\chair", "TEST", roles, "ASG-CHAIR", idea.AggregateId, idea.Version,
+        "RS-1.0", ts, corr, command);
+    var outbox = new OutboxEnvelope("OBFD-" + tag, "G04FinalDecisionRecorded.v1", idea.AggregateId, idea.Version, corr, ts,
+        new Dictionary<string, string> { ["decisionEvidenceId"] = decisionId });
+    var cmd = new G04FinalDecisionCommand(idea.AggregateId, idea.Version, technical, plan.PlanId, plan.PlanVersion,
+        assessment.AssessmentId, assessment.DecisionVersion, "APPROVED", "R-1", "Decision comment text", null, key, corr);
+    return (new G04FinalDecisionRequest(cmd, actor, idea, plan, assessment, fingerprint),
+        new G04FinalDecisionCommit(ideaAfter, planAfter, assessmentAfter, evidence, audit, outbox));
+}
+
 static (MutationRequest Request, MutationCommit Commit) BuildWithPlan(
     string id, long before, string key, string fingerprint, string corr, string planId)
 {
@@ -411,6 +513,12 @@ static (MutationRequest Request, MutationCommit Commit) BuildWithPlan(
     return (request, commit with { EvaluationPlan = plan, EvaluationAssignments = assignments });
 }
 
+internal sealed record FinalHandle(
+    IG04FinalDecisionStore Store,
+    Action<G04FinalDecisionPersistenceFaultPoint> SetFault,
+    Func<string, string, Task<(int, int, int, int)>> Counts,
+    Func<string, Task<G04FinalDecisionEvidenceEnvelope?>> Evidence);
+
 internal sealed class Backend
 {
     public required IEvaluationWorkflowStore Store { get; init; }
@@ -420,6 +528,7 @@ internal sealed class Backend
     public required IG04VotingStore Voting { get; init; }
     public required Action<G04VotingPersistenceFaultPoint> SetVotingFault { get; init; }
     public required Func<string, Task<(int, int, int, int)>> VotingCounts { get; init; }
+    public required Func<AggregateSnapshot, EvaluationPlanEnvelope, G04AssessmentEnvelope, FinalHandle> MakeFinal { get; init; }
 
     public static Backend InMemory(AggregateSnapshot seed)
     {
@@ -427,6 +536,13 @@ internal sealed class Backend
         var v = new G04VotingTransactionalStore(s);
         return new Backend
         {
+            MakeFinal = (idea, plan, assessment) =>
+            {
+                var f = new G04FinalDecisionTransactionalStore(idea, plan, assessment);
+                return new FinalHandle(f, p => f.FaultPoint = p,
+                    (_, _) => Task.FromResult((f.FinalDecisionAuditLog.Count, f.FinalDecisionOutbox.Count, f.FinalDecisionIdempotencyRecords.Count, f.FinalDecisionEvidence.Count)),
+                    _ => Task.FromResult(f.FinalDecisionEvidence.FirstOrDefault()));
+            },
             Voting = v,
             SetVotingFault = p => v.FaultPoint = p,
             VotingCounts = id => Task.FromResult((
@@ -451,6 +567,13 @@ internal sealed class Backend
         await s.SeedAggregateAsync(seed);
         return new Backend
         {
+            MakeFinal = (_, _, _) => new FinalHandle(s, p => s.FinalDecisionFaultPoint = p,
+                async (ideaId, assessmentId) =>
+                {
+                    var c = await s.CountEvidenceAsync(ideaId);
+                    return (c.Audit, c.Outbox, c.Idempotency, await s.CountFinalDecisionEvidenceAsync(assessmentId));
+                },
+                assessmentId => s.GetFinalDecisionEvidenceAsync(assessmentId)),
             Voting = s,
             SetVotingFault = p => s.VotingFaultPoint = p,
             VotingCounts = async id =>

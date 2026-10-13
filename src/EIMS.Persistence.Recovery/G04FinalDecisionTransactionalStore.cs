@@ -198,7 +198,7 @@ public sealed class G04FinalDecisionTransactionalStore : IG04FinalDecisionStore
             && string.Equals(_assessment.State, request.Assessment.State, StringComparison.Ordinal);
     }
 
-    private static void ValidateCommit(G04FinalDecisionRequest request, G04FinalDecisionCommit commit)
+    public static void ValidateCommit(G04FinalDecisionRequest request, G04FinalDecisionCommit commit)
     {
         var beforeTechnical = request.Idea.StateMutationVersion ?? request.Idea.Version;
         var afterTechnical = commit.IdeaAfter.StateMutationVersion ?? commit.IdeaAfter.Version;
