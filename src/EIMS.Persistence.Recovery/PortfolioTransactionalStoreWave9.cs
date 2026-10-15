@@ -191,7 +191,7 @@ public sealed class PortfolioTransactionalStoreWave9 : IPortfolioWave9Store
         }
     }
 
-    private static void ValidateEligibilityCommit(
+    public static void ValidateEligibilityCommit(
         PortfolioEligibilityRequestWave9 request,
         PortfolioCommitWave9 commit)
     {
@@ -210,7 +210,7 @@ public sealed class PortfolioTransactionalStoreWave9 : IPortfolioWave9Store
             throw new InvalidOperationException("P1_PORTFOLIO_ELIGIBILITY_EVENTS_INVALID");
     }
 
-    private static void ValidateCommandCommit(
+    public static void ValidateCommandCommit(
         PortfolioCommandRequestWave9 request,
         PortfolioCommitWave9 commit)
     {

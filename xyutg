@@ -1,0 +1,14 @@
+warning: in the working copy of 'PROGRESS.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'database/oracle/99_dev_reset.sql', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'database/oracle/migrations/V004__portfolio_execution_benefit_knowledge.sql', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'database/oracle/verify/verify_conventions.sql', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'database/oracle/verify/verify_waves_9_13.sql', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'tests/EIMS.P2.OracleConformance.Tests/Program.cs', LF will be replaced by CRLF the next time Git touches it
+ PROGRESS.md                                        |   7 [32m+[m[31m-[m
+ database/oracle/99_dev_reset.sql                   |   1 [32m+[m
+ ...V004__portfolio_execution_benefit_knowledge.sql | 211 [32m++++++++++[m[31m-----------[m
+ database/oracle/verify/verify_conventions.sql      |   4 [32m+[m[31m-[m
+ database/oracle/verify/verify_waves_9_13.sql       | 188 [32m++++++[m[31m------------[m
+ .../PortfolioTransactionalStoreWave9.cs            |   4 [32m+[m[31m-[m
+ tests/EIMS.P2.OracleConformance.Tests/Program.cs   | 176 [32m+++++++++++++++++[m
+ 7 files changed, 338 insertions(+), 253 deletions(-)

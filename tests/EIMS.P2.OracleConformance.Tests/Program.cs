@@ -310,6 +310,123 @@ foreach (var (name, create) in backends)
             && await fx.F.Evidence(fx.Assessment.AssessmentId) is null
             && Delta(fxBefore, await fx.F.Counts(fx.Idea.AggregateId, fx.Assessment.AssessmentId)) == (0, 0, 0, 0));
     }
+
+    // 22) Portfolio thread: eligibility creates the candidate, four commands grow the thread to the execution hand-off
+    var pb = await create(Seed(NewId()));
+    var pf = pb.MakePortfolio();
+    var pIdea = NewId();
+    var pCand = "PC-" + pIdea;
+    var pBefore = await pf.Counts(pIdea, pCand);
+    var (ereq, ecom) = BuildEligibility(pIdea, 2, pCand, "CPE", "FPE1");
+    var eres = await pf.Store.CommitEligibilityAsync(ereq, ecom);
+    Check($"{name}: eligibility creates the portfolio candidate", eres.Allowed && eres.Code == "P1_PORTFOLIO_CANDIDATE_CREATED" && eres.NewVersion == 1);
+    Check($"{name}: thread reads back by candidate field-for-field", await pf.Store.GetByCandidateAsync(pCand) == ecom.After);
+    Check($"{name}: thread reads back by idea version field-for-field", await pf.Store.GetByIdeaVersionAsync(pIdea, 2) == ecom.After);
+    Check($"{name}: eligibility evidence delta = 1 audit, 2 outbox, 1 idempotency", Delta(pBefore, await pf.Counts(pIdea, pCand)) == (1, 2, 1, 0));
+    var ereplay = await pf.Store.CommitEligibilityAsync(ereq, ecom);
+    Check($"{name}: eligibility replay is idempotent", ereplay.IdempotentReplay && !ereplay.StateMutated);
+    var (ereq2, ecom2) = BuildEligibility(pIdea, 2, pCand, "CPE2", "FPE2");
+    var ealready = await pf.Store.CommitEligibilityAsync(ereq2, ecom2);
+    Check($"{name}: second eligibility for the same idea version is already materialized",
+        ealready.Allowed && !ealready.StateMutated && ealready.Code == "P1_PORTFOLIO_ELIGIBILITY_ALREADY_MATERIALIZED");
+
+    var thread = ecom.After;
+    PortfolioCommandRequestWave9? firstReq = null;
+    PortfolioCommitWave9? firstCom = null;
+    var steps = new (string Name, Func<PortfolioThreadEnvelope, DateTimeOffset, PortfolioThreadEnvelope> Advance)[]
+    {
+        ("portfolio.assign", (x, at) => x with
+        {
+            Candidate = x.Candidate with { State = "ASSIGNED_CANDIDATE", Version = x.Candidate.Version + 1 },
+            Assignment = new PortfolioAssignmentEnvelope("PA-" + x.Candidate.CandidateId, x.Candidate.CandidateId, "PF-1", "ASSIGNED", 1, at, "CPS")
+        }),
+        ("portfolio.decide-membership", (x, at) => x with
+        {
+            Candidate = x.Candidate with { State = "MEMBER", Version = x.Candidate.Version + 1 },
+            Membership = new PortfolioMembershipEnvelope("PM-" + x.Candidate.CandidateId, x.Candidate.CandidateId, "PA-" + x.Candidate.CandidateId, "PF-1", "ACCEPTED", 1, at, "P1", "ASG-1", "CPS")
+        }),
+        ("portfolio.recommend-execution", (x, at) => x with
+        {
+            Candidate = x.Candidate with { State = "RECOMMENDED", Version = x.Candidate.Version + 1 },
+            Recommendation = new ExecutionRecommendationEnvelope("PR-" + x.Candidate.CandidateId, x.Candidate.CandidateId, "PM-" + x.Candidate.CandidateId, "APPROVED", 1, "GOV-1", true, "BASE-1", at, "CPS")
+        }),
+        ("portfolio.handoff-execution", (x, at) => x with
+        {
+            Candidate = x.Candidate with { State = "HANDED_OFF", Version = x.Candidate.Version + 1 },
+            Execution = new ExecutionHandoffEnvelope("PX-" + x.Candidate.CandidateId, "PR-" + x.Candidate.CandidateId, x.Candidate.CandidateId, x.Candidate.IdeaId, x.Candidate.ApprovedIdeaVersion, "HANDOFF_PENDING", 1, at, "CPS")
+        })
+    };
+    var stepNo = 0;
+    foreach (var step in steps)
+    {
+        stepNo++;
+        var (sreq, scom) = BuildPortfolioCommand(thread, step.Name, "kps" + stepNo, "FPS" + stepNo, "CPS" + stepNo, step.Advance, false);
+        var sres = await pf.Store.CommitPortfolioCommandAsync(sreq, scom);
+        Check($"{name}: portfolio command '{step.Name}' commits and the thread reads back field-for-field",
+            sres.Allowed && sres.Code == "P1_PORTFOLIO_COMMAND_COMMITTED" && await pf.Store.GetByCandidateAsync(pCand) == scom.After);
+        if (stepNo == 1) { firstReq = sreq; firstCom = scom; }
+        thread = scom.After;
+    }
+    var preplay = await pf.Store.CommitPortfolioCommandAsync(firstReq!, firstCom!);
+    Check($"{name}: portfolio command replay is idempotent", preplay.IdempotentReplay && !preplay.StateMutated);
+    var (stReq, stCom) = BuildPortfolioCommand(ecom.After, "portfolio.assign", "kps-stale", "FPS-stale", "CPS-stale", steps[0].Advance, false);
+    var pstale = await pf.Store.CommitPortfolioCommandAsync(stReq, stCom);
+    Check($"{name}: stale thread version -> 409 P1_PORTFOLIO_CONCURRENT_CONFLICT", pstale.HttpStatus == 409 && pstale.Code == "P1_PORTFOLIO_CONCURRENT_CONFLICT");
+    var (kReq, kCom) = BuildPortfolioCommand(ecom.After, "portfolio.assign", "kps1", "OTHER-FP", "CPS-key", steps[0].Advance, false);
+    var pkey = await pf.Store.CommitPortfolioCommandAsync(kReq, kCom);
+    Check($"{name}: portfolio key reuse with different fingerprint -> 409 P1_IDEMPOTENCY_CONFLICT", pkey.HttpStatus == 409 && pkey.Code == "P1_IDEMPOTENCY_CONFLICT");
+
+    var invIdea = NewId();
+    var invCand = "PC-" + invIdea;
+    var pi = pb.MakePortfolio();
+    var (ireq, icom) = BuildEligibility(invIdea, 1, invCand, "CPI", "FPI1");
+    await pi.Store.CommitEligibilityAsync(ireq, icom);
+    var (breq, bcom) = BuildPortfolioCommand(icom.After, "portfolio.assign", "kpi", "FPI2", "CPI2", steps[0].Advance, true);
+    string? portfolioInvalid = null;
+    try { await pi.Store.CommitPortfolioCommandAsync(breq, bcom); }
+    catch (InvalidOperationException ex) { portfolioInvalid = ex.Message; }
+    Check($"{name}: thread version not advanced -> P1_PORTFOLIO_THREAD_VERSION_INVALID and nothing written",
+        portfolioInvalid == "P1_PORTFOLIO_THREAD_VERSION_INVALID" && await pi.Store.GetByCandidateAsync(invCand) == icom.After);
+
+    // 23) rollback at every portfolio fault point (eligibility path and command path)
+    var portfolioPoints = new[]
+    {
+        PortfolioWave9PersistenceFaultPoint.AfterThreadStaged, PortfolioWave9PersistenceFaultPoint.AfterAuditStaged,
+        PortfolioWave9PersistenceFaultPoint.AfterOutboxStaged, PortfolioWave9PersistenceFaultPoint.AfterIdempotencyStaged,
+        PortfolioWave9PersistenceFaultPoint.BeforeCommitPublish
+    };
+    foreach (var pp in portfolioPoints)
+    {
+        var fIdea = NewId();
+        var fCand = "PC-" + fIdea;
+        var fh = pb.MakePortfolio();
+        var fBase = await fh.Counts(fIdea, fCand);
+        var (feReq, feCom) = BuildEligibility(fIdea, 3, fCand, "CPF", "FPF1");
+        fh.SetFault(pp);
+        var threwE2 = false;
+        try { await fh.Store.CommitEligibilityAsync(feReq, feCom); }
+        catch (PersistenceAtomicityException) { threwE2 = true; }
+        fh.SetFault(PortfolioWave9PersistenceFaultPoint.None);
+        Check($"{name}: eligibility fault at {pp} -> full rollback",
+            threwE2 && await fh.Store.GetByCandidateAsync(fCand) is null && Delta(fBase, await fh.Counts(fIdea, fCand)) == (0, 0, 0, 0));
+    }
+    foreach (var pp in portfolioPoints)
+    {
+        var cIdea = NewId();
+        var cCand = "PC-" + cIdea;
+        var ch = pb.MakePortfolio();
+        var (ceReq, ceCom) = BuildEligibility(cIdea, 4, cCand, "CPC", "FPC1");
+        await ch.Store.CommitEligibilityAsync(ceReq, ceCom);
+        var cBase = await ch.Counts(cIdea, cCand);
+        var (ccReq, ccCom) = BuildPortfolioCommand(ceCom.After, "portfolio.assign", "kpc", "FPC2", "CPC2", steps[0].Advance, false);
+        ch.SetFault(pp);
+        var threwC = false;
+        try { await ch.Store.CommitPortfolioCommandAsync(ccReq, ccCom); }
+        catch (PersistenceAtomicityException) { threwC = true; }
+        ch.SetFault(PortfolioWave9PersistenceFaultPoint.None);
+        Check($"{name}: portfolio command fault at {pp} -> full rollback",
+            threwC && await ch.Store.GetByCandidateAsync(cCand) == ceCom.After && Delta(cBase, await ch.Counts(cIdea, cCand)) == (0, 0, 0, 0));
+    }
 }
 
 Console.WriteLine(failures == 0 ? "ALL PASS" : $"{failures} FAILURE(S)");
@@ -497,6 +614,46 @@ static (G04FinalDecisionRequest Request, G04FinalDecisionCommit Commit) BuildFin
         new G04FinalDecisionCommit(ideaAfter, planAfter, assessmentAfter, evidence, audit, outbox));
 }
 
+static (PortfolioEligibilityRequestWave9 Request, PortfolioCommitWave9 Commit) BuildEligibility(
+    string ideaId, long approvedVersion, string candidateId, string corr, string fingerprint)
+{
+    const string command = "portfolio.evaluate-eligibility-from-approved-idea";
+    var now = DateTimeOffset.UtcNow;
+    var ts = new DateTimeOffset(now.Ticks - now.Ticks % 10, TimeSpan.Zero);
+    var tag = candidateId + "-" + fingerprint;
+    var trigger = new PortfolioEligibilityTrigger("IdeaApproved.v1", ideaId, approvedVersion, "APPROVED", 0, false, corr);
+    var candidate = new PortfolioCandidateEnvelope(candidateId, ideaId, approvedVersion, "UNASSIGNED_CANDIDATE", 1, ts, corr);
+    var thread = new PortfolioThreadEnvelope(candidate, null, null, null, null, 1);
+    var audit = new AuditEnvelope("APE-" + tag, "SYSTEM", "SYSTEM", "SYSTEM", new[] { "SYSTEM" }, "ASG-SYS", candidateId, 1, "RS-1.0", ts, corr, command);
+    var events = new[]
+    {
+        new OutboxEnvelope("OBPE1-" + tag, "PortfolioEligibilityEvaluated.v1", candidateId, 1, corr, ts, new Dictionary<string, string> { ["k"] = "v" }),
+        new OutboxEnvelope("OBPE2-" + tag, "PortfolioIntakeCandidateCreated.v1", candidateId, 1, corr, ts, new Dictionary<string, string> { ["k"] = "v" })
+    };
+    return (new PortfolioEligibilityRequestWave9(trigger, fingerprint), new PortfolioCommitWave9(thread, audit, events));
+}
+
+static (PortfolioCommandRequestWave9 Request, PortfolioCommitWave9 Commit) BuildPortfolioCommand(
+    PortfolioThreadEnvelope before, string commandName, string key, string fingerprint, string corr,
+    Func<PortfolioThreadEnvelope, DateTimeOffset, PortfolioThreadEnvelope> advance, bool keepThreadVersion)
+{
+    var now = DateTimeOffset.UtcNow;
+    var ts = new DateTimeOffset(now.Ticks - now.Ticks % 10, TimeSpan.Zero);
+    var candidateId = before.Candidate.CandidateId;
+    var roles = new[] { "PORTFOLIO_MANAGER" };
+    var after = advance(before, ts) with { ThreadVersion = before.ThreadVersion + (keepThreadVersion ? 0 : 1) };
+    var tag = key + "-" + candidateId;
+    var command = new PortfolioCommandWave9(commandName, candidateId, before.ThreadVersion, key, corr);
+    var actor = new AuthorityActor("P1", "DOMAIN\\p1", "TEST", "ASG-1", roles, new[] { "SCOPE-A" });
+    var policy = new CommandPolicy(commandName, roles, new[] { before.Candidate.State }, "RS-1.0", "PortfolioCommandApplied");
+    var audit = new AuditEnvelope("APC-" + tag, "P1", "DOMAIN\\p1", "TEST", roles, "ASG-1", candidateId, after.ThreadVersion, "RS-1.0", ts, corr, commandName);
+    var events = new[]
+    {
+        new OutboxEnvelope("OBPC-" + tag, "PortfolioCommandApplied.v1", candidateId, after.ThreadVersion, corr, ts, new Dictionary<string, string> { ["k"] = "v" })
+    };
+    return (new PortfolioCommandRequestWave9(command, actor, before, policy, fingerprint), new PortfolioCommitWave9(after, audit, events));
+}
+
 static (MutationRequest Request, MutationCommit Commit) BuildWithPlan(
     string id, long before, string key, string fingerprint, string corr, string planId)
 {
@@ -512,6 +669,11 @@ static (MutationRequest Request, MutationCommit Commit) BuildWithPlan(
     };
     return (request, commit with { EvaluationPlan = plan, EvaluationAssignments = assignments });
 }
+
+internal sealed record PortfolioHandle(
+    IPortfolioWave9Store Store,
+    Action<PortfolioWave9PersistenceFaultPoint> SetFault,
+    Func<string, string, Task<(int, int, int, int)>> Counts);
 
 internal sealed record FinalHandle(
     IG04FinalDecisionStore Store,
@@ -529,6 +691,7 @@ internal sealed class Backend
     public required Action<G04VotingPersistenceFaultPoint> SetVotingFault { get; init; }
     public required Func<string, Task<(int, int, int, int)>> VotingCounts { get; init; }
     public required Func<AggregateSnapshot, EvaluationPlanEnvelope, G04AssessmentEnvelope, FinalHandle> MakeFinal { get; init; }
+    public required Func<PortfolioHandle> MakePortfolio { get; init; }
 
     public static Backend InMemory(AggregateSnapshot seed)
     {
@@ -536,6 +699,12 @@ internal sealed class Backend
         var v = new G04VotingTransactionalStore(s);
         return new Backend
         {
+            MakePortfolio = () =>
+            {
+                var ps = new PortfolioTransactionalStoreWave9();
+                return new PortfolioHandle(ps, p => ps.FaultPoint = p,
+                    (_, _) => Task.FromResult((ps.PortfolioAuditLog.Count, ps.PortfolioOutbox.Count, ps.PortfolioIdempotencyRecords.Count, 0)));
+            },
             MakeFinal = (idea, plan, assessment) =>
             {
                 var f = new G04FinalDecisionTransactionalStore(idea, plan, assessment);
@@ -567,6 +736,13 @@ internal sealed class Backend
         await s.SeedAggregateAsync(seed);
         return new Backend
         {
+            MakePortfolio = () => new PortfolioHandle(s, p => s.PortfolioFaultPoint = p,
+                async (ideaId, candidateId) =>
+                {
+                    var byCandidate = await s.CountEvidenceAsync(candidateId);
+                    var byIdea = await s.CountEvidenceAsync(ideaId);
+                    return (byCandidate.Audit, byCandidate.Outbox, byCandidate.Idempotency + byIdea.Idempotency, 0);
+                }),
             MakeFinal = (_, _, _) => new FinalHandle(s, p => s.FinalDecisionFaultPoint = p,
                 async (ideaId, assessmentId) =>
                 {
