@@ -1,4 +1,4 @@
-using EIMS.Authority.Recovery;
+﻿using EIMS.Authority.Recovery;
 
 namespace EIMS.Persistence.Recovery;
 
@@ -191,7 +191,7 @@ public sealed class PortfolioTransactionalStoreWave9 : IPortfolioWave9Store
         }
     }
 
-    private static void ValidateEligibilityCommit(
+    public static void ValidateEligibilityCommit(
         PortfolioEligibilityRequestWave9 request,
         PortfolioCommitWave9 commit)
     {
@@ -210,7 +210,7 @@ public sealed class PortfolioTransactionalStoreWave9 : IPortfolioWave9Store
             throw new InvalidOperationException("P1_PORTFOLIO_ELIGIBILITY_EVENTS_INVALID");
     }
 
-    private static void ValidateCommandCommit(
+    public static void ValidateCommandCommit(
         PortfolioCommandRequestWave9 request,
         PortfolioCommitWave9 commit)
     {
@@ -237,3 +237,4 @@ public sealed class PortfolioTransactionalStoreWave9 : IPortfolioWave9Store
     private static string IdeaVersionKey(string ideaId, long version) => $"{ideaId}\u001f{version}";
     private static string IdemKey(string command, string aggregate, string key) => $"{command}\u001f{aggregate}\u001f{key}";
 }
+

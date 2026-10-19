@@ -230,7 +230,7 @@ public sealed class BenefitTransactionalStoreWave11 : IBenefitWave11Store
         }
     }
 
-    private static void ValidateCommit(BenefitCommandRequestWave11 request, BenefitCommitWave11 commit)
+    public static void ValidateCommit(BenefitCommandRequestWave11 request, BenefitCommitWave11 commit)
     {
         var before = request.Before;
         var after = commit.After;

@@ -310,6 +310,347 @@ foreach (var (name, create) in backends)
             && await fx.F.Evidence(fx.Assessment.AssessmentId) is null
             && Delta(fxBefore, await fx.F.Counts(fx.Idea.AggregateId, fx.Assessment.AssessmentId)) == (0, 0, 0, 0));
     }
+
+    // 22) Portfolio thread: eligibility creates the candidate, four commands grow the thread to the execution hand-off
+    var pb = await create(Seed(NewId()));
+    var pf = pb.MakePortfolio();
+    var pIdea = NewId();
+    var pCand = "PC-" + pIdea;
+    var pBefore = await pf.Counts(pIdea, pCand);
+    var (ereq, ecom) = BuildEligibility(pIdea, 2, pCand, "CPE", "FPE1");
+    var eres = await pf.Store.CommitEligibilityAsync(ereq, ecom);
+    Check($"{name}: eligibility creates the portfolio candidate", eres.Allowed && eres.Code == "P1_PORTFOLIO_CANDIDATE_CREATED" && eres.NewVersion == 1);
+    Check($"{name}: thread reads back by candidate field-for-field", await pf.Store.GetByCandidateAsync(pCand) == ecom.After);
+    Check($"{name}: thread reads back by idea version field-for-field", await pf.Store.GetByIdeaVersionAsync(pIdea, 2) == ecom.After);
+    Check($"{name}: eligibility evidence delta = 1 audit, 2 outbox, 1 idempotency", Delta(pBefore, await pf.Counts(pIdea, pCand)) == (1, 2, 1, 0));
+    var ereplay = await pf.Store.CommitEligibilityAsync(ereq, ecom);
+    Check($"{name}: eligibility replay is idempotent", ereplay.IdempotentReplay && !ereplay.StateMutated);
+    var (ereq2, ecom2) = BuildEligibility(pIdea, 2, pCand, "CPE2", "FPE2");
+    var ealready = await pf.Store.CommitEligibilityAsync(ereq2, ecom2);
+    Check($"{name}: second eligibility for the same idea version is already materialized",
+        ealready.Allowed && !ealready.StateMutated && ealready.Code == "P1_PORTFOLIO_ELIGIBILITY_ALREADY_MATERIALIZED");
+
+    var thread = ecom.After;
+    PortfolioCommandRequestWave9? firstReq = null;
+    PortfolioCommitWave9? firstCom = null;
+    var steps = new (string Name, Func<PortfolioThreadEnvelope, DateTimeOffset, PortfolioThreadEnvelope> Advance)[]
+    {
+        ("portfolio.assign", (x, at) => x with
+        {
+            Candidate = x.Candidate with { State = "ASSIGNED_CANDIDATE", Version = x.Candidate.Version + 1 },
+            Assignment = new PortfolioAssignmentEnvelope("PA-" + x.Candidate.CandidateId, x.Candidate.CandidateId, "PF-1", "ASSIGNED", 1, at, "CPS")
+        }),
+        ("portfolio.decide-membership", (x, at) => x with
+        {
+            Candidate = x.Candidate with { State = "MEMBER", Version = x.Candidate.Version + 1 },
+            Membership = new PortfolioMembershipEnvelope("PM-" + x.Candidate.CandidateId, x.Candidate.CandidateId, "PA-" + x.Candidate.CandidateId, "PF-1", "ACCEPTED", 1, at, "P1", "ASG-1", "CPS")
+        }),
+        ("portfolio.recommend-execution", (x, at) => x with
+        {
+            Candidate = x.Candidate with { State = "RECOMMENDED", Version = x.Candidate.Version + 1 },
+            Recommendation = new ExecutionRecommendationEnvelope("PR-" + x.Candidate.CandidateId, x.Candidate.CandidateId, "PM-" + x.Candidate.CandidateId, "APPROVED", 1, "GOV-1", true, "BASE-1", at, "CPS")
+        }),
+        ("portfolio.handoff-execution", (x, at) => x with
+        {
+            Candidate = x.Candidate with { State = "HANDED_OFF", Version = x.Candidate.Version + 1 },
+            Execution = new ExecutionHandoffEnvelope("PX-" + x.Candidate.CandidateId, "PR-" + x.Candidate.CandidateId, x.Candidate.CandidateId, x.Candidate.IdeaId, x.Candidate.ApprovedIdeaVersion, "HANDOFF_PENDING", 1, at, "CPS")
+        })
+    };
+    var stepNo = 0;
+    foreach (var step in steps)
+    {
+        stepNo++;
+        var (sreq, scom) = BuildPortfolioCommand(thread, step.Name, "kps" + stepNo, "FPS" + stepNo, "CPS" + stepNo, step.Advance, false);
+        var sres = await pf.Store.CommitPortfolioCommandAsync(sreq, scom);
+        Check($"{name}: portfolio command '{step.Name}' commits and the thread reads back field-for-field",
+            sres.Allowed && sres.Code == "P1_PORTFOLIO_COMMAND_COMMITTED" && await pf.Store.GetByCandidateAsync(pCand) == scom.After);
+        if (stepNo == 1) { firstReq = sreq; firstCom = scom; }
+        thread = scom.After;
+    }
+    var preplay = await pf.Store.CommitPortfolioCommandAsync(firstReq!, firstCom!);
+    Check($"{name}: portfolio command replay is idempotent", preplay.IdempotentReplay && !preplay.StateMutated);
+    var (stReq, stCom) = BuildPortfolioCommand(ecom.After, "portfolio.assign", "kps-stale", "FPS-stale", "CPS-stale", steps[0].Advance, false);
+    var pstale = await pf.Store.CommitPortfolioCommandAsync(stReq, stCom);
+    Check($"{name}: stale thread version -> 409 P1_PORTFOLIO_CONCURRENT_CONFLICT", pstale.HttpStatus == 409 && pstale.Code == "P1_PORTFOLIO_CONCURRENT_CONFLICT");
+    var (kReq, kCom) = BuildPortfolioCommand(ecom.After, "portfolio.assign", "kps1", "OTHER-FP", "CPS-key", steps[0].Advance, false);
+    var pkey = await pf.Store.CommitPortfolioCommandAsync(kReq, kCom);
+    Check($"{name}: portfolio key reuse with different fingerprint -> 409 P1_IDEMPOTENCY_CONFLICT", pkey.HttpStatus == 409 && pkey.Code == "P1_IDEMPOTENCY_CONFLICT");
+
+    var invIdea = NewId();
+    var invCand = "PC-" + invIdea;
+    var pi = pb.MakePortfolio();
+    var (ireq, icom) = BuildEligibility(invIdea, 1, invCand, "CPI", "FPI1");
+    await pi.Store.CommitEligibilityAsync(ireq, icom);
+    var (breq, bcom) = BuildPortfolioCommand(icom.After, "portfolio.assign", "kpi", "FPI2", "CPI2", steps[0].Advance, true);
+    string? portfolioInvalid = null;
+    try { await pi.Store.CommitPortfolioCommandAsync(breq, bcom); }
+    catch (InvalidOperationException ex) { portfolioInvalid = ex.Message; }
+    Check($"{name}: thread version not advanced -> P1_PORTFOLIO_THREAD_VERSION_INVALID and nothing written",
+        portfolioInvalid == "P1_PORTFOLIO_THREAD_VERSION_INVALID" && await pi.Store.GetByCandidateAsync(invCand) == icom.After);
+
+    // 23) rollback at every portfolio fault point (eligibility path and command path)
+    var portfolioPoints = new[]
+    {
+        PortfolioWave9PersistenceFaultPoint.AfterThreadStaged, PortfolioWave9PersistenceFaultPoint.AfterAuditStaged,
+        PortfolioWave9PersistenceFaultPoint.AfterOutboxStaged, PortfolioWave9PersistenceFaultPoint.AfterIdempotencyStaged,
+        PortfolioWave9PersistenceFaultPoint.BeforeCommitPublish
+    };
+    foreach (var pp in portfolioPoints)
+    {
+        var fIdea = NewId();
+        var fCand = "PC-" + fIdea;
+        var fh = pb.MakePortfolio();
+        var fBase = await fh.Counts(fIdea, fCand);
+        var (feReq, feCom) = BuildEligibility(fIdea, 3, fCand, "CPF", "FPF1");
+        fh.SetFault(pp);
+        var threwE2 = false;
+        try { await fh.Store.CommitEligibilityAsync(feReq, feCom); }
+        catch (PersistenceAtomicityException) { threwE2 = true; }
+        fh.SetFault(PortfolioWave9PersistenceFaultPoint.None);
+        Check($"{name}: eligibility fault at {pp} -> full rollback",
+            threwE2 && await fh.Store.GetByCandidateAsync(fCand) is null && Delta(fBase, await fh.Counts(fIdea, fCand)) == (0, 0, 0, 0));
+    }
+    foreach (var pp in portfolioPoints)
+    {
+        var cIdea = NewId();
+        var cCand = "PC-" + cIdea;
+        var ch = pb.MakePortfolio();
+        var (ceReq, ceCom) = BuildEligibility(cIdea, 4, cCand, "CPC", "FPC1");
+        await ch.Store.CommitEligibilityAsync(ceReq, ceCom);
+        var cBase = await ch.Counts(cIdea, cCand);
+        var (ccReq, ccCom) = BuildPortfolioCommand(ceCom.After, "portfolio.assign", "kpc", "FPC2", "CPC2", steps[0].Advance, false);
+        ch.SetFault(pp);
+        var threwC = false;
+        try { await ch.Store.CommitPortfolioCommandAsync(ccReq, ccCom); }
+        catch (PersistenceAtomicityException) { threwC = true; }
+        ch.SetFault(PortfolioWave9PersistenceFaultPoint.None);
+        Check($"{name}: portfolio command fault at {pp} -> full rollback",
+            threwC && await ch.Store.GetByCandidateAsync(cCand) == ceCom.After && Delta(cBase, await ch.Counts(cIdea, cCand)) == (0, 0, 0, 0));
+    }
+
+    // 24) Execution lifecycle on the shared execution row: five commands incl. completion review that creates the benefit obligation
+    var exh = await SetupExecutionAsync(create);
+    var execInitial = exh.Before;
+    var execThread = execInitial;
+    var execId = execInitial.Execution.ExecutionId;
+    ExecutionCommandRequestWave10? exFirstReq = null;
+    ExecutionCommitWave10? exFirstCom = null;
+    var exStepNo = 0;
+    foreach (var estep in ExecutionSteps())
+    {
+        exStepNo++;
+        var (xreq1, xcom1) = BuildExecutionCommand(execThread, estep.Name, "kx" + exStepNo, "FPEX" + exStepNo, "CEX" + exStepNo, estep.Advance, false);
+        var xres1 = await exh.H.Store.CommitExecutionCommandAsync(xreq1, xcom1);
+        Check($"{name}: execution command '{estep.Name}' commits and the thread reads back field-for-field",
+            xres1.Allowed && xres1.Code == "P1_EXECUTION_COMMAND_COMMITTED" && await exh.H.Store.GetExecutionAsync(execId) == xcom1.After);
+        if (exStepNo == 1) { exFirstReq = xreq1; exFirstCom = xcom1; }
+        execThread = xcom1.After;
+    }
+    var xreplay = await exh.H.Store.CommitExecutionCommandAsync(exFirstReq!, exFirstCom!);
+    Check($"{name}: execution command replay is idempotent", xreplay.IdempotentReplay && !xreplay.StateMutated);
+    var (xsReq, xsCom) = BuildExecutionCommand(execInitial, ExecutionSteps()[0].Name, "kx-stale", "FPEX-stale", "CEX-stale", ExecutionSteps()[0].Advance, false);
+    var xstale = await exh.H.Store.CommitExecutionCommandAsync(xsReq, xsCom);
+    Check($"{name}: stale execution version -> 409 P1_EXECUTION_CONCURRENT_CONFLICT", xstale.HttpStatus == 409 && xstale.Code == "P1_EXECUTION_CONCURRENT_CONFLICT");
+    var (xkReq, xkCom) = BuildExecutionCommand(execInitial, ExecutionSteps()[0].Name, "kx1", "OTHER-FP", "CEX-key", ExecutionSteps()[0].Advance, false);
+    var xkey = await exh.H.Store.CommitExecutionCommandAsync(xkReq, xkCom);
+    Check($"{name}: execution key reuse with different fingerprint -> 409 P1_IDEMPOTENCY_CONFLICT", xkey.HttpStatus == 409 && xkey.Code == "P1_IDEMPOTENCY_CONFLICT");
+
+    var exInv = await SetupExecutionAsync(create);
+    var (xiReq, xiCom) = BuildExecutionCommand(exInv.Before, ExecutionSteps()[0].Name, "kxi", "FPEXI", "CEXI", ExecutionSteps()[0].Advance, true);
+    string? executionInvalid = null;
+    try { await exInv.H.Store.CommitExecutionCommandAsync(xiReq, xiCom); }
+    catch (InvalidOperationException ex) { executionInvalid = ex.Message; }
+    Check($"{name}: version not advanced -> P1_EXECUTION_VERSION_ADVANCE_INVALID and nothing written",
+        executionInvalid == "P1_EXECUTION_VERSION_ADVANCE_INVALID"
+        && await exInv.H.Store.GetExecutionAsync(exInv.Before.Execution.ExecutionId) == exInv.Before);
+
+    // 25) rollback at every execution fault point
+    var executionPoints = new[]
+    {
+        ExecutionWave10PersistenceFaultPoint.AfterThreadStaged, ExecutionWave10PersistenceFaultPoint.AfterAuditStaged,
+        ExecutionWave10PersistenceFaultPoint.AfterOutboxStaged, ExecutionWave10PersistenceFaultPoint.AfterIdempotencyStaged,
+        ExecutionWave10PersistenceFaultPoint.BeforeCommitPublish
+    };
+    foreach (var xp in executionPoints)
+    {
+        var exf = await SetupExecutionAsync(create);
+        var exfId = exf.Before.Execution.ExecutionId;
+        var exfBase = await exf.H.Counts(exfId);
+        var (xfReq, xfCom) = BuildExecutionCommand(exf.Before, ExecutionSteps()[0].Name, "kxf", "FPEXF", "CEXF", ExecutionSteps()[0].Advance, false);
+        exf.H.SetFault(xp);
+        var threwX = false;
+        try { await exf.H.Store.CommitExecutionCommandAsync(xfReq, xfCom); }
+        catch (PersistenceAtomicityException) { threwX = true; }
+        exf.H.SetFault(ExecutionWave10PersistenceFaultPoint.None);
+        Check($"{name}: execution fault at {xp} -> full rollback",
+            threwX && await exf.H.Store.GetExecutionAsync(exfId) == exf.Before && Delta(exfBase, await exf.H.Counts(exfId)) == (0, 0, 0, 0));
+    }
+
+    // 26) Benefit on the shared benefit row: intake is idempotent, five commands read back field-for-field
+    var bn = await SetupBenefitAsync(create);
+    var benefitId = bn.Before.BenefitId;
+    var intake = new BenefitObligationSourceEvidenceWave11("ExecutionCompleted.v1", benefitId, bn.Before.ExecutionId, bn.Before.IdeaId,
+        bn.Before.ApprovedIdeaVersion, "OBLIGATION_PENDING_ACCEPTANCE", 1, "CBI", DateTimeOffset.UtcNow, "EV-INTAKE", "1");
+    var intakeRes = await bn.H.Store.MaterializeBenefitObligationAsync(intake, "FPBI1");
+    Check($"{name}: benefit intake of an existing obligation is already materialized",
+        intakeRes.Allowed && !intakeRes.StateMutated && intakeRes.Code == "P1_BENEFIT_INTAKE_ALREADY_MATERIALIZED");
+    var intakeReplay = await bn.H.Store.MaterializeBenefitObligationAsync(intake, "FPBI1");
+    Check($"{name}: benefit intake replay is idempotent", intakeReplay.IdempotentReplay && !intakeReplay.StateMutated);
+    var intakeConflict = await bn.H.Store.MaterializeBenefitObligationAsync(intake, "OTHER-FP");
+    Check($"{name}: benefit intake with different fingerprint -> 409 P1_BENEFIT_INTAKE_CONFLICT",
+        intakeConflict.HttpStatus == 409 && intakeConflict.Code == "P1_BENEFIT_INTAKE_CONFLICT");
+
+    var benefitInitial = bn.Before;
+    var benefitThread = benefitInitial;
+    BenefitCommandRequestWave11? bnFirstReq = null;
+    BenefitCommitWave11? bnFirstCom = null;
+    var bnStepNo = 0;
+    foreach (var bstep in BenefitSteps())
+    {
+        bnStepNo++;
+        var (bReq, bCom) = BuildBenefitCommand(benefitThread, bstep.Name, "kbn" + bnStepNo, "FPBN" + bnStepNo, "CBN" + bnStepNo, bstep.Advance, false);
+        var bRes = await bn.H.Store.CommitBenefitCommandAsync(bReq, bCom);
+        Check($"{name}: benefit command '{bstep.Name}' commits and reads back field-for-field",
+            bRes.Allowed && bRes.Code == "P1_BENEFIT_COMMAND_COMMITTED" && await bn.H.Store.GetBenefitAsync(benefitId) == bCom.After);
+        if (bnStepNo == 1) { bnFirstReq = bReq; bnFirstCom = bCom; }
+        benefitThread = bCom.After;
+    }
+    var bReplay = await bn.H.Store.CommitBenefitCommandAsync(bnFirstReq!, bnFirstCom!);
+    Check($"{name}: benefit command replay is idempotent", bReplay.IdempotentReplay && !bReplay.StateMutated);
+    var (bsReq, bsCom) = BuildBenefitCommand(benefitInitial, BenefitSteps()[0].Name, "kbn-stale", "FPBN-stale", "CBN-stale", BenefitSteps()[0].Advance, false);
+    var bStale = await bn.H.Store.CommitBenefitCommandAsync(bsReq, bsCom);
+    Check($"{name}: stale benefit version -> 409 P1_BENEFIT_CONCURRENT_CONFLICT", bStale.HttpStatus == 409 && bStale.Code == "P1_BENEFIT_CONCURRENT_CONFLICT");
+    var (bkReq, bkCom) = BuildBenefitCommand(benefitInitial, BenefitSteps()[0].Name, "kbn1", "OTHER-FP", "CBN-key", BenefitSteps()[0].Advance, false);
+    var bKey = await bn.H.Store.CommitBenefitCommandAsync(bkReq, bkCom);
+    Check($"{name}: benefit key reuse with different fingerprint -> 409 P1_IDEMPOTENCY_CONFLICT", bKey.HttpStatus == 409 && bKey.Code == "P1_IDEMPOTENCY_CONFLICT");
+
+    var bnInv = await SetupBenefitAsync(create);
+    var (biReq, biCom) = BuildBenefitCommand(bnInv.Before, BenefitSteps()[0].Name, "kbni", "FPBNI", "CBNI", BenefitSteps()[0].Advance, true);
+    string? benefitInvalid = null;
+    try { await bnInv.H.Store.CommitBenefitCommandAsync(biReq, biCom); }
+    catch (InvalidOperationException ex) { benefitInvalid = ex.Message; }
+    Check($"{name}: benefit version not advanced -> P1_BENEFIT_VERSION_ADVANCE_INVALID and nothing written",
+        benefitInvalid == "P1_BENEFIT_VERSION_ADVANCE_INVALID" && await bnInv.H.Store.GetBenefitAsync(bnInv.Before.BenefitId) == bnInv.Before);
+
+    // 27) rollback at every benefit fault point
+    var benefitPoints = new[]
+    {
+        BenefitWave11PersistenceFaultPoint.AfterStateStaged, BenefitWave11PersistenceFaultPoint.AfterAuditStaged,
+        BenefitWave11PersistenceFaultPoint.AfterOutboxStaged, BenefitWave11PersistenceFaultPoint.AfterIdempotencyStaged,
+        BenefitWave11PersistenceFaultPoint.BeforeCommitPublish
+    };
+    foreach (var bp in benefitPoints)
+    {
+        var bf = await SetupBenefitAsync(create);
+        var bfId = bf.Before.BenefitId;
+        var bfBase = await bf.H.Counts(bfId);
+        var (bfReq, bfCom) = BuildBenefitCommand(bf.Before, BenefitSteps()[0].Name, "kbnf", "FPBNF", "CBNF", BenefitSteps()[0].Advance, false);
+        bf.H.SetFault(bp);
+        var threwB = false;
+        try { await bf.H.Store.CommitBenefitCommandAsync(bfReq, bfCom); }
+        catch (PersistenceAtomicityException) { threwB = true; }
+        bf.H.SetFault(BenefitWave11PersistenceFaultPoint.None);
+        Check($"{name}: benefit fault at {bp} -> full rollback",
+            threwB && await bf.H.Store.GetBenefitAsync(bfId) == bf.Before && Delta(bfBase, await bf.H.Counts(bfId)) == (0, 0, 0, 0));
+    }
+
+    // 28) Knowledge: one asset per benefit, create + validate + publish
+    var kn = await SetupBenefitAsync(create);
+    var kh = kn.B.MakeKnowledge();
+    var kId = "K-" + kn.Before.BenefitId;
+    var (kcReq, kcCom) = BuildKnowledgeCreate(kn.Before, "kk1", "FPK1", "CK1", kId);
+    var kcRes = await kh.Store.CommitKnowledgeCreateAsync(kcReq, kcCom);
+    Check($"{name}: knowledge draft is created", kcRes.Allowed && kcRes.Code == "P1_KNOWLEDGE_COMMAND_COMMITTED" && kcRes.NewVersion == 1);
+    Check($"{name}: knowledge reads back by id field-for-field", await kh.Store.GetKnowledgeAsync(kId) == kcCom.After);
+    Check($"{name}: knowledge reads back by benefit field-for-field", await kh.Store.GetKnowledgeByBenefitAsync(kn.Before.BenefitId) == kcCom.After);
+    var kcReplay = await kh.Store.CommitKnowledgeCreateAsync(kcReq, kcCom);
+    Check($"{name}: knowledge create replay is idempotent", kcReplay.IdempotentReplay && !kcReplay.StateMutated);
+    var (kdReq, kdCom) = BuildKnowledgeCreate(kn.Before, "kk2", "FPK2", "CK2", kId + "-2");
+    var kdRes = await kh.Store.CommitKnowledgeCreateAsync(kdReq, kdCom);
+    Check($"{name}: second knowledge asset for a benefit -> 409 P1_KNOWLEDGE_BENEFIT_ALREADY_HAS_ASSET",
+        kdRes.HttpStatus == 409 && kdRes.Code == "P1_KNOWLEDGE_BENEFIT_ALREADY_HAS_ASSET");
+
+    var knowledgeThread = kcCom.After;
+    KnowledgeCommandRequestWave13? kmFirstReq = null;
+    KnowledgeCommitWave13? kmFirstCom = null;
+    var kmStepNo = 0;
+    foreach (var kstep in KnowledgeSteps())
+    {
+        kmStepNo++;
+        var (kmReq, kmCom) = BuildKnowledgeCommand(knowledgeThread, kstep.Name, "kkm" + kmStepNo, "FPKM" + kmStepNo, "CKM" + kmStepNo, kstep.Advance, false);
+        var kmRes = await kh.Store.CommitKnowledgeCommandAsync(kmReq, kmCom);
+        Check($"{name}: knowledge command '{kstep.Name}' commits and reads back field-for-field",
+            kmRes.Allowed && kmRes.Code == "P1_KNOWLEDGE_COMMAND_COMMITTED" && await kh.Store.GetKnowledgeAsync(kId) == kmCom.After);
+        if (kmStepNo == 1) { kmFirstReq = kmReq; kmFirstCom = kmCom; }
+        knowledgeThread = kmCom.After;
+    }
+    var (ksReq, ksCom) = BuildKnowledgeCommand(kcCom.After, KnowledgeSteps()[0].Name, "kkm-stale", "FPKM-stale", "CKM-stale", KnowledgeSteps()[0].Advance, false);
+    var kStale = await kh.Store.CommitKnowledgeCommandAsync(ksReq, ksCom);
+    Check($"{name}: stale knowledge version -> 409 P1_KNOWLEDGE_CONCURRENT_CONFLICT", kStale.HttpStatus == 409 && kStale.Code == "P1_KNOWLEDGE_CONCURRENT_CONFLICT");
+    var (kkReq, kkCom) = BuildKnowledgeCommand(kcCom.After, KnowledgeSteps()[0].Name, "kkm1", "OTHER-FP", "CKM-key", KnowledgeSteps()[0].Advance, false);
+    var kKey = await kh.Store.CommitKnowledgeCommandAsync(kkReq, kkCom);
+    Check($"{name}: knowledge key reuse with different fingerprint -> 409 P1_IDEMPOTENCY_CONFLICT", kKey.HttpStatus == 409 && kKey.Code == "P1_IDEMPOTENCY_CONFLICT");
+
+    var knInv = await SetupBenefitAsync(create);
+    var khInv = knInv.B.MakeKnowledge();
+    var (kiReq, kiCom) = BuildKnowledgeCreate(knInv.Before, "kki", "FPKI", "CKI", "K-" + knInv.Before.BenefitId, 2);
+    string? knowledgeInvalidCreate = null;
+    try { await khInv.Store.CommitKnowledgeCreateAsync(kiReq, kiCom); }
+    catch (InvalidOperationException ex) { knowledgeInvalidCreate = ex.Message; }
+    Check($"{name}: create with version != 1 -> P1_KNOWLEDGE_CREATE_INVALID and nothing written",
+        knowledgeInvalidCreate == "P1_KNOWLEDGE_CREATE_INVALID" && await khInv.Store.GetKnowledgeByBenefitAsync(knInv.Before.BenefitId) is null);
+    var knMut = await SetupBenefitAsync(create);
+    var khMut = knMut.B.MakeKnowledge();
+    var (kmcReq, kmcCom) = BuildKnowledgeCreate(knMut.Before, "kkm0", "FPKM0", "CKM0", "K-" + knMut.Before.BenefitId);
+    await khMut.Store.CommitKnowledgeCreateAsync(kmcReq, kmcCom);
+    var (kviReq, kviCom) = BuildKnowledgeCommand(kmcCom.After, KnowledgeSteps()[0].Name, "kkvi", "FPKVI", "CKVI", KnowledgeSteps()[0].Advance, true);
+    string? knowledgeInvalidMutation = null;
+    try { await khMut.Store.CommitKnowledgeCommandAsync(kviReq, kviCom); }
+    catch (InvalidOperationException ex) { knowledgeInvalidMutation = ex.Message; }
+    Check($"{name}: knowledge version not advanced -> P1_KNOWLEDGE_VERSION_ADVANCE_INVALID and nothing written",
+        knowledgeInvalidMutation == "P1_KNOWLEDGE_VERSION_ADVANCE_INVALID" && await khMut.Store.GetKnowledgeAsync(kmcCom.After.KnowledgeId) == kmcCom.After);
+
+    // 29) rollback at every knowledge fault point (create path and mutation path)
+    var knowledgePoints = new[]
+    {
+        KnowledgeWave13PersistenceFaultPoint.AfterStateStaged, KnowledgeWave13PersistenceFaultPoint.AfterAuditStaged,
+        KnowledgeWave13PersistenceFaultPoint.AfterOutboxStaged, KnowledgeWave13PersistenceFaultPoint.AfterIdempotencyStaged,
+        KnowledgeWave13PersistenceFaultPoint.BeforeCommitPublish
+    };
+    foreach (var kp in knowledgePoints)
+    {
+        var kf = await SetupBenefitAsync(create);
+        var khf = kf.B.MakeKnowledge();
+        var kfBenefit = kf.Before.BenefitId;
+        var kfId = "K-" + kfBenefit;
+        var kfBase = await khf.Counts(kfBenefit, kfId);
+        var (kfReq, kfCom) = BuildKnowledgeCreate(kf.Before, "kkf", "FPKF", "CKF", kfId);
+        khf.SetFault(kp);
+        var threwKc = false;
+        try { await khf.Store.CommitKnowledgeCreateAsync(kfReq, kfCom); }
+        catch (PersistenceAtomicityException) { threwKc = true; }
+        khf.SetFault(KnowledgeWave13PersistenceFaultPoint.None);
+        Check($"{name}: knowledge create fault at {kp} -> full rollback",
+            threwKc && await khf.Store.GetKnowledgeAsync(kfId) is null && Delta(kfBase, await khf.Counts(kfBenefit, kfId)) == (0, 0, 0, 0));
+    }
+    foreach (var kp in knowledgePoints)
+    {
+        var kf = await SetupBenefitAsync(create);
+        var khf = kf.B.MakeKnowledge();
+        var kfBenefit = kf.Before.BenefitId;
+        var kfId = "K-" + kfBenefit;
+        var (kfReq0, kfCom0) = BuildKnowledgeCreate(kf.Before, "kkf0", "FPKF0", "CKF0", kfId);
+        await khf.Store.CommitKnowledgeCreateAsync(kfReq0, kfCom0);
+        var kfBase = await khf.Counts(kfBenefit, kfId);
+        var (kfReq, kfCom) = BuildKnowledgeCommand(kfCom0.After, KnowledgeSteps()[0].Name, "kkf1", "FPKF1", "CKF1", KnowledgeSteps()[0].Advance, false);
+        khf.SetFault(kp);
+        var threwKm = false;
+        try { await khf.Store.CommitKnowledgeCommandAsync(kfReq, kfCom); }
+        catch (PersistenceAtomicityException) { threwKm = true; }
+        khf.SetFault(KnowledgeWave13PersistenceFaultPoint.None);
+        Check($"{name}: knowledge command fault at {kp} -> full rollback",
+            threwKm && await khf.Store.GetKnowledgeAsync(kfId) == kfCom0.After && Delta(kfBase, await khf.Counts(kfBenefit, kfId)) == (0, 0, 0, 0));
+    }
 }
 
 Console.WriteLine(failures == 0 ? "ALL PASS" : $"{failures} FAILURE(S)");
@@ -497,6 +838,252 @@ static (G04FinalDecisionRequest Request, G04FinalDecisionCommit Commit) BuildFin
         new G04FinalDecisionCommit(ideaAfter, planAfter, assessmentAfter, evidence, audit, outbox));
 }
 
+static (PortfolioEligibilityRequestWave9 Request, PortfolioCommitWave9 Commit) BuildEligibility(
+    string ideaId, long approvedVersion, string candidateId, string corr, string fingerprint)
+{
+    const string command = "portfolio.evaluate-eligibility-from-approved-idea";
+    var now = DateTimeOffset.UtcNow;
+    var ts = new DateTimeOffset(now.Ticks - now.Ticks % 10, TimeSpan.Zero);
+    var tag = candidateId + "-" + fingerprint;
+    var trigger = new PortfolioEligibilityTrigger("IdeaApproved.v1", ideaId, approvedVersion, "APPROVED", 0, false, corr);
+    var candidate = new PortfolioCandidateEnvelope(candidateId, ideaId, approvedVersion, "UNASSIGNED_CANDIDATE", 1, ts, corr);
+    var thread = new PortfolioThreadEnvelope(candidate, null, null, null, null, 1);
+    var audit = new AuditEnvelope("APE-" + tag, "SYSTEM", "SYSTEM", "SYSTEM", new[] { "SYSTEM" }, "ASG-SYS", candidateId, 1, "RS-1.0", ts, corr, command);
+    var events = new[]
+    {
+        new OutboxEnvelope("OBPE1-" + tag, "PortfolioEligibilityEvaluated.v1", candidateId, 1, corr, ts, new Dictionary<string, string> { ["k"] = "v" }),
+        new OutboxEnvelope("OBPE2-" + tag, "PortfolioIntakeCandidateCreated.v1", candidateId, 1, corr, ts, new Dictionary<string, string> { ["k"] = "v" })
+    };
+    return (new PortfolioEligibilityRequestWave9(trigger, fingerprint), new PortfolioCommitWave9(thread, audit, events));
+}
+
+static (PortfolioCommandRequestWave9 Request, PortfolioCommitWave9 Commit) BuildPortfolioCommand(
+    PortfolioThreadEnvelope before, string commandName, string key, string fingerprint, string corr,
+    Func<PortfolioThreadEnvelope, DateTimeOffset, PortfolioThreadEnvelope> advance, bool keepThreadVersion)
+{
+    var now = DateTimeOffset.UtcNow;
+    var ts = new DateTimeOffset(now.Ticks - now.Ticks % 10, TimeSpan.Zero);
+    var candidateId = before.Candidate.CandidateId;
+    var roles = new[] { "PORTFOLIO_MANAGER" };
+    var after = advance(before, ts) with { ThreadVersion = before.ThreadVersion + (keepThreadVersion ? 0 : 1) };
+    var tag = key + "-" + candidateId;
+    var command = new PortfolioCommandWave9(commandName, candidateId, before.ThreadVersion, key, corr);
+    var actor = new AuthorityActor("P1", "DOMAIN\\p1", "TEST", "ASG-1", roles, new[] { "SCOPE-A" });
+    var policy = new CommandPolicy(commandName, roles, new[] { before.Candidate.State }, "RS-1.0", "PortfolioCommandApplied");
+    var audit = new AuditEnvelope("APC-" + tag, "P1", "DOMAIN\\p1", "TEST", roles, "ASG-1", candidateId, after.ThreadVersion, "RS-1.0", ts, corr, commandName);
+    var events = new[]
+    {
+        new OutboxEnvelope("OBPC-" + tag, "PortfolioCommandApplied.v1", candidateId, after.ThreadVersion, corr, ts, new Dictionary<string, string> { ["k"] = "v" })
+    };
+    return (new PortfolioCommandRequestWave9(command, actor, before, policy, fingerprint), new PortfolioCommitWave9(after, audit, events));
+}
+
+static (string Name, Func<PortfolioThreadEnvelope, DateTimeOffset, PortfolioThreadEnvelope> Advance)[] PortfolioSteps() =>
+    new (string Name, Func<PortfolioThreadEnvelope, DateTimeOffset, PortfolioThreadEnvelope> Advance)[]
+    {
+        ("portfolio.assign", (x, at) => x with
+        {
+            Candidate = x.Candidate with { State = "ASSIGNED_CANDIDATE", Version = x.Candidate.Version + 1 },
+            Assignment = new PortfolioAssignmentEnvelope("PA-" + x.Candidate.CandidateId, x.Candidate.CandidateId, "PF-1", "ASSIGNED", 1, at, "CPS")
+        }),
+        ("portfolio.decide-membership", (x, at) => x with
+        {
+            Candidate = x.Candidate with { State = "MEMBER", Version = x.Candidate.Version + 1 },
+            Membership = new PortfolioMembershipEnvelope("PM-" + x.Candidate.CandidateId, x.Candidate.CandidateId, "PA-" + x.Candidate.CandidateId, "PF-1", "ACCEPTED", 1, at, "P1", "ASG-1", "CPS")
+        }),
+        ("portfolio.recommend-execution", (x, at) => x with
+        {
+            Candidate = x.Candidate with { State = "RECOMMENDED", Version = x.Candidate.Version + 1 },
+            Recommendation = new ExecutionRecommendationEnvelope("PR-" + x.Candidate.CandidateId, x.Candidate.CandidateId, "PM-" + x.Candidate.CandidateId, "APPROVED", 1, "GOV-1", true, "BASE-1", at, "CPS")
+        }),
+        ("portfolio.handoff-execution", (x, at) => x with
+        {
+            Candidate = x.Candidate with { State = "HANDED_OFF", Version = x.Candidate.Version + 1 },
+            Execution = new ExecutionHandoffEnvelope("PX-" + x.Candidate.CandidateId, "PR-" + x.Candidate.CandidateId, x.Candidate.CandidateId, x.Candidate.IdeaId, x.Candidate.ApprovedIdeaVersion, "HANDOFF_PENDING", 1, at, "CPS")
+        })
+    };
+
+static (string Name, Func<ExecutionThreadEnvelopeWave10, DateTimeOffset, ExecutionThreadEnvelopeWave10> Advance)[] ExecutionSteps() =>
+    new (string Name, Func<ExecutionThreadEnvelopeWave10, DateTimeOffset, ExecutionThreadEnvelopeWave10> Advance)[]
+    {
+        ("execution.approve-charter", (x, at) => x with { Execution = x.Execution with { State = "CHARTER_APPROVED", CharterApproved = true } }),
+        ("execution.approve-plan", (x, at) => x with { Execution = x.Execution with { State = "PLAN_APPROVED", PlanApproved = true } }),
+        ("execution.report-progress", (x, at) => x with { Execution = x.Execution with { State = "IN_PROGRESS", ProgressPercent = 60 } }),
+        ("execution.submit-completion", (x, at) => x with
+        {
+            Execution = x.Execution with
+            {
+                State = "COMPLETION_SUBMITTED", ProgressPercent = 100, CompletionDossierRef = "DOSSIER-1",
+                CompletionSubmittedByPersonId = "P1", CompletionSubmittedByAssignmentId = "ASG-1"
+            }
+        }),
+        ("execution.review-completion", (x, at) => x with
+        {
+            Execution = x.Execution with
+            {
+                State = "COMPLETED", CompletionApproved = true, CompletionReviewedByPersonId = "P2",
+                CompletionReviewDecision = "APPROVED", BenefitId = "BEN-" + x.Execution.ExecutionId
+            },
+            BenefitObligation = new BenefitObligationEnvelopeWave10("BEN-" + x.Execution.ExecutionId, x.Execution.ExecutionId,
+                x.Execution.IdeaId, x.Execution.ApprovedIdeaVersion, "OBLIGATION_PENDING_ACCEPTANCE", 1, at, "CEX")
+        })
+    };
+
+async Task<(ExecutionHandle H, ExecutionThreadEnvelopeWave10 Before, Backend B)> SetupExecutionAsync(Func<AggregateSnapshot, Task<Backend>> factory)
+{
+    var b = await factory(Seed(NewId()));
+    var pf = b.MakePortfolio();
+    var idea = NewId();
+    var cand = "PC-" + idea;
+    var (ereq, ecom) = BuildEligibility(idea, 2, cand, "CPX", "FPX");
+    var eres = await pf.Store.CommitEligibilityAsync(ereq, ecom);
+    if (!eres.Allowed) throw new InvalidOperationException("portfolio setup failed: " + eres.Code);
+    var thread = ecom.After;
+    var n = 0;
+    foreach (var step in PortfolioSteps())
+    {
+        n++;
+        var (req, com) = BuildPortfolioCommand(thread, step.Name, "kx" + n, "FPXS" + n, "CPXS" + n, step.Advance, false);
+        var res = await pf.Store.CommitPortfolioCommandAsync(req, com);
+        if (!res.Allowed) throw new InvalidOperationException("portfolio setup failed: " + res.Code);
+        thread = com.After;
+    }
+    var ho = thread.Execution!;
+    var initial = new ExecutionThreadEnvelopeWave10(
+        new ExecutionEnvelopeWave10(ho.ExecutionId, ho.RecommendationId, ho.CandidateId, ho.IdeaId, ho.ApprovedIdeaVersion, ho.State, ho.Version,
+            false, false, 0, null, false, null, null, null, null, null, ho.CreatedAt, ho.CreatedAt, ho.CorrelationId), null);
+    var h = b.MakeExecution(initial);
+    return (h, (await h.Store.GetExecutionAsync(ho.ExecutionId))!, b);
+}
+
+static (ExecutionCommandRequestWave10 Request, ExecutionCommitWave10 Commit) BuildExecutionCommand(
+    ExecutionThreadEnvelopeWave10 before, string commandName, string key, string fingerprint, string corr,
+    Func<ExecutionThreadEnvelopeWave10, DateTimeOffset, ExecutionThreadEnvelopeWave10> advance, bool keepVersion)
+{
+    var now = DateTimeOffset.UtcNow;
+    var ts = new DateTimeOffset(now.Ticks - now.Ticks % 10, TimeSpan.Zero);
+    var execId = before.Execution.ExecutionId;
+    var roles = new[] { "EXECUTION_OWNER" };
+    var advanced = advance(before, ts);
+    var after = advanced with
+    {
+        Execution = advanced.Execution with
+        {
+            Version = before.Execution.Version + (keepVersion ? 0 : 1), UpdatedAt = ts, CorrelationId = corr
+        }
+    };
+    var tag = key + "-" + execId;
+    var command = new ExecutionCommandWave10(commandName, execId, before.Execution.Version, key, corr);
+    var actor = new AuthorityActor("P1", "DOMAIN\\p1", "TEST", "ASG-1", roles, new[] { "SCOPE-A" });
+    var policy = new CommandPolicy(commandName, roles, new[] { before.Execution.State }, "RS-1.0", "ExecutionCommandApplied");
+    var ownership = new ExecutionOwnershipEvidenceWave10(execId, "P1", "ASG-1", "SCOPE-A", "EV-1", "1");
+    var audit = new AuditEnvelope("AEX-" + tag, "P1", "DOMAIN\\p1", "TEST", roles, "ASG-1", execId, after.Execution.Version, "RS-1.0", ts, corr, commandName);
+    var events = new[]
+    {
+        new OutboxEnvelope("OBEX-" + tag, "ExecutionCommandApplied.v1", execId, after.Execution.Version, corr, ts, new Dictionary<string, string> { ["k"] = "v" })
+    };
+    return (new ExecutionCommandRequestWave10(command, actor, before, policy, ownership, fingerprint), new ExecutionCommitWave10(after, audit, events));
+}
+
+async Task<(Backend B, BenefitHandle H, BenefitEnvelopeWave11 Before)> SetupBenefitAsync(Func<AggregateSnapshot, Task<Backend>> factory)
+{
+    var e = await SetupExecutionAsync(factory);
+    var thread = e.Before;
+    var n = 0;
+    foreach (var step in ExecutionSteps())
+    {
+        n++;
+        var (req, com) = BuildExecutionCommand(thread, step.Name, "kb" + n, "FPB" + n, "CPB" + n, step.Advance, false);
+        var res = await e.H.Store.CommitExecutionCommandAsync(req, com);
+        if (!res.Allowed) throw new InvalidOperationException("execution setup failed: " + res.Code);
+        thread = com.After;
+    }
+    var ob = thread.BenefitObligation!;
+    var initial = new BenefitEnvelopeWave11(ob.BenefitId, ob.ExecutionId, ob.IdeaId, ob.ApprovedIdeaVersion, ob.State, ob.Version,
+        null, null, null, null, null, null, null, null, null, null, null, null, ob.CreatedAt, ob.CreatedAt, ob.CorrelationId);
+    var h = e.B.MakeBenefit(initial);
+    return (e.B, h, (await h.Store.GetBenefitAsync(ob.BenefitId))!);
+}
+
+static (string Name, Func<BenefitEnvelopeWave11, DateTimeOffset, BenefitEnvelopeWave11> Advance)[] BenefitSteps() =>
+    new (string Name, Func<BenefitEnvelopeWave11, DateTimeOffset, BenefitEnvelopeWave11> Advance)[]
+    {
+        ("benefit.accept-obligation", (x, at) => x with { State = "ACCEPTED", AcceptedByPersonId = "P1", AcceptedByAssignmentId = "ASG-1", BaselineEvidenceRef = "BASE-1", TargetEvidenceRef = "TARGET-1" }),
+        ("benefit.plan-measurement", (x, at) => x with { State = "MEASUREMENT_PLANNED", MeasurementPlanRef = "MPLAN-1" }),
+        ("benefit.record-measurement", (x, at) => x with { State = "MEASURED", MeasurementDossierRef = "MDOS-1", MeasuredByPersonId = "P2" }),
+        ("benefit.verify", (x, at) => x with { State = "VERIFIED", VerificationDossierRef = "VDOS-1", AttributionDossierRef = "ADOS-1", VerifiedByPersonId = "P3" }),
+        ("benefit.realize", (x, at) => x with { State = "REALIZED", RealizationDossierRef = "RDOS-1" })
+    };
+
+static (BenefitCommandRequestWave11 Request, BenefitCommitWave11 Commit) BuildBenefitCommand(
+    BenefitEnvelopeWave11 before, string commandName, string key, string fingerprint, string corr,
+    Func<BenefitEnvelopeWave11, DateTimeOffset, BenefitEnvelopeWave11> advance, bool keepVersion)
+{
+    var now = DateTimeOffset.UtcNow;
+    var ts = new DateTimeOffset(now.Ticks - now.Ticks % 10, TimeSpan.Zero);
+    var roles = new[] { "BENEFIT_OWNER" };
+    var after = advance(before, ts) with { Version = before.Version + (keepVersion ? 0 : 1), UpdatedAt = ts, CorrelationId = corr };
+    var tag = key + "-" + before.BenefitId;
+    var command = new BenefitCommandWave11(commandName, before.BenefitId, before.Version, key, corr);
+    var actor = new AuthorityActor("P1", "DOMAIN\\p1", "TEST", "ASG-1", roles, new[] { "SCOPE-A" });
+    var policy = new CommandPolicy(commandName, roles, new[] { before.State }, "RS-1.0", "BenefitCommandApplied");
+    var ownership = new BenefitOwnershipEvidenceWave11(before.BenefitId, "P1", "ASG-1", "SCOPE-A", "EV-1", "1");
+    var audit = new AuditEnvelope("ABN-" + tag, "P1", "DOMAIN\\p1", "TEST", roles, "ASG-1", before.BenefitId, after.Version, "RS-1.0", ts, corr, commandName);
+    var events = new[]
+    {
+        new OutboxEnvelope("OBBN-" + tag, "BenefitCommandApplied.v1", before.BenefitId, after.Version, corr, ts, new Dictionary<string, string> { ["k"] = "v" })
+    };
+    return (new BenefitCommandRequestWave11(command, actor, before, policy, ownership, fingerprint), new BenefitCommitWave11(after, audit, events));
+}
+
+static (KnowledgeCommandRequestWave13 Request, KnowledgeCommitWave13 Commit) BuildKnowledgeCreate(
+    BenefitEnvelopeWave11 benefit, string key, string fingerprint, string corr, string knowledgeId, long afterVersion = 1)
+{
+    const string commandName = "knowledge.create-draft";
+    var now = DateTimeOffset.UtcNow;
+    var ts = new DateTimeOffset(now.Ticks - now.Ticks % 10, TimeSpan.Zero);
+    var roles = new[] { "KNOWLEDGE_AUTHOR" };
+    var after = new KnowledgeEnvelopeWave13(knowledgeId, benefit.BenefitId, benefit.ExecutionId, benefit.IdeaId, benefit.ApprovedIdeaVersion,
+        "DRAFT", afterVersion, "P1", "ASG-1", "AUTHOR_POLICY", "SCOPE-A", null, null, null, null, null, ts, ts, corr);
+    var tag = key + "-" + knowledgeId;
+    var command = new KnowledgeCommandWave13(commandName, null, benefit.BenefitId, 0, key, corr);
+    var actor = new AuthorityActor("P1", "DOMAIN\\p1", "TEST", "ASG-1", roles, new[] { "SCOPE-A" });
+    var policy = new CommandPolicy(commandName, roles, new[] { benefit.State }, "RS-1.0", "KnowledgeDraftCreated");
+    var audit = new AuditEnvelope("AKN-" + tag, "P1", "DOMAIN\\p1", "TEST", roles, "ASG-1", knowledgeId, after.Version, "RS-1.0", ts, corr, commandName);
+    var events = new[]
+    {
+        new OutboxEnvelope("OBKN-" + tag, "KnowledgeDraftCreated.v1", knowledgeId, after.Version, corr, ts, new Dictionary<string, string> { ["k"] = "v" })
+    };
+    return (new KnowledgeCommandRequestWave13(command, actor, null, policy, fingerprint), new KnowledgeCommitWave13(after, audit, events));
+}
+
+static (string Name, Func<KnowledgeEnvelopeWave13, DateTimeOffset, KnowledgeEnvelopeWave13> Advance)[] KnowledgeSteps() =>
+    new (string Name, Func<KnowledgeEnvelopeWave13, DateTimeOffset, KnowledgeEnvelopeWave13> Advance)[]
+    {
+        ("knowledge.validate", (x, at) => x with { State = "VALIDATED", ValidatedByPersonId = "P2", ValidatedByAssignmentId = "ASG-2" }),
+        ("knowledge.publish", (x, at) => x with { State = "PUBLISHED", PublishedByPersonId = "P3", PublishedByAssignmentId = "ASG-3", PublicationDossierRef = "PUB-1" })
+    };
+
+static (KnowledgeCommandRequestWave13 Request, KnowledgeCommitWave13 Commit) BuildKnowledgeCommand(
+    KnowledgeEnvelopeWave13 before, string commandName, string key, string fingerprint, string corr,
+    Func<KnowledgeEnvelopeWave13, DateTimeOffset, KnowledgeEnvelopeWave13> advance, bool keepVersion)
+{
+    var now = DateTimeOffset.UtcNow;
+    var ts = new DateTimeOffset(now.Ticks - now.Ticks % 10, TimeSpan.Zero);
+    var roles = new[] { "KNOWLEDGE_STEWARD" };
+    var after = advance(before, ts) with { Version = before.Version + (keepVersion ? 0 : 1), UpdatedAt = ts, CorrelationId = corr };
+    var tag = key + "-" + before.KnowledgeId;
+    var command = new KnowledgeCommandWave13(commandName, before.KnowledgeId, null, before.Version, key, corr);
+    var actor = new AuthorityActor("P1", "DOMAIN\\p1", "TEST", "ASG-1", roles, new[] { "SCOPE-A" });
+    var policy = new CommandPolicy(commandName, roles, new[] { before.State }, "RS-1.0", "KnowledgeCommandApplied");
+    var audit = new AuditEnvelope("AKM-" + tag, "P1", "DOMAIN\\p1", "TEST", roles, "ASG-1", before.KnowledgeId, after.Version, "RS-1.0", ts, corr, commandName);
+    var events = new[]
+    {
+        new OutboxEnvelope("OBKM-" + tag, "KnowledgeCommandApplied.v1", before.KnowledgeId, after.Version, corr, ts, new Dictionary<string, string> { ["k"] = "v" })
+    };
+    return (new KnowledgeCommandRequestWave13(command, actor, before, policy, fingerprint), new KnowledgeCommitWave13(after, audit, events));
+}
+
 static (MutationRequest Request, MutationCommit Commit) BuildWithPlan(
     string id, long before, string key, string fingerprint, string corr, string planId)
 {
@@ -512,6 +1099,26 @@ static (MutationRequest Request, MutationCommit Commit) BuildWithPlan(
     };
     return (request, commit with { EvaluationPlan = plan, EvaluationAssignments = assignments });
 }
+
+internal sealed record BenefitHandle(
+    IBenefitWave11Store Store,
+    Action<BenefitWave11PersistenceFaultPoint> SetFault,
+    Func<string, Task<(int, int, int, int)>> Counts);
+
+internal sealed record KnowledgeHandle(
+    IKnowledgeWave13Store Store,
+    Action<KnowledgeWave13PersistenceFaultPoint> SetFault,
+    Func<string, string, Task<(int, int, int, int)>> Counts);
+
+internal sealed record ExecutionHandle(
+    IExecutionWave10Store Store,
+    Action<ExecutionWave10PersistenceFaultPoint> SetFault,
+    Func<string, Task<(int, int, int, int)>> Counts);
+
+internal sealed record PortfolioHandle(
+    IPortfolioWave9Store Store,
+    Action<PortfolioWave9PersistenceFaultPoint> SetFault,
+    Func<string, string, Task<(int, int, int, int)>> Counts);
 
 internal sealed record FinalHandle(
     IG04FinalDecisionStore Store,
@@ -529,6 +1136,10 @@ internal sealed class Backend
     public required Action<G04VotingPersistenceFaultPoint> SetVotingFault { get; init; }
     public required Func<string, Task<(int, int, int, int)>> VotingCounts { get; init; }
     public required Func<AggregateSnapshot, EvaluationPlanEnvelope, G04AssessmentEnvelope, FinalHandle> MakeFinal { get; init; }
+    public required Func<PortfolioHandle> MakePortfolio { get; init; }
+    public required Func<ExecutionThreadEnvelopeWave10, ExecutionHandle> MakeExecution { get; init; }
+    public required Func<BenefitEnvelopeWave11, BenefitHandle> MakeBenefit { get; init; }
+    public required Func<KnowledgeHandle> MakeKnowledge { get; init; }
 
     public static Backend InMemory(AggregateSnapshot seed)
     {
@@ -536,6 +1147,30 @@ internal sealed class Backend
         var v = new G04VotingTransactionalStore(s);
         return new Backend
         {
+            MakeBenefit = initial =>
+            {
+                var bs = new BenefitTransactionalStoreWave11(initial);
+                return new BenefitHandle(bs, p => bs.FaultPoint = p,
+                    _ => Task.FromResult((bs.BenefitAuditLog.Count, bs.BenefitOutbox.Count, bs.BenefitIdempotencyRecords.Count, 0)));
+            },
+            MakeKnowledge = () =>
+            {
+                var ks = new KnowledgeTransactionalStoreWave13();
+                return new KnowledgeHandle(ks, p => ks.FaultPoint = p,
+                    (_, _) => Task.FromResult((ks.KnowledgeAuditLog.Count, ks.KnowledgeOutbox.Count, ks.KnowledgeIdempotencyRecords.Count, 0)));
+            },
+            MakeExecution = initial =>
+            {
+                var es = new ExecutionTransactionalStoreWave10(initial);
+                return new ExecutionHandle(es, p => es.FaultPoint = p,
+                    _ => Task.FromResult((es.ExecutionAuditLog.Count, es.ExecutionOutbox.Count, es.ExecutionIdempotencyRecords.Count, 0)));
+            },
+            MakePortfolio = () =>
+            {
+                var ps = new PortfolioTransactionalStoreWave9();
+                return new PortfolioHandle(ps, p => ps.FaultPoint = p,
+                    (_, _) => Task.FromResult((ps.PortfolioAuditLog.Count, ps.PortfolioOutbox.Count, ps.PortfolioIdempotencyRecords.Count, 0)));
+            },
             MakeFinal = (idea, plan, assessment) =>
             {
                 var f = new G04FinalDecisionTransactionalStore(idea, plan, assessment);
@@ -567,6 +1202,32 @@ internal sealed class Backend
         await s.SeedAggregateAsync(seed);
         return new Backend
         {
+            MakeBenefit = _ => new BenefitHandle(s, p => s.BenefitFaultPoint = p,
+                async benefitId =>
+                {
+                    var c = await s.CountEvidenceAsync(benefitId);
+                    return (c.Audit, c.Outbox, c.Idempotency, 0);
+                }),
+            MakeKnowledge = () => new KnowledgeHandle(s, p => s.KnowledgeFaultPoint = p,
+                async (benefitId, knowledgeId) =>
+                {
+                    var byKnowledge = await s.CountEvidenceAsync(knowledgeId);
+                    var byBenefit = await s.CountEvidenceAsync(benefitId);
+                    return (byKnowledge.Audit, byKnowledge.Outbox, byKnowledge.Idempotency + byBenefit.Idempotency, 0);
+                }),
+            MakeExecution = _ => new ExecutionHandle(s, p => s.ExecutionFaultPoint = p,
+                async executionId =>
+                {
+                    var c = await s.CountEvidenceAsync(executionId);
+                    return (c.Audit, c.Outbox, c.Idempotency, 0);
+                }),
+            MakePortfolio = () => new PortfolioHandle(s, p => s.PortfolioFaultPoint = p,
+                async (ideaId, candidateId) =>
+                {
+                    var byCandidate = await s.CountEvidenceAsync(candidateId);
+                    var byIdea = await s.CountEvidenceAsync(ideaId);
+                    return (byCandidate.Audit, byCandidate.Outbox, byCandidate.Idempotency + byIdea.Idempotency, 0);
+                }),
             MakeFinal = (_, _, _) => new FinalHandle(s, p => s.FinalDecisionFaultPoint = p,
                 async (ideaId, assessmentId) =>
                 {

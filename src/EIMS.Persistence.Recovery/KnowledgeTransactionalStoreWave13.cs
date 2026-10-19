@@ -181,7 +181,7 @@ public sealed class KnowledgeTransactionalStoreWave13 : IKnowledgeWave13Store
             command.CorrelationId,
             commit.OutboxEvents.Select(x => x.EventName).ToArray());
 
-    private static void ValidateCreate(KnowledgeCommandRequestWave13 request, KnowledgeCommitWave13 commit)
+    public static void ValidateCreate(KnowledgeCommandRequestWave13 request, KnowledgeCommitWave13 commit)
     {
         var after = commit.After;
         if (after.Version != 1
@@ -191,7 +191,7 @@ public sealed class KnowledgeTransactionalStoreWave13 : IKnowledgeWave13Store
         ValidateEvidence(request, commit);
     }
 
-    private static void ValidateMutation(KnowledgeCommandRequestWave13 request, KnowledgeCommitWave13 commit)
+    public static void ValidateMutation(KnowledgeCommandRequestWave13 request, KnowledgeCommitWave13 commit)
     {
         var before = request.Before!;
         var after = commit.After;

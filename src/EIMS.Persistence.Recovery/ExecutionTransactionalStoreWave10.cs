@@ -134,7 +134,7 @@ public sealed class ExecutionTransactionalStoreWave10 : IExecutionWave10Store
         }
     }
 
-    private static void ValidateCommit(
+    public static void ValidateCommit(
         ExecutionCommandRequestWave10 request,
         ExecutionCommitWave10 commit)
     {

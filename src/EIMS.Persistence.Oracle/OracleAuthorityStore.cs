@@ -228,7 +228,24 @@ public sealed partial class OracleAuthorityStore : IEvaluationWorkflowStore, IFa
         string.IsNullOrWhiteSpace(j) ? null : JsonSerializer.Deserialize<Dictionary<string, string>>(j);
 
     private static string? Str(DbDataReader r, int i) => r.IsDBNull(i) ? null : r.GetString(i);
+    private static async Task<T?> QueryOneAsync<T>(
+    OracleConnection conn,
+    OracleTransaction? tx,
+    string sql,
+    string id,
+    Func<DbDataReader, T> map,
+    CancellationToken ct)
+    where T : class
+{
+    await using var cmd = Cmd(conn, tx, sql);
+    P(cmd, "p_id", OracleDbType.Varchar2, id);
 
+    await using var reader = await cmd.ExecuteReaderAsync(ct);
+    if (!await reader.ReadAsync(ct))
+        return null;
+
+    return map(reader);
+}
     private static void BindAggregate(OracleCommand c, AggregateSnapshot a)
     {
         P(c, "p_id", OracleDbType.Varchar2, a.AggregateId);
