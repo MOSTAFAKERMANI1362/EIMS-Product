@@ -1,5 +1,5 @@
 # ACR-S2f3 — Benefit and Knowledge persistence v1.0
-Status: PROPOSED (accepted when dev_rebuild_all.sql is all PASS and the conformance suite prints ALL PASS for InMemory AND Oracle)
+Status: ACCEPTED - dev_rebuild_all.sql all PASS; InMemory and Oracle conformance ALL PASS (154/154 per backend, exit code 0; 2026-10-19)
 Builds on ACR-S2f2 (shared `EIMS_BENEFIT` row created by the execution completion).
 
 ## Findings (record-vs-table comparison before any code)
