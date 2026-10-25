@@ -6,6 +6,8 @@
   <ItemGroup>
     <ProjectReference Include="../EIMS.Authority.Recovery/EIMS.Authority.Recovery.csproj" />
     <ProjectReference Include="../EIMS.Persistence.Recovery/EIMS.Persistence.Recovery.csproj" />
+    <ProjectReference Include="..\EIMS.Outbox\EIMS.Outbox.csproj" />
+    <PackageReference Include="System.Security.Cryptography.Pkcs" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Oracle.ManagedDataAccess.Core" />
