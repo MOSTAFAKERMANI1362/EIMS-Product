@@ -6,18 +6,13 @@
 ## Steps
 | Step | Goal | Status |
 |---|---|---|
-| S1 | Oracle core schema V001 (5 tables) | **DONE** — verified on pilot Oracle (Oct 2026), all PASS |
-| S1b | V002 evaluation, V003 G04, V004 waves 9–13 (12 tables) + ACR-S1b + conventions check | **DONE** — `dev_rebuild_all.sql`: all PASS, 17 tables, 4 append-only triggers (counts changed with S2b/S2c; see S2c row) |
-| S2a | Oracle adapter, kernel commit path (V001 tables) + conformance suite | **DONE + MERGED** (PR #112, commit c49e9b7, 13 checks green); 16/16 PASS on InMemory and Oracle |
-| S2b | Evaluation plan/assignments persistence + V002 realigned (ACR-S2b) | **DONE + MERGED** — conformance 24/24 on InMemory and Oracle |
-| S2c | Evaluation completion + per-assignment snapshot + G04 assessment on Oracle (ACR-S2c) | **DONE + MERGED** — conformance 41/41 on InMemory and Oracle; DB checks all PASS |
-| S2d | G04 committee voting on Oracle: V003 voting tables replaced by 4 tables mirroring the envelopes (ACR-S2d) | **DONE** — conformance 60/60 PASS on InMemory and Oracle (PR merge: check git) |
-| S2e | G04 final decision on Oracle: new 41-column immutable evidence table, one-transaction commit (ACR-S2e) | **DONE + MERGED** — conformance 78/78 PASS on InMemory and Oracle |
-| S2f-1 | Portfolio thread on Oracle (5 tables, shared EIMS_EXECUTION entity) (ACR-S2f1) | **DONE** (102/102 PASS); pushed on feature/s2f1-portfolio-oracle — **PR must be merged before S2f-2/3** |
-| S2f-2 | Execution lifecycle on the shared EIMS_EXECUTION row + shared EIMS_BENEFIT entity (ACR-S2f2); hand-off INTAKE store deferred to S2f-2b | **DONE locally** (116/116 PASS); shipped together with S2f-3 in one PR |
-| S2f-3 | Benefit (Wave 11, incl. intake) + Knowledge (Wave 13) stores; EIMS_KNOWLEDGE_ASSET realigned (ACR-S2f3) | **FILES READY — combined PR with S2f-2; waiting for `dev_rebuild_all.sql` + conformance (expect 154 PASS per backend)** |
-| S3 | Outbox dispatcher | not started |
-| S4 | Bind g01.decide, g02.decide, rewards.decide to gateway + tests | not started |
+| S1 | Oracle core schema V001 (5 tables) | **DONE** |
+| S1b | V002 evaluation, V003 G04, V004 waves 9–13 + ACR-S1b + conventions check | **DONE** |
+| S2a–S2e | Oracle stores: kernel commit, evaluation plan/completion, G04 voting, G04 final decision (ACR-S2a…S2e) | **DONE + MERGED** (conformance 16→78 per backend) |
+| S2f-1/2/3 | Portfolio thread, Execution lifecycle, Benefit + Knowledge on Oracle (ACR-S2f1…S2f3) | **DONE + MERGED** — conformance 154/154 PASS on InMemory and Oracle; 21 tables |
+| S2f-2b | Execution hand-off INTAKE store (system, event-driven) | optional — only if events cross databases; decide with pilot topology |
+| S3 | Outbox dispatcher: `EIMS.Outbox` (contracts, dispatcher, in-memory reference) + Oracle claim/lease store + V005 (ACR-S3) | **FILES READY — waiting for `dev_rebuild_all.sql` + dispatcher suite (expect 20 PASS per backend) + S2 suite still 154** |
+| S4 | Wire everything into the Host: bind g01.decide, g02.decide, rewards.decide to the gateway, Oracle stores via DI (OracleBindingEvidence), dispatcher as BackgroundService | not started |
 | S5 | Query API (worklist, ideas) → migrate UI pages in matrix order | not started |
 
 ## Oracle binding evidence (for OracleBindingEvidence)
@@ -31,9 +26,7 @@
 Oracle AI Database 26ai Free 23.26.3, PDB FREEPDB1, accounts EIMS_OWNER / EIMS_APP.
 
 ## Decisions log
-- ACR-S2f3: knowledge asset table mirrors KnowledgeEnvelopeWave13 (one per benefit); benefit intake is an idempotent no-op on the shared row; ValidateCommit (benefit) and ValidateCreate/ValidateMutation (knowledge) made public static.
-- ACR-S2f2: EIMS_BENEFIT mirrors BenefitEnvelopeWave11 (Execution completion inserts the obligation, Benefit store updates it); execution UPDATED_AT written from the envelope; ExecutionTransactionalStoreWave10.ValidateCommit made public static; intake store (S2f-2b) deferred.
-- ACR-S2f1: portfolio thread = 5 tables, THREAD_VERSION on the candidate row; EIMS_EXECUTION is the single execution entity (hand-off inserts, Execution store updates); ValidateEligibilityCommit/ValidateCommandCommit made public static.
+- ACR-S3: at-least-once delivery, strict per-aggregate ordering, FAILED blocks its aggregate until requeued, claim = single UPDATE with token+lease, claim filter by aggregate type, hosting deferred to S4.
 - ACR-S2e: final decision evidence is an immutable per-assessment table; idea UPDATE guarded by revision AND technical state-mutation version; assessment/plan rows locked FOR UPDATE; ValidateCommit made public static; MatchesCurrentRequest re-implemented against DB state (only duplicated rule).
 - ACR-S2d: votes reference the G04 assessment as the aggregate; committee snapshot/state/vote revision/effective vote are four tables (19 tables total); assessment row locked FOR UPDATE during a vote; ValidateCommitShape and SameOptionalSnapshot made public static.
 - ACR-S2c: snapshot is per assignment (not per plan/type); G04 assessment table mirrors G04AssessmentEnvelope; plan row is locked FOR UPDATE during completion; ValidateEvaluationCompletionShape made public static.

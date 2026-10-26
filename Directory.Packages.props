@@ -4,5 +4,6 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageVersion Include="Oracle.ManagedDataAccess.Core" Version="23.26.301" />
+    <PackageVersion Include="System.Security.Cryptography.Pkcs" Version="8.0.2" />
   </ItemGroup>
 </Project>

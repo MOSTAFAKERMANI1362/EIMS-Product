@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>EIMS.P3.OutboxDispatcher.Tests</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/EIMS.Outbox/EIMS.Outbox.csproj" />
+    <ProjectReference Include="../../src/EIMS.Persistence.Oracle/EIMS.Persistence.Oracle.csproj" />
+  </ItemGroup>
+</Project>
